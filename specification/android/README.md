@@ -13,7 +13,7 @@ backend 側の対応する仕様は `specification/backend/` の 03・05・06・
 | beacon token の取得・保持 | native | |
 | BLE advertise / scan | native | Web Bluetooth は advertise・バックグラウンド不可 |
 | sighting の集約と送信 | native | FGS の中で動く |
-| フレンドの近接検出と Party 報告 | native | 15 秒間隔の報告をバックグラウンドで続けるため |
+| フレンドの近接検出と Party 報告 | native（目標）。**いまは JS が前面の間だけ行う**（`web/src/device/proximity/party.ts`、`docs/spec/party-implementation.md` §5） | 15 秒間隔の報告をバックグラウンドで続けるため。native への移動は P1 |
 | 位置の取得と送信 | native | `isMock` は native でしか取れない（backend 05 §4） |
 | 端末のカレンダーの読み取りと送信 | native | 自動グループの予定（backend 09 §8.2）。WebView が閉じていても、FGS の中で同期を続けるため（§11） |
 | 予定の手入力 | WebView | 画面から `PUT /me/schedule-today`（`source: "manual"`）を直接呼ぶ |

@@ -6,6 +6,7 @@ import {
   type Page,
   type Request,
   type Route,
+  type WebSocketRoute,
 } from "@playwright/test";
 
 const API_BASE = "https://chain.i32.jp";
@@ -75,6 +76,8 @@ const PARTY_POSTS = {
     },
   ],
 };
+
+const TENTATIVE_PARTY = { ...PARTY, phase: "tentative", confirmedAt: undefined };
 
 const EVIDENCE_PATH = path.resolve(
   process.cwd(),
@@ -166,6 +169,7 @@ test.describe("party", () => {
     await expect(page.getByText("そうた", { exact: true })).toBeVisible();
     await expect(page.getByText("退出済み", { exact: true })).toBeVisible();
     await expect(page.getByText("1枚")).toBeVisible();
+    await expect(page.getByText("集合写真とれた")).toBeVisible();
 
     if (testInfo.project.name === "desktop-chrome") {
       mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
@@ -211,13 +215,13 @@ test.describe("party", () => {
     await expect(toggle).toHaveAttribute("aria-checked", "true");
   });
 
-  test("lock fallback shows 準備中 when the endpoint is unavailable", async ({ page }) => {
+  test("tentative party hides compose and rename and disables lock", async ({ page }) => {
     await useStoredSession(page);
 
     await mockApi(page, async (route, request) => {
       const { pathname } = new URL(request.url());
       if (pathname === "/api/v1/party/current") {
-        await fulfillJson(route, 200, PARTY);
+        await fulfillJson(route, 200, TENTATIVE_PARTY);
         return;
       }
       if (pathname === "/api/v1/instances/party-1/posts") {
@@ -231,9 +235,14 @@ test.describe("party", () => {
 
     await page.goto("/party/");
 
-    await page.getByRole("switch", { name: "パーティを固定" }).click();
-
-    await expect(page.getByText("固定は準備中です")).toBeVisible();
+    await expect(page.getByRole("switch", { name: "パーティを固定" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await expect(page.getByText("本パーティになると固定できます")).toBeVisible();
+    await expect(page.getByRole("button", { name: "投稿する" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "パーティ名を変更" })).toHaveCount(0);
+    await expect(page.getByText("本パーティになると、写真や投稿を共有できます")).toBeVisible();
   });
 
   test("shows the empty state when GET /party/current is null", async ({ page }) => {
@@ -248,5 +257,89 @@ test.describe("party", () => {
     await expect(
       page.getByText("近くのフレンドと会うとパーティが始まります"),
     ).toBeVisible();
+  });
+
+  test("reloads after terminal and different-id party.updated events", async ({ page }) => {
+    await useStoredSession(page);
+    let currentCalls = 0;
+    let socket: WebSocketRoute | undefined;
+    await page.routeWebSocket(/\/api\/v1\/ws$/, (ws) => {
+      socket = ws;
+      ws.onMessage((message) => {
+        if (JSON.parse(String(message)).type === "auth") {
+          ws.send(JSON.stringify({ type: "ready", did: "did:plc:testuser" }));
+        }
+      });
+    });
+    await mockApi(page, async (route, request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === "/api/v1/party/current") {
+        currentCalls++;
+        await fulfillJson(route, 200, currentCalls > 2 ? null : PARTY);
+        return;
+      }
+      if (pathname === "/api/v1/instances/party-1/posts") {
+        await fulfillJson(route, 200, PARTY_POSTS);
+        return;
+      }
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+    await page.goto("/party/");
+    await expect.poll(() => socket !== undefined).toBeTruthy();
+
+    socket?.send(JSON.stringify({
+      type: "event",
+      event: "party.updated",
+      space: "party-1",
+      data: { id: "other-party", phase: "confirmed", locked: false, present: [] },
+    }));
+    await expect.poll(() => currentCalls).toBeGreaterThan(1);
+
+    socket?.send(JSON.stringify({
+      type: "event",
+      event: "party.updated",
+      space: "party-1",
+      data: { id: "party-1", phase: "ended", locked: false, present: [] },
+    }));
+    await expect(page.getByText("パーティが終わりました。メモリーに残っています")).toBeVisible();
+  });
+
+  test("can reply from /party/replies/", async ({ page }) => {
+    await useStoredSession(page);
+    let posted: Record<string, unknown> | null = null;
+    await mockApi(page, async (route, request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === "/api/v1/party/current") {
+        await fulfillJson(route, 200, PARTY);
+        return;
+      }
+      if (pathname === "/api/v1/me") {
+        await fulfillJson(route, 200, { did: "did:plc:testuser", handle: "test.bsky.social", displayName: "てすと" });
+        return;
+      }
+      if (pathname === "/api/v1/instances/party-1/posts") {
+        await fulfillJson(route, 200, {
+          items: [{ ...PARTY_POSTS.items[0], uri: "post-1", author: { did: "did:plc:yui", handle: "yui", displayName: "ゆい" } }],
+        });
+        return;
+      }
+      if (pathname === "/api/v1/posts" && request.method() === "POST") {
+        posted = request.postDataJSON() as Record<string, unknown>;
+        await fulfillJson(route, 201, { items: [{ uri: "reply-1", spaceId: "party-1" }] });
+        return;
+      }
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+
+    await page.goto("/party/replies/?id=party-1&post=post-1");
+    const dialog = page.getByRole("dialog", { name: "返信" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel("返信を書く").fill("party への返信");
+    await dialog.getByRole("button", { name: "返信を送信" }).click();
+    await expect.poll(() => posted).not.toBeNull();
+    expect(posted).toMatchObject({
+      spaceIds: ["party-1"],
+      reply: { root: "post-1", parent: "post-1" },
+    });
   });
 });

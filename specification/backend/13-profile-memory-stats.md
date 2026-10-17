@@ -50,7 +50,7 @@ Bluesky のプロフィール（`app.bsky.actor.profile` の `self`）を、ユ�
 
 draft「archive された party / グループはここで見られる。archive された chat は一覧に残すが、開くと memory ページに飛ぶ」。
 
-- `GET /api/v1/instances`: 自分の Space の一覧（チャット一覧に当たる）。active と archived の両方を返し、`state` で区別する。並びは最終投稿の新しい順。クライアントは archived を開くと memory の画面に遷移する
+- `GET /api/v1/instances`: 自分の Space の一覧（チャット一覧に当たる）。active と archived の両方を返し、`state` で区別する。各要素の `canWrite` は、いま投稿できるか（10 §5 の write 判定。位置が古くて判定できないときは `true`）。クライアントの投稿先は `state = active` かつ `canWrite` のものだけにする。並びは最終投稿の新しい順。クライアントは archived を開くと memory の画面に遷移する
 - `GET /api/v1/memories?cursor=`（P0 は Party、P1 でグループも）: archived の Space のうち、自分が `hidden_from_memory = 0` のもの
 
 ```json

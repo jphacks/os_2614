@@ -119,19 +119,27 @@ function ComposeForm() {
   const activeTargets = useMemo(
     () =>
       targetsState.status === "ok"
-        ? targetsState.data.items.filter((item) => item.archivedAt == null)
+        ? targetsState.data.items.filter(
+            (item) => item.state === "active" && item.canWrite,
+          )
         : [],
     [targetsState],
   );
 
-  const targets: ResourceState<PostTarget[]> =
-    targetsState.status !== "ok"
-      ? targetsState
-      : activeTargets.length === 0
-        ? { status: "empty" }
-        : { status: "ok", data: activeTargets.map(toPostTarget) };
+  const targets: ResourceState<PostTarget[]> = useMemo(
+    () =>
+      targetsState.status !== "ok"
+        ? targetsState
+        : activeTargets.length === 0
+          ? { status: "empty" }
+          : { status: "ok", data: activeTargets.map(toPostTarget) },
+    [activeTargets, targetsState],
+  );
 
-  const targetList = targets.status === "ok" ? targets.data : [];
+  const targetList = useMemo(
+    () => (targets.status === "ok" ? targets.data : []),
+    [targets],
+  );
 
   // ?target=group:g1（GroupScreen / PartyScreen からの遷移）を初期送信先にする。
   const initialSpaceIds = useMemo(() => {
@@ -140,8 +148,10 @@ function ComposeForm() {
       return [];
     }
     const [, spaceId] = raw.split(":");
-    return spaceId ? [spaceId] : [];
-  }, [params]);
+    return spaceId && targetList.some((target) => target.spaceId === spaceId)
+      ? [spaceId]
+      : [];
+  }, [params, targetList]);
 
   const pickAttachment = () => {
     fileInputRef.current?.click();

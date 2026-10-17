@@ -100,7 +100,7 @@ const SAMPLE: { [K in RealtimeEventName]: RealtimeEventDataMap[K] } = {
   "member.joined": { did: "did:plc:peer" },
   "member.left": { did: "did:plc:peer" },
   "space.archived": undefined,
-  "party.updated": { phase: "confirmed", locked: true, present: ["did:plc:peer"] },
+	"party.updated": { id: "party-1", phase: "confirmed", locked: true, present: ["did:plc:peer"] },
   "encounter.revealed": {
     id: "enc-1",
     peer: { did: "did:plc:peer", handle: "peer.example.com" },

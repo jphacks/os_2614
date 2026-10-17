@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import type { Media, Party } from "@/domain/types";
+import type { Media, Party, Post } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
 import { MemberStrip, PartyHero, PhotoGrid } from "@/components/feature/party";
@@ -14,6 +14,7 @@ import { IconButton } from "@/components/ui/IconButton";
 import { Notice } from "@/components/ui/Notice";
 import { Toggle } from "@/components/ui/Toggle";
 import styles from "./PartyScreen.module.css";
+import { PostCard } from "@/components/feature/post";
 
 /** 変更系 API（leave / lock / rename）の分類結果。unavailable は 404/405/501（未実装）。 */
 export type PartyActionResult =
@@ -33,6 +34,11 @@ export type PartyScreenProps = {
   state: ResourceState<Party>;
   /** パーティの Space に投稿された写真（GET /instances/{spaceId}/posts 由来）。 */
   photos: Media[];
+  posts: Post[];
+  postsState?: ResourceState<Post[]>;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   /** 自分の DID。合流メンバーの表示から自分を除くために使う。 */
   meDid?: string;
   /** error 状態の再取得。useResource の reload を渡す。 */
@@ -41,17 +47,26 @@ export type PartyScreenProps = {
   onToggleLock?: (party: Party, locked: boolean) => Promise<PartyActionResult>;
   onRename?: (party: Party, name: string) => Promise<PartyActionResult>;
   onCompose?: (party: Party) => void;
+  onReply?: (post: Post) => void;
+  endedNotice?: boolean;
 };
 
 export function PartyScreen({
   state,
   photos,
+  posts,
+  postsState,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
   meDid,
   onRetry,
   onLeave,
   onToggleLock,
   onRename,
   onCompose,
+  onReply,
+  endedNotice = false,
 }: PartyScreenProps) {
   return (
     <AppShell tab="party">
@@ -60,11 +75,17 @@ export function PartyScreen({
           key={state.data.id}
           party={state.data}
           photos={photos}
+          posts={posts}
+          postsState={postsState}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={onLoadMore}
           meDid={meDid}
           onLeave={onLeave}
           onToggleLock={onToggleLock}
           onRename={onRename}
           onCompose={onCompose}
+          onReply={onReply}
         />
       ) : state.status === "loading" ? (
         <PartySkeleton />
@@ -90,11 +111,20 @@ export function PartyScreen({
         />
       ) : (
         // empty（GET /party/current が null）は「所属中の party が無い」。
-        <PartyState
-          icon="group"
-          title="今はパーティに参加していません"
-          description="近くのフレンドと会うとパーティが始まります。"
-        />
+        <>
+          {endedNotice && (
+            <div className={styles.gutter}>
+              <Notice tone="info" icon="check_circle">
+                パーティが終わりました。メモリーに残っています
+              </Notice>
+            </div>
+          )}
+          <PartyState
+            icon="group"
+            title="今はパーティに参加していません"
+            description="近くのフレンドと会うとパーティが始まります。"
+          />
+        </>
       )}
     </AppShell>
   );
@@ -103,11 +133,17 @@ export function PartyScreen({
 type PartyBodyProps = {
   party: Party;
   photos: Media[];
+  posts: Post[];
+  postsState?: ResourceState<Post[]>;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore?: () => void;
   meDid?: string;
   onLeave?: PartyScreenProps["onLeave"];
   onToggleLock?: PartyScreenProps["onToggleLock"];
   onRename?: PartyScreenProps["onRename"];
   onCompose?: PartyScreenProps["onCompose"];
+  onReply?: PartyScreenProps["onReply"];
 };
 
 const NOTICE_LABEL: Record<PartyActionKind, string> = {
@@ -134,11 +170,17 @@ function memberName(
 function PartyBody({
   party,
   photos,
+  posts,
+  postsState,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   meDid,
   onLeave,
   onToggleLock,
   onRename,
   onCompose,
+  onReply,
 }: PartyBodyProps) {
   const router = useRouter();
   // 固定トグルは backend が成功を返したときだけ切り替える（楽観更新しない）。
@@ -215,6 +257,7 @@ function PartyBody({
     : party.members.length > 1
       ? `${party.members.length}人で合流しています`
       : "パーティを組んでいます";
+  const tentative = party.phase === "tentative";
 
   return (
     <>
@@ -229,7 +272,7 @@ function PartyBody({
         ) : (
           <div className={styles.titleRow}>
             <h1 className={styles.title}>{party.name}</h1>
-            {onRename && (
+            {!tentative && onRename && (
               <IconButton
                 icon="edit"
                 label="パーティ名を変更"
@@ -252,13 +295,16 @@ function PartyBody({
             <div className={styles.rowText}>
               <span className={styles.rowTitle}>パーティを固定</span>
               <span className={styles.rowNote}>
-                旅行のときなど、はぐれても解散しません
+                {tentative
+                  ? "本パーティになると固定できます"
+                  : "旅行のときなど、はぐれても解散しません"}
               </span>
             </div>
             <Toggle
               checked={locked}
               onChange={handleToggleLock}
               label="パーティを固定"
+              disabled={tentative || busy !== null}
             />
           </div>
         </Card>
@@ -284,19 +330,69 @@ function PartyBody({
         <MemberStrip members={party.members} />
       </div>
 
-      <div className={styles.section}>
-        <div className={styles.sectionHead}>
-          <h2 className={styles.sectionTitle}>共有された写真</h2>
-          <span className={styles.hint}>{photos.length}枚</span>
+      {!tentative && (
+        <div className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>共有された写真</h2>
+            <span className={styles.hint}>{photos.length}枚</span>
+          </div>
         </div>
-      </div>
-      <div className={styles.gutter}>
-        {photos.length > 0 ? (
-          <PhotoGrid photos={photos} />
-        ) : (
-          <p className={styles.photoEmpty}>まだ写真はありません</p>
-        )}
-      </div>
+      )}
+      {tentative ? (
+        <div className={styles.gutter}>
+          <Card padding="md" className={styles.empty}>
+            本パーティになると、写真や投稿を共有できます
+          </Card>
+        </div>
+      ) : (
+        <>
+          <div className={styles.gutter}>
+            {photos.length > 0 ? (
+              <PhotoGrid photos={photos} />
+            ) : (
+              <p className={styles.photoEmpty}>まだ写真はありません</p>
+            )}
+          </div>
+          <div className={styles.timeline}>
+            {postsState?.status === "loading" ? (
+              <Card padding="md" className={styles.empty}>
+                読み込み中…
+              </Card>
+            ) : postsState?.status === "error" ? (
+              <Card padding="md" className={styles.empty}>
+                投稿を読み込めませんでした
+              </Card>
+            ) : posts.length === 0 ? (
+              <Card padding="md" className={styles.empty}>
+                まだ投稿はありません
+              </Card>
+            ) : (
+              <>
+                {posts.map((post) =>
+                  post.system ? (
+                    <p key={post.id} className={styles.systemPost}>
+                      {post.body}
+                    </p>
+                  ) : (
+                    <PostCard key={post.id} post={post} onReply={onReply} />
+                  ),
+                )}
+                {hasMore && (
+                  <div className={styles.more}>
+                    <Button
+                      variant="secondary"
+                      onClick={onLoadMore}
+                      disabled={loadingMore}
+                    >
+                      {loadingMore ? "読み込み中…" : "もっと見る"}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
 
       <div className={styles.gutter}>
         <Card padding="md">
@@ -320,7 +416,7 @@ function PartyBody({
         </Card>
       </div>
 
-      <Fab label="投稿する" onClick={handleCompose} />
+      {!tentative && <Fab label="投稿する" onClick={handleCompose} />}
     </>
   );
 }

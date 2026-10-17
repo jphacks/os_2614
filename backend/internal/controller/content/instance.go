@@ -180,6 +180,7 @@ type instanceItem struct {
 	Name        string     `json:"name"`
 	State       string     `json:"state"`
 	MemberCount int        `json:"memberCount"`
+	CanWrite    bool       `json:"canWrite"`
 	LastPostAt  *time.Time `json:"lastPostAt,omitempty"`
 	ArchivedAt  *time.Time `json:"archivedAt,omitempty"`
 }
@@ -201,6 +202,7 @@ func (h *InstanceController) listInstances(c fiber.Ctx) error {
 			Name:        it.Space.Name,
 			State:       it.Space.State,
 			MemberCount: it.MemberCount,
+			CanWrite:    it.CanWrite,
 			LastPostAt:  it.LastPostAt,
 			ArchivedAt:  it.Space.ArchivedAt,
 		})

@@ -104,7 +104,7 @@ func ListActivePartyMembers(ctx context.Context, q db.Querier) ([]PartyMemberRef
 		SELECT p.space_id, m.did FROM parties p
 		JOIN spaces s ON s.id = p.space_id
 		JOIN space_members m ON m.space_id = p.space_id
-		WHERE s.state = 'active' AND p.phase IN ('tentative','confirmed')`,
+		WHERE s.state = 'active' AND p.phase IN ('tentative','confirmed') AND m.left_at IS NULL`,
 		nil, func(scan db.Scan, r *PartyMemberRef) error { return scan(&r.SpaceID, &r.DID) })
 }
 

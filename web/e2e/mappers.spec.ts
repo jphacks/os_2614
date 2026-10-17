@@ -308,6 +308,7 @@ test.describe("toPost", () => {
       }),
     ).toEqual({
       id: "at://did:plc:kenta/jp.i32.chain.instance.post/1",
+      system: false,
       author: {
         did: "did:plc:kenta",
         handle: "kenta.bsky.social",
@@ -389,7 +390,14 @@ test.describe("toPost", () => {
   test("never throws on null and fills defaults", () => {
     expect(toPost(null)).toEqual({
       id: "",
-      author: { did: "", handle: "", name: "", tone: "peach" },
+      system: false,
+      author: {
+        did: "",
+        handle: "",
+        name: "",
+        avatarUrl: undefined,
+        tone: "peach",
+      },
       body: "",
       format: "plain",
       createdAt: "",

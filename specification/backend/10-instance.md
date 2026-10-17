@@ -184,7 +184,7 @@ draft「大事な情報は自動で Pin」。
 | `pin.created` / `pin.deleted` | Space | Pin 1 件 / `uri` |
 | `member.joined` / `member.left` | Space | `did` |
 | `space.archived` | Space | — |
-| `party.updated` | Space ＋ メンバーのユーザー | `phase`, `locked`, 在席メンバー |
+| `party.updated` | Space ＋ メンバーのユーザー | `id`, `phase`（`tentative` / `confirmed` / `ended` / `dissolved`）, `locked`, 在席メンバー。終了（`ended`）と仮 party の破棄（`dissolved`）でも、その時点のメンバー全員（離脱済みを含む）のユーザーチャンネルに送る |
 | `encounter.revealed` | ユーザー | encounter 1 件（06 §6 と同じ形） |
 | `friend.request` / `friend.accepted` / `friend.changed` | ユーザー | 相手の要約 |
 | `notification` | ユーザー | 通知 1 件（12） |

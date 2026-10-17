@@ -81,9 +81,17 @@ export function useProximityStatus(): ProximityStatus | null {
  * 直近 windowMs 以内に見えた token の一覧 (rssi 降順)。
  * sighting イベントを集約し、期限切れは定期的に落とす。
  */
-export function useNearbyTokens(windowMs = 45_000): NearbyToken[] {
+export function useNearbyTokens(
+  windowMs = 45_000,
+  onSighting?: (event: SightingEvent) => void,
+): NearbyToken[] {
   const [tokens, setTokens] = useState<NearbyToken[]>([]);
   const records = useRef(new Map<string, NearbyRecord>());
+  const onSightingRef = useRef(onSighting);
+
+  useEffect(() => {
+    onSightingRef.current = onSighting;
+  }, [onSighting]);
 
   useEffect(() => {
     let handle: PluginListenerHandle | undefined;
@@ -108,6 +116,7 @@ export function useNearbyTokens(windowMs = 45_000): NearbyToken[] {
     };
 
     ChainProximity.addListener("sighting", (event: SightingEvent) => {
+      onSightingRef.current?.(event);
       store.set(event.token, {
         token: event.token,
         rssi: event.rssi,

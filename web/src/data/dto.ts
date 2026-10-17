@@ -46,7 +46,7 @@ export type GroupVisibility = "open" | "closed";
 export type GroupOrigin = "explicit" | "natural";
 
 /** party の段階（08 §4.2）。 */
-export type PartyPhase = "tentative" | "confirmed";
+export type PartyPhase = "tentative" | "confirmed" | "dissolved" | "ended";
 
 /** 投稿本文の形式（10 §3）。 */
 export type PostFormat = "plain" | "markdown";
@@ -138,7 +138,8 @@ export type ModerationInfo = {
 
 /** instance の投稿・写真（service.PostItem、10 §3 / §4.1 / §4.2）。 */
 export type InstancePost = {
-  kind: string;
+	kind: string;
+	system?: boolean;
   uri: string;
   spaceId: string;
   author?: User;
@@ -161,7 +162,8 @@ export type Instance = {
   state: string;
   memberCount: number;
   lastPostAt?: RFC3339;
-  archivedAt?: RFC3339;
+	archivedAt?: RFC3339;
+	canWrite: boolean;
 };
 
 /** POST /posts の 1 件（service.CreatedPost）。 */

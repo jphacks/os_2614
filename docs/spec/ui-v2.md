@@ -164,8 +164,11 @@ Group のタイムラインの上に被さるボトムシート (背面は `--co
 - 行カード (白): `push_pin` +「パーティを固定」(body-strong) + 補足「旅行のときなど、はぐれても解散しません」(caption muted) + 右に `Toggle` (`fixed`)。Toggle OFF は `--color-placeholder-strong` 地 + 白つまみ左。
 - 「メンバー {n}」見出し + 右に micro muted「点線 ＝ フレンドのフレンド」。Avatar 48 を横並び (横スクロール可)、名前を下に caption。`viaFriend` のメンバーは **白地 + `--color-placeholder-strong` の点線縁 + muted 文字** (`Avatar` の `dashed` を流用)。
 - 「共有された写真」見出し + 右に「{photoCount}枚」。3 列グリッド (間 4、比率 6/5、radius-md、`ImagePlaceholder`)。各写真の右下 (6px 内側) に投稿者 `by.tone` の 14px 円 (白 2px 縁)。最大 6 枚、6 枚目は超過数 `+n` (heading 20px 白) を `--color-overlay-count` 地で全面に重ねる。
+- 写真グリッドの下にタイムライン: Group と同じ `PostCard`（新しい順、「もっと見る」）。lock / unlock の system 投稿は中央寄せの 1 行 (caption muted)。返信は `/party/replies/?id=&post=`（Group (Reply) と同じシート）。Pin は出さない。
 - `Fab` → `/compose/?target=party:{id}`。
-- パーティが無いとき: 空状態「近くのフレンドと会うとパーティが始まります」。
+- 仮パーティ (phase=tentative) の間: `Fab` と名前の変更を出さない。固定の `Toggle` は押せない状態にし、補足を「本パーティになると固定できます」にする。写真とタイムラインの代わりに「本パーティになると、写真や投稿を共有できます」。退出は出す。
+- パーティが無いとき: 空状態「近くのフレンドと会うとパーティが始まります」。終了の直後は、上に `Notice`「パーティが終わりました。メモリーに残っています」を出す。
+- 詳しい振る舞いは `docs/spec/party-implementation.md` §6。
 
 ### 4.6 Friends (`/friends/`)
 

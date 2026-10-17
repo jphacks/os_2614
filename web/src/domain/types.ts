@@ -155,7 +155,8 @@ export type PostModeration = {
 };
 
 export type Post = {
-  id: ID;
+	id: ID;
+	system?: boolean;
   author: User;
   body: string;
   format: PostFormat;
@@ -189,7 +190,7 @@ export type FeedPost = {
 };
 
 /** party の段階 (08 §4.2)。 */
-export type PartyPhase = "tentative" | "confirmed";
+export type PartyPhase = "tentative" | "confirmed" | "dissolved" | "ended";
 
 /** party のメンバー (service.PartyMemberItem、08 §6)。 */
 export type PartyMember = {

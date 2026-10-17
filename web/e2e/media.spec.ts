@@ -52,6 +52,7 @@ const GROUP_INSTANCE = {
   name: "情報科学演習 A",
   state: "active",
   memberCount: 3,
+  canWrite: true,
 };
 
 /** 64x64 の単色 PNG。プレビュー (object URL) が実画像として描画されることを確認する。 */

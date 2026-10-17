@@ -450,8 +450,9 @@ function toModeration(dto: Maybe<ModerationInfoDTO>): PostModeration | undefined
 /** InstancePost → Post。moderation の表示指示 (11 §4) はそのまま保持する。 */
 export function toPost(dto: Maybe<PostDTO>): Post {
   const moderation = toModeration(dto?.moderation);
-  return {
-    id: dto?.uri ?? "",
+	return {
+		id: dto?.uri ?? "",
+		system: dto?.system === true,
     author: dto?.author ? toUser(dto.author) : emptyUser(),
     body: dto?.text ?? "",
     format: oneOf(dto?.format, POST_FORMATS, "plain"),

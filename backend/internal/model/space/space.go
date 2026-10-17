@@ -171,6 +171,7 @@ type SpaceListItem struct {
 	Space       Space
 	LastPostAt  *time.Time
 	MemberCount int
+	CanWrite    bool
 }
 
 // ListUserSpaces は自分がメンバーである Space を、最終投稿の新しい順で返す。

@@ -28,6 +28,7 @@ export type GroupReplyScreenProps = {
    * 未指定なら ReplySheet が「準備中」を出す。
    */
   onReply?: (post: Post, text: string) => Promise<void>;
+  closePath?: string;
 };
 
 export function GroupReplyScreen({
@@ -39,12 +40,14 @@ export function GroupReplyScreen({
   groupRetry,
   postsRetry,
   onReply,
+  closePath,
 }: GroupReplyScreenProps) {
   const router = useRouter();
   const params = useSearchParams();
   const postId = params.get("post");
   const post = posts.find((item) => item.id === postId) ?? posts[0];
-  const close = () => router.push(`/group/?id=${params.get("id") ?? ""}`);
+  const close = () =>
+    router.push(closePath ?? `/group/?id=${params.get("id") ?? ""}`);
 
   return (
     <GroupScreen

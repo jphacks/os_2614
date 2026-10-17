@@ -399,7 +399,24 @@ func (s *InstanceService) DeletePost(ctx context.Context, did, spaceID, rkey str
 
 // ListInstances は GET /instances（13 §2）。
 func (s *InstanceService) ListInstances(ctx context.Context, did string) ([]spacemodel.SpaceListItem, error) {
-	return spacemodel.ListUserSpaces(ctx, s.DB, did)
+	items, err := spacemodel.ListUserSpaces(ctx, s.DB, did)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		ok, err := s.Access.Check(ctx, items[i].Space.ID, syntax.DID(did), access.ModeWrite)
+		switch {
+		case err == nil:
+			items[i].CanWrite = ok
+		case errors.Is(err, httpx.ErrLocationStale):
+			items[i].CanWrite = true
+		case errors.Is(err, httpx.ErrNotInGeofence), errors.Is(err, httpx.ErrGone):
+			items[i].CanWrite = false
+		default:
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func mediaItemFor(ctx context.Context, q *sql.DB, signer storage.Signer, publicURL string, now time.Time, id, alt string) (*MediaItem, error) {

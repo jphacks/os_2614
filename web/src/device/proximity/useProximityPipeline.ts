@@ -34,6 +34,7 @@ import {
 } from "./pipeline";
 import { syncSightingsWithPlugin } from "./sightings";
 import { SightingOutbox } from "./sync";
+import { usePartyPresenceReporter } from "./party";
 
 export interface ProximityPipeline {
   /** native の走行状態 (getStatus + statusChange)。 */
@@ -60,7 +61,11 @@ function describeError(cause: unknown): string {
 
 export function useProximityPipeline(): ProximityPipeline {
   const status = useProximityStatus();
-  const nearby = useNearbyTokens();
+  const onPartySighting = usePartyPresenceReporter({
+    enabled: status?.running === true,
+    clockOffsetMs: status?.clockOffsetMs ?? 0,
+  });
+  const nearby = useNearbyTokens(45_000, onPartySighting);
   const [permissions, setPermissions] = useState<PermissionStatus | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const outboxRef = useRef<SightingOutbox | null>(null);

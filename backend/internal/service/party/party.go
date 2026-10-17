@@ -283,6 +283,9 @@ func (s *PartyService) Leave(ctx context.Context, me, id string) error {
 	if err := model.LeavePartyMember(ctx, s.DB, id, me, now); err != nil {
 		return err
 	}
+	if err := model.ClearPartyOf(ctx, s.Redis, me); err != nil {
+		return err
+	}
 	if err := model.AddPartyLeaver(ctx, s.Redis, id, me); err != nil {
 		return err
 	}
@@ -610,22 +613,37 @@ func (s *PartyService) buildDetail(ctx context.Context, sp *spacemodel.Space, p 
 }
 
 func (s *PartyService) presentSet(ctx context.Context, members []spacemodel.SpaceMember) (map[string]bool, error) {
-	memberSet := make(map[string]bool, len(members))
-	for _, m := range members {
-		memberSet[m.DID] = true
-	}
 	edges, err := model.LivePeerEdges(ctx, s.Redis, s.Clock.Now(), core.EdgeAlive)
 	if err != nil {
 		return nil, err
 	}
+	return presentMembers(members, edges), nil
+}
+
+func presentMembers(members []spacemodel.SpaceMember, edges []model.PeerEdge) map[string]bool {
+	active := make(map[string]bool, len(members))
+	for _, m := range members {
+		active[m.DID] = m.LeftAt == nil
+	}
 	present := map[string]bool{}
 	for _, e := range edges {
-		if memberSet[e.A] && memberSet[e.B] {
+		activeA, okA := active[e.A]
+		activeB, okB := active[e.B]
+		if !okA || !okB {
+			continue
+		}
+		if activeA && activeB {
 			present[e.A] = true
 			present[e.B] = true
+		} else if activeA != activeB {
+			if !activeA {
+				present[e.A] = true
+			} else {
+				present[e.B] = true
+			}
 		}
 	}
-	return present, nil
+	return present
 }
 
 func (s *PartyService) auditModerationBlock(ctx context.Context, did string) {
@@ -641,6 +659,14 @@ func (s *PartyService) auditModerationBlock(ctx context.Context, did string) {
 func (s *PartyService) Tick(ctx context.Context) error {
 	now := s.Clock.Now()
 	edges, err := s.liveEdges(ctx, now)
+	if err != nil {
+		return err
+	}
+	parties, err := model.ListActiveParties(ctx, s.DB)
+	if err != nil {
+		return err
+	}
+	edges, err = s.filterPartyEdges(ctx, parties, edges)
 	if err != nil {
 		return err
 	}
@@ -668,7 +694,46 @@ func (s *PartyService) Tick(ctx context.Context) error {
 			return err
 		}
 	}
-	return s.advance(ctx, now, edges)
+	parties, err = model.ListActiveParties(ctx, s.DB)
+	if err != nil {
+		return err
+	}
+	return s.advance(ctx, now, parties, edges)
+}
+
+// filterPartyEdges は明示退出者と元 party のメンバー間のエッジを除外する（08 §4.2）。
+func (s *PartyService) filterPartyEdges(ctx context.Context, parties []model.Party, edges []model.PeerEdge) ([]model.PeerEdge, error) {
+	if len(edges) == 0 {
+		return edges, nil
+	}
+	blocked := map[string]bool{}
+	for _, p := range parties {
+		leavers, err := model.PartyLeavers(ctx, s.Redis, p.SpaceID)
+		if err != nil {
+			return nil, err
+		}
+		if len(leavers) == 0 {
+			continue
+		}
+		members, err := spacemodel.ListSpaceMembers(ctx, s.DB, p.SpaceID)
+		if err != nil {
+			return nil, err
+		}
+		for did := range leavers {
+			for _, m := range members {
+				if did != m.DID {
+					blocked[pairKey(did, m.DID)] = true
+				}
+			}
+		}
+	}
+	filtered := make([]model.PeerEdge, 0, len(edges))
+	for _, e := range edges {
+		if !blocked[pairKey(e.A, e.B)] {
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered, nil
 }
 
 func (s *PartyService) liveEdges(ctx context.Context, now time.Time) ([]model.PeerEdge, error) {
@@ -837,12 +902,19 @@ func (s *PartyService) addMembers(ctx context.Context, now time.Time, spaceID st
 	}
 	dids = append([]string(nil), dids...)
 	sort.Strings(dids)
+	leavers, err := model.PartyLeavers(ctx, s.Redis, spaceID)
+	if err != nil {
+		return err
+	}
 	count, err := spacemodel.CountActiveMembers(ctx, s.DB, spaceID)
 	if err != nil {
 		return err
 	}
 	added := false
 	for _, did := range dids {
+		if leavers[did] {
+			continue
+		}
 		if count >= core.MaxMembers {
 			break
 		}
@@ -888,6 +960,7 @@ func (s *PartyService) dissolveParty(ctx context.Context, now time.Time, spaceID
 	if err != nil {
 		return err
 	}
+	var dissolvedDetail *PartyDetail
 	if mergeInto != "" {
 		dids := make([]string, 0, len(members))
 		for _, m := range members {
@@ -897,6 +970,10 @@ func (s *PartyService) dissolveParty(ctx context.Context, now time.Time, spaceID
 			return err
 		}
 	} else {
+		dissolvedDetail = &PartyDetail{ID: spaceID, Phase: "dissolved", Members: make([]PartyMemberItem, 0, len(members))}
+		for _, m := range members {
+			dissolvedDetail.Members = append(dissolvedDetail.Members, PartyMemberItem{DID: m.DID, Left: m.LeftAt != nil})
+		}
 		for _, m := range members {
 			if err := model.ClearPartyOf(ctx, s.Redis, m.DID); err != nil {
 				return err
@@ -912,15 +989,14 @@ func (s *PartyService) dissolveParty(ctx context.Context, now time.Time, spaceID
 	if err := model.DeletePartyLeavers(ctx, s.Redis, spaceID); err != nil {
 		return err
 	}
+	if dissolvedDetail != nil {
+		s.publishPartyUpdated(ctx, dissolvedDetail)
+	}
 	s.invalidateSpace(ctx, spaceID)
 	return nil
 }
 
-func (s *PartyService) advance(ctx context.Context, now time.Time, edges []model.PeerEdge) error {
-	parties, err := model.ListActiveParties(ctx, s.DB)
-	if err != nil {
-		return err
-	}
+func (s *PartyService) advance(ctx context.Context, now time.Time, parties []model.Party, edges []model.PeerEdge) error {
 	for _, p := range parties {
 		if err := s.advanceParty(ctx, now, p, edges); err != nil {
 			return err
@@ -934,17 +1010,7 @@ func (s *PartyService) advanceParty(ctx context.Context, now time.Time, p model.
 	if err != nil {
 		return err
 	}
-	memberSet := make(map[string]bool, len(members))
-	for _, m := range members {
-		memberSet[m.DID] = true
-	}
-	present := map[string]bool{}
-	for _, e := range edges {
-		if memberSet[e.A] && memberSet[e.B] {
-			present[e.A] = true
-			present[e.B] = true
-		}
-	}
+	present := presentMembers(members, edges)
 	presentActive := 0
 	for _, m := range members {
 		if m.LeftAt == nil && present[m.DID] {
@@ -1026,6 +1092,16 @@ func (s *PartyService) advanceConfirmed(ctx context.Context, now time.Time, p mo
 	if err != nil {
 		return err
 	}
+	leftDIDs := make([]string, 0)
+	for _, m := range members {
+		if m.LeftAt != nil {
+			leftDIDs = append(leftDIDs, m.DID)
+		}
+	}
+	partyOf, err := model.GetPartyOfMany(ctx, s.Redis, leftDIDs)
+	if err != nil {
+		return err
+	}
 
 	active := map[string]bool{}
 	for _, m := range members {
@@ -1057,6 +1133,9 @@ func (s *PartyService) advanceConfirmed(ctx context.Context, now time.Time, p mo
 				if err := model.LeavePartyMember(ctx, s.DB, p.SpaceID, m.DID, now); err != nil {
 					return err
 				}
+				if err := model.ClearPartyOf(ctx, s.Redis, m.DID); err != nil {
+					return err
+				}
 				active[m.DID] = false
 				changed = true
 				events = append(events, realtime.Event{Name: "member.left", Space: p.SpaceID, Data: map[string]string{"did": m.DID}})
@@ -1064,7 +1143,13 @@ func (s *PartyService) advanceConfirmed(ctx context.Context, now time.Time, p mo
 			continue
 		}
 		if present[m.DID] && !leavers[m.DID] {
+			if _, ok := partyOf[m.DID]; ok {
+				continue
+			}
 			if err := spacemodel.RejoinSpaceMember(ctx, s.DB, p.SpaceID, m.DID, now); err != nil {
+				return err
+			}
+			if err := model.SetPartyOf(ctx, s.Redis, m.DID, p.SpaceID); err != nil {
 				return err
 			}
 			if err := model.SetPartyPresence(ctx, s.Redis, p.SpaceID, m.DID, now); err != nil {
@@ -1142,7 +1227,10 @@ func (s *PartyService) endParty(ctx context.Context, now time.Time, p model.Part
 		s.publish(ctx, e)
 	}
 	s.publish(ctx, realtime.Event{Name: "space.archived", Space: p.SpaceID})
-	detail := &PartyDetail{ID: p.SpaceID, Name: "", Phase: "ended", TentativeAt: p.TentativeAt, ConfirmedAt: p.ConfirmedAt, Members: []PartyMemberItem{}}
+	detail := &PartyDetail{ID: p.SpaceID, Name: "", Phase: "ended", TentativeAt: p.TentativeAt, ConfirmedAt: p.ConfirmedAt, Members: make([]PartyMemberItem, 0, len(members))}
+	for _, m := range members {
+		detail.Members = append(detail.Members, PartyMemberItem{DID: m.DID, Left: m.LeftAt != nil})
+	}
 	if sp, err := spacemodel.GetSpace(ctx, s.DB, p.SpaceID); err == nil {
 		detail.Name = sp.Name
 	}
@@ -1158,10 +1246,11 @@ func (s *PartyService) publishPartyUpdated(ctx context.Context, detail *PartyDet
 		}
 	}
 	sort.Strings(present)
-	data := map[string]any{"phase": detail.Phase, "locked": detail.Locked, "present": present}
+	data := map[string]any{"id": detail.ID, "phase": detail.Phase, "locked": detail.Locked, "present": present}
 	s.publish(ctx, realtime.Event{Name: "party.updated", Space: detail.ID, Data: data})
 	for _, m := range detail.Members {
-		s.publish(ctx, realtime.Event{Name: "party.updated", User: m.DID, Data: data})
+		did := m.DID
+		s.publish(ctx, realtime.Event{Name: "party.updated", User: did, Data: data})
 	}
 }
 

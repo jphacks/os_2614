@@ -52,6 +52,7 @@ const GROUP_INSTANCE = {
   name: "情報科学演習 A",
   state: "active",
   memberCount: 3,
+  canWrite: true,
 };
 
 const EVIDENCE_PATH = path.resolve(

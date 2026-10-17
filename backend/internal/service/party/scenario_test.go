@@ -32,6 +32,7 @@ const (
 	pb = "did:plc:pb"
 	pc = "did:plc:pc"
 	pd = "did:plc:pd"
+	pe = "did:plc:pe"
 )
 
 type partyRow struct {
@@ -476,6 +477,206 @@ func TestPartyScenarios(t *testing.T) {
 	})
 }
 
+func TestPartyMembershipScenarios(t *testing.T) {
+	setup := func(t *testing.T) (*partyHarness, string) {
+		t.Helper()
+		h := newPartyHarness(t)
+		h.users(pa, pb, pc, pd)
+		h.friend(pa, pb)
+		h.friend(pa, pc)
+		h.friend(pb, pc)
+		h.friend(pc, pd)
+		pairs := [][2]string{{pa, pb}, {pb, pa}, {pa, pc}, {pc, pa}, {pb, pc}, {pc, pb}}
+		h.pass(31*time.Second, pairs)
+		for i := 0; i < 20; i++ {
+			h.pass(15*time.Second, pairs)
+		}
+		parties := h.parties()
+		if len(parties) != 1 || parties[0].phase != "confirmed" {
+			t.Fatalf("parties = %+v, want 1 confirmed", parties)
+		}
+		return h, parties[0].spaceID
+	}
+
+	t.Run("P11 明示退出者とそのフレンドが元 party に入らない", func(t *testing.T) {
+		h, spaceID := setup(t)
+		if err := h.svc.Leave(context.Background(), pc, spaceID); err != nil {
+			t.Fatalf("Leave: %v", err)
+		}
+		pairs := [][2]string{{pa, pb}, {pb, pa}, {pc, pd}, {pd, pc}}
+		for i := 0; i < 26; i++ {
+			h.pass(15*time.Second, pairs)
+		}
+
+		for _, did := range h.members(spaceID) {
+			if did == pd {
+				t.Fatalf("元 party の members = %v に D がいる", h.members(spaceID))
+			}
+		}
+		found := false
+		for _, p := range h.parties() {
+			members := h.members(p.spaceID)
+			if len(members) == 2 && members[0] == pc && members[1] == pd {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("C と D の party がない: %+v", h.parties())
+		}
+	})
+
+	t.Run("P12 自然離脱者とそのフレンドが元 party に入らない", func(t *testing.T) {
+		h, spaceID := setup(t)
+		for i := 0; i < 42; i++ {
+			h.pass(15*time.Second, [][2]string{{pa, pb}, {pb, pa}})
+		}
+		left, err := h.leftAt(spaceID, pc)
+		if err != nil || !left {
+			t.Fatalf("C の自然離脱 = (%v, %v), want true", left, err)
+		}
+		for i := 0; i < 26; i++ {
+			h.pass(15*time.Second, [][2]string{{pa, pb}, {pb, pa}, {pc, pd}, {pd, pc}})
+		}
+
+		for _, did := range h.members(spaceID) {
+			if did == pd {
+				t.Fatalf("元 party の members = %v に D がいる", h.members(spaceID))
+			}
+		}
+		found := false
+		for _, p := range h.parties() {
+			members := h.members(p.spaceID)
+			if len(members) == 2 && members[0] == pc && members[1] == pd {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("C と D の party がない: %+v", h.parties())
+		}
+	})
+
+	t.Run("P13 自然離脱者は元 party に再合流する", func(t *testing.T) {
+		h, spaceID := setup(t)
+		for i := 0; i < 42; i++ {
+			h.pass(15*time.Second, [][2]string{{pa, pb}, {pb, pa}})
+		}
+		pairs := [][2]string{{pa, pb}, {pb, pa}, {pa, pc}, {pc, pa}, {pb, pc}, {pc, pb}}
+		for i := 0; i < 4; i++ {
+			h.pass(15*time.Second, pairs)
+		}
+		left, err := h.leftAt(spaceID, pc)
+		if err != nil || left {
+			t.Fatalf("C の left_at = (%v, %v), want NULL", left, err)
+		}
+		current, err := h.svc.Current(context.Background(), pc)
+		if err != nil || current == nil || current.ID != spaceID {
+			t.Fatalf("Current(C) = (%v, %v), want %s", current, err, spaceID)
+		}
+	})
+
+	t.Run("P14 明示退出者は元 party に再合流しない", func(t *testing.T) {
+		h, spaceID := setup(t)
+		if err := h.svc.Leave(context.Background(), pc, spaceID); err != nil {
+			t.Fatalf("Leave: %v", err)
+		}
+		pairs := [][2]string{{pa, pb}, {pb, pa}, {pa, pc}, {pc, pa}, {pb, pc}, {pc, pb}}
+		for i := 0; i < 4; i++ {
+			h.pass(15*time.Second, pairs)
+		}
+		left, err := h.leftAt(spaceID, pc)
+		if err != nil || !left {
+			t.Fatalf("C の left_at = (%v, %v), want non-NULL", left, err)
+		}
+		current, err := h.svc.Current(context.Background(), pc)
+		if err != nil || current != nil {
+			t.Fatalf("Current(C) = (%v, %v), want nil", current, err)
+		}
+	})
+
+	t.Run("P17 RebuildIndex は自然離脱者を復元しない", func(t *testing.T) {
+		h, spaceID := setup(t)
+		for i := 0; i < 42; i++ {
+			h.pass(15*time.Second, [][2]string{{pa, pb}, {pb, pa}})
+		}
+		if err := h.svc.RebuildIndex(context.Background()); err != nil {
+			t.Fatalf("RebuildIndex: %v", err)
+		}
+		currentC, err := h.svc.Current(context.Background(), pc)
+		if err != nil || currentC != nil {
+			t.Fatalf("Current(C) = (%v, %v), want nil", currentC, err)
+		}
+		currentA, err := h.svc.Current(context.Background(), pa)
+		if err != nil || currentA == nil || currentA.ID != spaceID {
+			t.Fatalf("Current(A) = (%v, %v), want %s", currentA, err, spaceID)
+		}
+	})
+
+	t.Run("P18 別 party 所属者は元 party に再合流しない", func(t *testing.T) {
+		h, oldSpaceID := setup(t)
+		for i := 0; i < 42; i++ {
+			h.pass(15*time.Second, [][2]string{{pa, pb}, {pb, pa}})
+		}
+		for i := 0; i < 26; i++ {
+			h.pass(15*time.Second, [][2]string{{pa, pb}, {pb, pa}, {pc, pd}, {pd, pc}})
+		}
+		current, err := h.svc.Current(context.Background(), pc)
+		if err != nil || current == nil || current.ID == oldSpaceID || current.Phase != "confirmed" {
+			t.Fatalf("C の party = (%v, %v), want old party 以外の confirmed", current, err)
+		}
+		newSpaceID := current.ID
+
+		pairs := [][2]string{{pa, pb}, {pb, pa}, {pa, pc}, {pc, pa}, {pb, pc}, {pc, pb}, {pc, pd}, {pd, pc}}
+		for i := 0; i < 4; i++ {
+			h.pass(15*time.Second, pairs)
+		}
+		current, err = h.svc.Current(context.Background(), pc)
+		if err != nil || current == nil || current.ID != newSpaceID {
+			t.Fatalf("Current(C) = (%v, %v), want %s", current, err, newSpaceID)
+		}
+		if left, err := h.leftAt(oldSpaceID, pc); err != nil || !left {
+			t.Fatalf("元 party の C の left_at = (%v, %v), want non-NULL", left, err)
+		}
+	})
+
+	t.Run("P19 明示退出者は元 party の近くにいても party に入らない", func(t *testing.T) {
+		h := newPartyHarness(t)
+		h.users(pa, pb, pc, pe)
+		h.friend(pa, pb)
+		h.friend(pa, pc)
+		h.friend(pb, pc)
+		h.friend(pc, pe)
+		pairs := [][2]string{{pa, pb}, {pb, pa}, {pa, pc}, {pc, pa}, {pb, pc}, {pc, pb}}
+		h.pass(31*time.Second, pairs)
+		for i := 0; i < 20; i++ {
+			h.pass(15*time.Second, pairs)
+		}
+		parties := h.parties()
+		if len(parties) != 1 || parties[0].phase != "confirmed" {
+			t.Fatalf("parties = %+v, want 1 confirmed", parties)
+		}
+		spaceID := parties[0].spaceID
+		if err := h.svc.Leave(context.Background(), pc, spaceID); err != nil {
+			t.Fatalf("Leave: %v", err)
+		}
+		for i := 0; i < 26; i++ {
+			h.pass(15*time.Second, pairs)
+		}
+		if parties := h.parties(); len(parties) != 1 || parties[0].spaceID != spaceID {
+			t.Fatalf("parties = %+v, want only original party", parties)
+		}
+		if members := h.members(spaceID); len(members) != 2 || members[0] != pa || members[1] != pb {
+			t.Fatalf("元 party の members = %v, want [pa pb]", members)
+		}
+		if left, err := h.leftAt(spaceID, pc); err != nil || !left {
+			t.Fatalf("C の left_at = (%v, %v), want non-NULL", left, err)
+		}
+		current, err := h.svc.Current(context.Background(), pc)
+		if err != nil || current != nil {
+			t.Fatalf("Current(C) = (%v, %v), want nil", current, err)
+		}
+	})
+}
+
 func TestPartyPhotoSharing(t *testing.T) {
 	h := newPartyHarness(t)
 	h.users(pa, pb)
@@ -500,6 +701,53 @@ func TestPartyPhotoSharing(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreatePosts: %v", err)
 	}
+}
+
+func TestPartyUpdatedLifecycle(t *testing.T) {
+	t.Run("P15 仮 party の破棄を全メンバーへ通知する", func(t *testing.T) {
+		h := newPartyHarness(t)
+		h.users(pa, pb)
+		h.friend(pa, pb)
+		h.pass(31*time.Second, [][2]string{{pa, pb}})
+		parties := h.parties()
+		if len(parties) != 1 {
+			t.Fatalf("parties = %+v, want 1", parties)
+		}
+		spaceID := parties[0].spaceID
+		h.broker.Reset()
+		h.pass(70*time.Second, nil)
+
+		for _, did := range []string{pa, pb} {
+			events := h.broker.EventsFor("party.updated", did)
+			if len(events) != 1 {
+				t.Fatalf("party.updated for %s = %d, want 1", did, len(events))
+			}
+			data, ok := events[0].Data.(map[string]any)
+			if !ok || data["id"] != spaceID || data["phase"] != "dissolved" {
+				t.Fatalf("party.updated for %s = %+v, want dissolved %s", did, events[0].Data, spaceID)
+			}
+		}
+	})
+
+	t.Run("P16 終了を離脱済みを含む全メンバーへ通知する", func(t *testing.T) {
+		h := newPartyHarness(t)
+		h.users(pa, pb)
+		h.friend(pa, pb)
+		spaceID := h.confirm(pa, pb)
+		h.broker.Reset()
+		h.pass(10*time.Minute+time.Second, nil)
+
+		for _, did := range []string{pa, pb} {
+			events := h.broker.EventsFor("party.updated", did)
+			if len(events) != 1 {
+				t.Fatalf("party.updated for %s = %d, want 1", did, len(events))
+			}
+			data, ok := events[0].Data.(map[string]any)
+			if !ok || data["id"] != spaceID || data["phase"] != "ended" {
+				t.Fatalf("party.updated for %s = %+v, want ended %s", did, events[0].Data, spaceID)
+			}
+		}
+	})
 }
 
 func TestPartyIndexRebuild(t *testing.T) {

@@ -31,7 +31,8 @@ import type { EventFrame, RealtimeEvents, RealtimeState } from "./ws";
 
 /** `party.updated` の data。在席メンバーは DID の一覧 (backend service.publishPartyUpdated)。 */
 export interface PartyUpdatedData {
-  phase: PartyPhase;
+	id: string;
+	phase: PartyPhase;
   locked: boolean;
   present: string[];
 }

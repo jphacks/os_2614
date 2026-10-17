@@ -393,7 +393,7 @@ CREATE TABLE audit_log (
 | `ble:recent:{a}` | zset | 30 分 | a が直近に見た DID と最終観測時刻（score） | 05 §3 |
 | `pe:{a}:{b}` | hash | 30 分 | フレンド近接の連続性 `since`, `last` | 08 §3 |
 | `pe:active` | zset | なし（score で掃除） | `{a}|{b}` → 最終観測時刻 | 08 §3 |
-| `party:of:{did}` | string | なし | 所属中の party の space ID | 08 §4 |
+| `party:of:{did}` | string | なし | 所属中の party の space ID。active な party の**未離脱**のメンバーのときだけ持つ（離脱・退出で消し、再合流で戻す） | 08 §4 |
 | `pp:{space}` | hash | 8 日（party 終了時に削除） | メンバーごとの最終在席時刻。不在による離脱の判定に使う | 08 §4.2 |
 | `pleft:{space}` | set | 8 日（party 終了時に削除） | 自分から退出したメンバー。その party が終わるまで自動で再合流させない | 08 §4.2 |
 | `acc:{space}:{did}:{mode}` | string | 最大 10 分 | アクセス判定結果（`1` / `0`） | 10 §5 |

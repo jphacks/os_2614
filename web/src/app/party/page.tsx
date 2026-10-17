@@ -5,8 +5,9 @@
 // `party.updated` (10 §7.3) はキャッシュに溜まり、ここで取得結果へ重ねて反映する。
 
 import { useAuth } from "@/auth";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
-  fetchPage,
   getJson,
   patchJson,
   postJson,
@@ -14,11 +15,15 @@ import {
   type ResourceResult,
 } from "@/data/api";
 import type { InstancePost, Party as PartyDTO } from "@/data/dto";
-import { useResource, type ResourceState } from "@/data/hooks";
-import { toMedia, toParty } from "@/data/mappers";
+import { usePagedResource, useResource, type ResourceState } from "@/data/hooks";
+import { toParty, toPost } from "@/data/mappers";
 import type { Media, Party } from "@/domain/types";
 import type { PartyUpdatedData } from "@/realtime/events";
-import { useRealtimeResync } from "@/realtime/provider";
+import {
+  useRealtimeEvent,
+  useRealtimeResync,
+  useRealtimeSubscription,
+} from "@/realtime/provider";
 import { useRealtimeCache } from "@/realtime/store";
 import { PartyScreen, type PartyActionResult } from "@/components/screens/PartyScreen";
 
@@ -42,6 +47,9 @@ function withRealtimeUpdate(party: Party, update: PartyUpdatedData): Party {
 
 export default function PartyPage() {
   const { state: authState } = useAuth();
+  const router = useRouter();
+  const [endedNotice, setEndedNotice] = useState(false);
+  const handledUpdate = useRef<string | null>(null);
   const { state, reload } = useResource<PartyDTO | null>(
     (signal) => getJson<PartyDTO | null>("/party/current", { signal }),
     [],
@@ -50,8 +58,55 @@ export default function PartyPage() {
   const cache = useRealtimeCache();
   const realtime = cache.party;
 
-  // 再接続後は at-most-once の取りこぼしを補うため REST を取り直す (10 §7.3)。
-  useRealtimeResync(reload);
+  const partyId = state.status === "ok" && state.data ? state.data.id : "";
+  const {
+    state: postsState,
+    items,
+    hasMore,
+    loadingMore,
+    loadMore,
+    reload: reloadPosts,
+  } = usePagedResource<InstancePost>(partyId ? `/instances/${partyId}/posts` : "", [partyId]);
+
+  const posts = items
+    .filter((item) => !item.hidden && item.moderation?.display !== "hide")
+    .map(toPost);
+  const photos: Media[] = posts.flatMap((post) => post.attachments);
+
+  useRealtimeSubscription(partyId || null);
+  useRealtimeResync(() => {
+    reload();
+    reloadPosts();
+  });
+  useRealtimeEvent("post.created", (post) => {
+    if (post.spaceId === partyId) {
+      reloadPosts();
+    }
+  });
+  useRealtimeEvent("post.deleted", (_data, frame) => {
+    if (frame.space === partyId) {
+      reloadPosts();
+    }
+  });
+  useRealtimeEvent("media.created", (_media, frame) => {
+    if (frame.space === partyId) {
+      reloadPosts();
+    }
+  });
+  useRealtimeEvent("party.updated", (update) => {
+    const key = `${update.id}:${update.phase}:${update.locked}:${update.present.join(",")}`;
+    if (handledUpdate.current === key) {
+      return;
+    }
+    handledUpdate.current = key;
+    const currentId = state.status === "ok" && state.data ? state.data.id : "";
+    if (update.phase === "ended") {
+      setEndedNotice(true);
+    }
+    if (!currentId || update.id !== currentId || update.phase === "ended" || update.phase === "dissolved") {
+      reload();
+    }
+  });
 
   // ok のときだけ DTO をドメイン Party に写し、リアルタイム更新を重ねる。
   // null は empty、それ以外は状態をそのまま渡す。
@@ -61,29 +116,17 @@ export default function PartyPage() {
         ? { status: "empty" }
         : {
             status: "ok",
-            data: realtime
-              ? withRealtimeUpdate(toParty(state.data), realtime)
-              : toParty(state.data),
+            data:
+              realtime &&
+              realtime.id === state.data.id &&
+              realtime.phase !== "ended" &&
+              realtime.phase !== "dissolved"
+                ? withRealtimeUpdate(toParty(state.data), realtime)
+                : toParty(state.data),
           }
       : state;
 
   const party = partyState.status === "ok" ? partyState.data : null;
-
-  // 写真は party の Space に投稿された media を集める（08 §5 / 10 §4）。
-  const photos = useResource<Media[]>(
-    async (signal) => {
-      if (!party) {
-        return [];
-      }
-      const page = await fetchPage<InstancePost>(
-        `/instances/${party.id}/posts`,
-        { signal },
-      );
-      return page.items.flatMap((post) => (post.media ?? []).map(toMedia));
-    },
-    [party?.id],
-    { cacheKey: "/party/current/photos" },
-  );
 
   const handleLeave = async (target: Party): Promise<PartyActionResult> => {
     const result = await toResult(() =>
@@ -99,7 +142,7 @@ export default function PartyPage() {
     target: Party,
     locked: boolean,
   ): Promise<PartyActionResult> => {
-    // lock/unlock は 08 §4.4 の P1。backend 未実装なら 404 が返り「準備中」へ倒す。
+    // lock/unlock は 08 §4.4 の API を呼び、成功したときだけ画面の状態を更新する。
     const action = locked ? "lock" : "unlock";
     const result = await toResult(() =>
       postJson<void>(`/parties/${target.id}/${action}`, undefined),
@@ -123,12 +166,23 @@ export default function PartyPage() {
   return (
     <PartyScreen
       state={partyState}
-      photos={photos.state.status === "ok" ? photos.state.data : []}
+      photos={photos}
+      posts={posts}
+      postsState={postsState.status === "ok" ? { status: "ok", data: posts } : postsState}
+      hasMore={hasMore}
+      loadingMore={loadingMore}
+      onLoadMore={loadMore}
       meDid={authState.status === "signedIn" ? authState.did : undefined}
       onRetry={reload}
       onLeave={handleLeave}
       onToggleLock={handleToggleLock}
       onRename={handleRename}
+      onReply={(post) => {
+        if (party) {
+          router.push(`/party/replies/?id=${encodeURIComponent(party.id)}&post=${encodeURIComponent(post.id)}`);
+        }
+      }}
+      endedNotice={endedNotice}
     />
   );
 }

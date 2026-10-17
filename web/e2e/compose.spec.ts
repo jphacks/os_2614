@@ -53,6 +53,7 @@ type InstanceItem = {
   name: string;
   state: string;
   memberCount: number;
+  canWrite: boolean;
 };
 
 const GROUP_INSTANCE: InstanceItem = {
@@ -61,6 +62,7 @@ const GROUP_INSTANCE: InstanceItem = {
   name: "情報科学演習 A",
   state: "active",
   memberCount: 3,
+  canWrite: true,
 };
 
 const PARTY_INSTANCE: InstanceItem = {
@@ -69,6 +71,7 @@ const PARTY_INSTANCE: InstanceItem = {
   name: "パーティ",
   state: "active",
   memberCount: 4,
+  canWrite: true,
 };
 
 const EVIDENCE_PATH = path.resolve(
@@ -188,6 +191,29 @@ async function readyToPost(page: Page, text: string) {
 }
 
 test.describe("compose", () => {
+  test("does not show a canWrite:false instance as a target", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route, request) => {
+      const url = new URL(request.url());
+      if (url.pathname === "/api/v1/instances") {
+        await fulfillJson(route, 200, {
+          items: [GROUP_INSTANCE, { ...PARTY_INSTANCE, canWrite: false }],
+        });
+        return;
+      }
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+
+    await page.goto("/compose/");
+    const targetChips = page.getByText("送信先").locator("..");
+    await expect(
+      targetChips.getByRole("button", { name: GROUP_INSTANCE.name }),
+    ).toBeVisible();
+    await expect(
+      targetChips.getByRole("button", { name: PARTY_INSTANCE.name }),
+    ).toHaveCount(0);
+  });
+
   test("sends the spec body to POST /posts and opens the group timeline", async ({
     page,
   }, testInfo) => {

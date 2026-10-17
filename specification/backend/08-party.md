@@ -59,15 +59,15 @@ on observation(u, v, t):
 
 ```
 1. pe:active から now - EdgeAlive 以降のエッジを読み、グラフ G を作る
-   （party_auto = 0 のユーザー、ブロック関係の組は除く）
+   （party_auto = 0 のユーザー、ブロック関係の組は除く。明示的に退出した人と、その party のメンバーとの組も除く）
 2. 安定エッジだけのグラフ S の連結成分を求める
 3. 成分 C ごとに:
    P = C のメンバーが現在所属している party の集合（party:of:{did}）
    - P が空 → 仮 party を作成し、C 全員を入れる
    - P が 1 つ → C のうち未所属の人を P に入れる
    - P が複数 → §4.3 の統合規則
-4. 各 party について、在席メンバー（G 上で他メンバーへの生きたエッジを持つ人）を数え、§4.2 で状態を進める
-5. 状態が変わった party の WebSocket チャンネルとメンバーのユーザーチャンネルに party.updated を送る
+4. 各 party について、在席メンバー（G 上で未離脱の他メンバーへの生きたエッジを持つ人）を数え、§4.2 で状態を進める
+5. 状態が変わった party の WebSocket チャンネルとメンバーのユーザーチャンネルに party.updated を送る（終了・破棄も含む。10 §7.3）
 ```
 
 1 tick は `lock:party-engine` を取って実行する（多重起動の防止）。
@@ -87,14 +87,15 @@ on observation(u, v, t):
 | 遷移 | 条件 | 処理 |
 | --- | --- | --- |
 | → tentative | §4.1 の 3 | `spaces`（state=active, name=「M/D HH:mm の party」）と `parties`（phase=tentative）を作る |
-| tentative → 破棄 | 在席が 2 人未満の状態が `TentativeDissolve`（60 秒）続いた | 行ごと削除する（投稿はできないので消えるものはない） |
+| tentative → 破棄 | 在席が 2 人未満の状態が `TentativeDissolve`（60 秒）続いた | 行ごと削除する（投稿はできないので消えるものはない）。削除前のメンバーに `party.updated`（`phase: "dissolved"`）を送る |
 | tentative → confirmed | `now - tentative_at >= ConfirmAfter`（5 分）かつ在席が 2 人以上 | `confirmed_at` を立て、メンバーに `party.confirmed` を通知する（P1） |
-| メンバーの離脱（confirmed） | そのメンバーが `LeaveAfter`（10 分）在席しない。locked なら離脱させない | `left_at` を立て、`can_write = 0`。`can_read` は 1 のまま（archive を読めるように） |
-| メンバーの再合流 | 離脱したメンバーが active な同じ party に戻ってきた | `left_at` を消し、`can_write = 1` |
+| メンバーの離脱（confirmed） | そのメンバーが `LeaveAfter`（10 分）在席しない。locked なら離脱させない | `left_at` を立て、`can_write = 0`。`can_read` は 1 のまま（archive を読めるように）。`party:of` を消す（未所属に戻る） |
+| メンバーの再合流 | 離脱したメンバーが active な同じ party に戻ってきた（未離脱のメンバーへの生きたエッジがある）。ただし、すでに別の party に所属している人は戻さない | `left_at` を消し、`can_write = 1`、`party:of` を戻す |
 | confirmed → ended | locked でない: 在席 2 人未満が `LeaveAfter` 続いた。locked: `LockedIdleEnd`（72 時間）在席も投稿もない、または未離脱のメンバーが 2 人未満になった。または開始から `MaxDuration`（7 日） | `ended_at`、`spaces.state = archived`、`party:of:*` を消す |
 
 - 仮 party の間は投稿できない（`write` のアクセス判定で拒否する）。経過時間（`tentativeAt` / `confirmedAt`）は見える
 - 明示的な退出: `POST /api/v1/parties/{id}/leave`。退出したメンバーは、その party が終わるまで自動では再合流しない
+  - 退出すると `party:of` を消す。その party のメンバーとのエッジは §4.1 の 1 で除くので、元のメンバーの近くにいても、別のフレンドとは新しい party を組める
 
 ### 4.3 統合規則
 

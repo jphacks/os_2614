@@ -88,6 +88,56 @@ func TestCreatePost(t *testing.T) {
 	}
 }
 
+func TestListInstancesCanWrite(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	env.CreateUser(t, "did:plc:alice", "alice.test")
+	alice := env.Login(t, "did:plc:alice")
+	now := env.Clock.Now().UnixMilli()
+	addParty := func(id, state, phase string, left bool) {
+		testutil.Space(t, env, id, "jp.i32.chain.space.party", state, "did:plc:alice")
+		testutil.Exec(t, env, `INSERT INTO parties (space_id, phase, tentative_at, confirmed_at, last_activity_at)
+			VALUES (?, ?, ?, ?, ?)`, id, phase, now, now, now)
+		if left {
+			testutil.Exec(t, env, `INSERT INTO space_members (space_id, did, can_write, joined_at, left_at)
+				VALUES (?, ?, 0, ?, ?)`, id, "did:plc:alice", now, now)
+		} else {
+			testutil.Member(t, env, id, "did:plc:alice", true)
+		}
+	}
+	addParty("party-tentative", "active", "tentative", false)
+	addParty("party-confirmed", "active", "confirmed", false)
+	addParty("party-left", "active", "confirmed", true)
+	addParty("party-archived", "archived", "ended", true)
+
+	status, body := testutil.Request(t, app, http.MethodGet, "/api/v1/instances", "", alice)
+	if status != http.StatusOK {
+		t.Fatalf("instances: status = %d, want 200 (body=%s)", status, body)
+	}
+	var response struct {
+		Items []struct {
+			SpaceID  string `json:"spaceId"`
+			CanWrite bool   `json:"canWrite"`
+		} `json:"items"`
+	}
+	testutil.MustJSONBody(t, body, &response)
+	got := map[string]bool{}
+	for _, item := range response.Items {
+		got[item.SpaceID] = item.CanWrite
+	}
+	want := map[string]bool{
+		"party-tentative": false,
+		"party-confirmed": true,
+		"party-left":      false,
+		"party-archived":  false,
+	}
+	for id, canWrite := range want {
+		if got[id] != canWrite {
+			t.Fatalf("canWrite[%s] = %v, want %v (items=%+v)", id, got[id], canWrite, got)
+		}
+	}
+}
+
 func TestCreatePostErrors(t *testing.T) {
 	env := testutil.NewEnv(t)
 	app := testutil.NewApp(env)

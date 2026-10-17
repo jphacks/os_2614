@@ -111,6 +111,31 @@
   text-align: center;
 }
 
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--page-gutter);
+  margin-bottom: var(--space-6);
+}
+
+.empty {
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.systemPost {
+  margin: 0;
+  color: var(--color-text-muted);
+  font: var(--text-caption);
+  text-align: center;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+}
+
 .members {
   margin-bottom: var(--space-6);
 }
