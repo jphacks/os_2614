@@ -181,7 +181,7 @@ test.describe("home feed", () => {
     await page.goto("/home/");
     await expect(page.getByText("はじめまして")).toBeVisible();
 
-    await page.getByRole("button", { name: "グループ" }).click();
+    await page.getByRole("radio", { name: "グループ" }).click();
 
     await expect(page.getByText("3限おわった")).toBeVisible();
     await expect(page.getByRole("link", { name: "情報工学科 3年" })).toHaveAttribute(
@@ -224,7 +224,7 @@ test.describe("home feed", () => {
     await page.getByRole("button", { name: "投稿する" }).click();
     await expect(page).toHaveURL(/\/compose\/\?target=public$/);
 
-    await expect(page.getByRole("button", { name: "公開", exact: true })).toHaveAttribute(
+    await expect(page.getByRole("button", { name: "公開", exact: true, pressed: true })).toHaveAttribute(
       "aria-pressed",
       "true",
     );

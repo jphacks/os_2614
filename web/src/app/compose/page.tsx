@@ -4,12 +4,14 @@
 // GET /instances (13 §2) で送信先を、GET /me でアバター用の著者を取得する。
 // 画像は選択時に POST /media (10 §4.4) へアップロードして id を得て、
 // 「投稿する」で POST /posts (10 §4.1) の media に {id,alt} として載せる。
+// Space を選ばず「公開」だけのときは POST /feed/posts (17 §2.1) で単独の公開投稿を作る。
 // API エラーは ComposeSubmitError に畳んで画面に出す。
 
 import { Suspense, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/auth/errors";
 import { getJson, postJson } from "@/data/api";
+import { createFeedPost } from "@/data/feed";
 import type {
   CreatePostResult,
   Instance as InstanceDTO,
@@ -27,6 +29,7 @@ import {
   MAX_MEDIA_COUNT,
   buildCreatePostBody,
   hasPendingAttachments,
+  isPublicOnly,
   uploadMedia,
   validateComposeInput,
   validateMediaFile,
@@ -54,6 +57,12 @@ function classifyPostError(error: unknown): ComposeSubmitError {
   if (error instanceof ApiError) {
     if (error.status === 403 && error.code === "consent_required") {
       return { kind: "consent" };
+    }
+    if (error.status === 403 && error.code === "atproto_reauth_required") {
+      return {
+        kind: "invalid",
+        message: "公開投稿には再ログインが必要です。ログインし直してください。",
+      };
     }
     if (error.status === 404 || error.status === 405 || error.status === 501) {
       return { kind: "unavailable" };
@@ -134,9 +143,11 @@ function ComposeForm() {
   const targetList = targets.status === "ok" ? targets.data : [];
 
   // ?target=group:g1（GroupScreen / PartyScreen からの遷移）を初期送信先にする。
+  // ?target=public（フィードのホームからの遷移）は公開だけを初期送信先にする。
+  const initialPublic = params.get("target") === "public";
   const initialSpaceIds = useMemo(() => {
     const raw = params.get("target");
-    if (!raw) {
+    if (!raw || raw === "public") {
       return [];
     }
     const [, spaceId] = raw.split(":");
@@ -225,6 +236,22 @@ function ComposeForm() {
       return;
     }
     setSubmitting(true);
+    if (isPublicOnly(input)) {
+      try {
+        await createFeedPost({ text: input.text });
+        router.push("/home/");
+      } catch (e) {
+        const classified = classifyPostError(e);
+        setError(
+          classified.kind === "unavailable"
+            ? { kind: "invalid", message: "公開投稿はまだ利用できません" }
+            : classified,
+        );
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     try {
       const result = await postJson<CreatePostResult>(
         "/posts",
@@ -262,6 +289,7 @@ function ComposeForm() {
         me={meState.status === "ok" ? toUser(meState.data) : undefined}
         targetsState={targets}
         initialSpaceIds={initialSpaceIds}
+        initialPublic={initialPublic}
         attachments={attachments}
         submitting={submitting}
         uploading={uploading}

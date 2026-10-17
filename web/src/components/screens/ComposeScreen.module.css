@@ -198,31 +198,6 @@
   text-align: left;
 }
 
-.optionRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) 0;
-  border-top: 1px solid var(--color-divider);
-}
-
-.optionText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.optionTitle {
-  font: var(--text-body-strong);
-  color: var(--color-text);
-}
-
-.optionDesc {
-  font: var(--text-caption);
-  color: var(--color-text-muted);
-}
-
 .reason {
   font: var(--text-caption);
   color: var(--color-text-secondary);
