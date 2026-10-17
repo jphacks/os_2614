@@ -1,0 +1,154 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  background: var(--color-surface);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--page-gutter);
+}
+
+.cancel {
+  font: var(--text-body);
+  color: var(--color-text-secondary);
+}
+
+.heading {
+  font: var(--text-heading);
+  color: var(--color-text);
+}
+
+.submit {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  font: var(--text-body-strong);
+}
+
+.submit:disabled {
+  opacity: 0.5;
+}
+
+.nameSection {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--page-gutter);
+}
+
+.iconPicker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 80px;
+  height: 80px;
+  border: 2px dashed var(--color-accent);
+  border-radius: 50%;
+  background: var(--color-accent-bg);
+  color: var(--color-accent);
+}
+
+.nameField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  padding-top: var(--space-2);
+}
+
+.fieldLabel {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--color-placeholder-strong);
+  background: transparent;
+  font: var(--text-heading);
+  font-size: 18px;
+  color: var(--color-text);
+  padding-bottom: var(--space-1);
+}
+
+.input:focus {
+  outline: none;
+  border-bottom-color: var(--color-primary);
+}
+
+.counter {
+  align-self: flex-end;
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.band {
+  height: 8px;
+  background: var(--color-bg);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--page-gutter);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.sectionTitle {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+}
+
+.sectionDesc {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.count {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.ratioRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.ratioValue {
+  font: var(--text-display);
+  color: var(--color-text);
+}
+
+.ratioNote {
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.notice {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4) var(--page-gutter);
+  padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+}
