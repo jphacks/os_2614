@@ -16,6 +16,7 @@ type UserSettings struct {
 	EncounterDelaySec         int
 	FriendBeaconShare         bool
 	PartyAuto                 bool
+	NaturalGroups             bool
 	LocationPaused            bool
 	WarnDisplay               string
 	NotifyJSON                string
@@ -36,14 +37,15 @@ type SettingsPatch struct {
 	EncounterDelaySec *int
 	FriendBeaconShare *bool
 	PartyAuto         *bool
+	NaturalGroups     *bool
 	WarnDisplay       *string
 	NotifyJSON        *string
 }
 
 // UpdateSettings は patch に含まれる列と updated_at を更新する。
 func UpdateSettings(ctx context.Context, q db.Querier, did string, patch SettingsPatch, now time.Time) error {
-	sets := make([]string, 0, 7)
-	args := make([]any, 0, 8)
+	sets := make([]string, 0, 8)
+	args := make([]any, 0, 9)
 	if patch.EncounterMode != nil {
 		sets = append(sets, "encounter_mode = ?")
 		args = append(args, *patch.EncounterMode)
@@ -59,6 +61,10 @@ func UpdateSettings(ctx context.Context, q db.Querier, did string, patch Setting
 	if patch.PartyAuto != nil {
 		sets = append(sets, "party_auto = ?")
 		args = append(args, *patch.PartyAuto)
+	}
+	if patch.NaturalGroups != nil {
+		sets = append(sets, "natural_groups = ?")
+		args = append(args, *patch.NaturalGroups)
 	}
 	if patch.WarnDisplay != nil {
 		sets = append(sets, "warn_display = ?")
@@ -91,13 +97,13 @@ func SetContentScanConsent(ctx context.Context, q db.Querier, did string, versio
 
 func GetSettings(ctx context.Context, q db.Querier, did string) (*UserSettings, error) {
 	return db.GetItem(ctx, q, `
-		SELECT did, encounter_mode, encounter_delay_sec, friend_beacon_share, party_auto,
+		SELECT did, encounter_mode, encounter_delay_sec, friend_beacon_share, party_auto, natural_groups,
 		       location_paused, warn_display, notify_json, content_scan_consent_version
 		FROM user_settings WHERE did = ?`,
 		[]any{did}, func(scan db.Scan, s *UserSettings) error {
 			var consent sql.NullInt64
 			if err := scan(&s.DID, &s.EncounterMode, &s.EncounterDelaySec, &s.FriendBeaconShare, &s.PartyAuto,
-				&s.LocationPaused, &s.WarnDisplay, &s.NotifyJSON, &consent); err != nil {
+				&s.NaturalGroups, &s.LocationPaused, &s.WarnDisplay, &s.NotifyJSON, &consent); err != nil {
 				return err
 			}
 			if consent.Valid {

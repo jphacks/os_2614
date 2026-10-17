@@ -119,28 +119,25 @@ func planParents(target namedCircle, existing []namedCircle, existingParents map
 	return parent, updates
 }
 
+// scheduleWindow は schedule の 1 つの時間帯。Date があれば一回限り、なければ Weekday（1=月〜7=日）。
+type scheduleWindow struct {
+	Weekday int
+	Date    string
+	Start   int
+	End     int
+}
+
 // schedulesOverlap は 2 つの schedule の時間帯が重なるかを返す（09 §2）。
 // schedule がない（常時有効）ものは何とでも重なる。
 func schedulesOverlap(a *GroupSchedule, bRaw *string) bool {
-	aSlots, aAlways := scheduleSlots(a)
-	bSlots, bAlways := rawScheduleSlots(bRaw)
+	aWindows, aAlways := scheduleWindows(a)
+	bWindows, bAlways := rawScheduleWindows(bRaw)
 	if aAlways || bAlways {
 		return true
 	}
-	for _, x := range aSlots {
-		xs, xe, okx := slotBounds(x)
-		if !okx {
-			continue
-		}
-		for _, y := range bSlots {
-			if x.Weekday != y.Weekday {
-				continue
-			}
-			ys, ye, oky := slotBounds(y)
-			if !oky {
-				continue
-			}
-			if xs < ye && ys < xe {
+	for _, x := range aWindows {
+		for _, y := range bWindows {
+			if sameScheduleDay(x, y) && rangesOverlap(x.Start, x.End, y.Start, y.End) {
 				return true
 			}
 		}
@@ -148,30 +145,60 @@ func schedulesOverlap(a *GroupSchedule, bRaw *string) bool {
 	return false
 }
 
-func slotBounds(s GroupScheduleSlot) (int, int, bool) {
-	start, ok1 := parseClock(s.Start)
-	end, ok2 := parseClock(s.End)
-	return start, end, ok1 && ok2
+// sameScheduleDay は 2 つの窓が同じ日（日付か曜日）に属するかを返す。
+func sameScheduleDay(x, y scheduleWindow) bool {
+	switch {
+	case x.Date != "" && y.Date != "":
+		return x.Date == y.Date
+	case x.Date != "":
+		return weekdayOf(x.Date) == y.Weekday
+	case y.Date != "":
+		return x.Weekday == weekdayOf(y.Date)
+	default:
+		return x.Weekday == y.Weekday
+	}
 }
 
-// scheduleSlots は入力 schedule の slot を返す。指定がなければ (nil, true)（常時有効）。
-func scheduleSlots(a *GroupSchedule) ([]GroupScheduleSlot, bool) {
-	if a == nil || len(a.Slots) == 0 {
+// scheduleWindows は入力 schedule の窓を返す。指定がなければ (nil, true)（常時有効）。
+func scheduleWindows(a *GroupSchedule) ([]scheduleWindow, bool) {
+	if a == nil || (len(a.Slots) == 0 && len(a.Dates) == 0) {
 		return nil, true
 	}
-	return a.Slots, false
+	return windowsOf(a), false
 }
 
-// rawScheduleSlots は保存済みの schedule_json の slot を返す。指定がなければ (nil, true)。
-func rawScheduleSlots(raw *string) ([]GroupScheduleSlot, bool) {
+// rawScheduleWindows は保存済みの schedule_json の窓を返す。指定がなければ (nil, true)。
+func rawScheduleWindows(raw *string) ([]scheduleWindow, bool) {
 	if raw == nil || strings.TrimSpace(*raw) == "" {
 		return nil, true
 	}
 	var s GroupSchedule
-	if err := json.Unmarshal([]byte(*raw), &s); err != nil || len(s.Slots) == 0 {
+	if err := json.Unmarshal([]byte(*raw), &s); err != nil || (len(s.Slots) == 0 && len(s.Dates) == 0) {
 		return nil, true
 	}
-	return s.Slots, false
+	return windowsOf(&s), false
+}
+
+// windowsOf は schedule の slots と dates を、時刻を分に直した窓の列にする。
+func windowsOf(s *GroupSchedule) []scheduleWindow {
+	out := make([]scheduleWindow, 0, len(s.Slots)+len(s.Dates))
+	for _, slot := range s.Slots {
+		start, ok1 := parseClock(slot.Start)
+		end, ok2 := parseClock(slot.End)
+		if !ok1 || !ok2 {
+			continue
+		}
+		out = append(out, scheduleWindow{Weekday: slot.Weekday, Start: start, End: end})
+	}
+	for _, d := range s.Dates {
+		start, ok1 := parseClock(d.Start)
+		end, ok2 := parseClock(d.End)
+		if !ok1 || !ok2 {
+			continue
+		}
+		out = append(out, scheduleWindow{Date: d.Date, Start: start, End: end})
+	}
+	return out
 }
 
 // validateGroupSchedule は 09 §3 の規則を確かめる。
@@ -180,11 +207,14 @@ func validateGroupSchedule(s *GroupSchedule) map[string]string {
 	if s == nil {
 		return fields
 	}
-	if len(s.Slots) == 0 {
+	if len(s.Slots) == 0 && len(s.Dates) == 0 {
 		fields["schedule.slots"] = "1 件以上必要です"
 	}
 	if len(s.Slots) > 14 {
 		fields["schedule.slots"] = "14 件までです"
+	}
+	if len(s.Dates) > 14 {
+		fields["schedule.dates"] = "14 件までです"
 	}
 	if s.TZ == "" {
 		fields["schedule.tz"] = "IANA のタイムゾーン名が必要です"
@@ -208,7 +238,30 @@ func validateGroupSchedule(s *GroupSchedule) map[string]string {
 			fields[key+".start"] = "開始は終了より前にしてください"
 		}
 	}
+	for i, d := range s.Dates {
+		key := "schedule.dates." + strconv.Itoa(i)
+		if !validScheduleDate(d.Date) {
+			fields[key+".date"] = "YYYY-MM-DD で指定してください"
+		}
+		start, ok1 := parseClock(d.Start)
+		end, ok2 := parseClock(d.End)
+		if !ok1 {
+			fields[key+".start"] = "HH:MM で指定してください"
+		}
+		if !ok2 {
+			fields[key+".end"] = "HH:MM で指定してください"
+		}
+		if ok1 && ok2 && start >= end {
+			fields[key+".start"] = "開始は終了より前にしてください"
+		}
+	}
 	return fields
+}
+
+// validScheduleDate は YYYY-MM-DD の実在する日付かを返す。
+func validScheduleDate(date string) bool {
+	t, err := time.Parse(dateLayout, date)
+	return err == nil && t.Format(dateLayout) == date
 }
 
 // authorityFor は did:web:{host}（03 §7、seed と同じ形）を作る。

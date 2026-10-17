@@ -8,7 +8,8 @@ import (
 )
 
 // group schedule（09 §3）。schedule_json が NULL なら常時有効。
-// slot は曜日（1=月〜7=日）と開始・終了時刻。end < start は日をまたぐ。
+// slot は曜日（1=月〜7=日）と開始・終了時刻。date は一回限りの日付。end < start は日をまたぐ。
+// slots と dates のどちらかに当てはまれば有効。
 
 type scheduleSlot struct {
 	Weekday int    `json:"weekday"`
@@ -17,8 +18,9 @@ type scheduleSlot struct {
 }
 
 type scheduleDef struct {
-	TZ    string         `json:"tz"`
-	Slots []scheduleSlot `json:"slots"`
+	TZ    string              `json:"tz"`
+	Slots []scheduleSlot      `json:"slots"`
+	Dates []GroupScheduleDate `json:"dates"`
 }
 
 // scheduleActive は now が schedule の有効時間帯に入るかを返す。
@@ -28,16 +30,13 @@ func scheduleActive(raw *string, now time.Time) bool {
 		return true
 	}
 	var def scheduleDef
-	if err := json.Unmarshal([]byte(*raw), &def); err != nil || len(def.Slots) == 0 {
+	if err := json.Unmarshal([]byte(*raw), &def); err != nil {
 		return true
 	}
-	loc := time.UTC
-	if def.TZ != "" {
-		if l, err := time.LoadLocation(def.TZ); err == nil {
-			loc = l
-		}
+	if len(def.Slots) == 0 && len(def.Dates) == 0 {
+		return true
 	}
-	t := now.In(loc)
+	t := now.In(scheduleLocation(def.TZ))
 	weekday := int(t.Weekday())
 	if weekday == 0 {
 		weekday = 7
@@ -67,7 +66,119 @@ func scheduleActive(raw *string, now time.Time) bool {
 			return true
 		}
 	}
+
+	date := t.Format(dateLayout)
+	prevDate := t.AddDate(0, 0, -1).Format(dateLayout)
+	for _, d := range def.Dates {
+		start, ok1 := parseClock(d.Start)
+		end, ok2 := parseClock(d.End)
+		if !ok1 || !ok2 {
+			continue
+		}
+		if start <= end {
+			if d.Date == date && minutes >= start && minutes < end {
+				return true
+			}
+			continue
+		}
+		if d.Date == date && minutes >= start {
+			return true
+		}
+		if d.Date == prevDate && minutes < end {
+			return true
+		}
+	}
 	return false
+}
+
+const dateLayout = "2006-01-02"
+
+// scheduleLocation は tz の場所を返す。空・不正なら UTC。
+func scheduleLocation(tz string) *time.Location {
+	if tz != "" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			return l
+		}
+	}
+	return time.UTC
+}
+
+// scheduleOverlapsRange は date の [startMin, endMin) が schedule の時間帯と重なるかを返す。
+// schedule の指定がなければ常時有効として true。
+func scheduleOverlapsRange(raw *string, date string, startMin, endMin int) bool {
+	windows, always := rawScheduleWindows(raw)
+	if always {
+		return true
+	}
+	weekday := weekdayOf(date)
+	for _, w := range windows {
+		switch {
+		case w.Date != "":
+			if w.Date != date {
+				continue
+			}
+		case weekday != 0 && w.Weekday == weekday:
+		default:
+			continue
+		}
+		if rangesOverlap(w.Start, w.End, startMin, endMin) {
+			return true
+		}
+	}
+	return false
+}
+
+// scheduleLatestEnd は schedule の時間帯のうち最も遅い終了時刻を返す（09 §8.5 の終了判定）。
+// dates（一回限り）だけを対象にし、ないときは ok=false。
+func scheduleLatestEnd(raw *string, now time.Time) (time.Time, bool) {
+	if raw == nil || strings.TrimSpace(*raw) == "" {
+		return time.Time{}, false
+	}
+	var def scheduleDef
+	if err := json.Unmarshal([]byte(*raw), &def); err != nil {
+		return time.Time{}, false
+	}
+	loc := scheduleLocation(def.TZ)
+	var latest time.Time
+	found := false
+	for _, d := range def.Dates {
+		start, ok1 := parseClock(d.Start)
+		end, ok2 := parseClock(d.End)
+		if !ok1 || !ok2 {
+			continue
+		}
+		day, err := time.ParseInLocation(dateLayout, d.Date, loc)
+		if err != nil {
+			continue
+		}
+		endAt := day.Add(time.Duration(end) * time.Minute)
+		if start > end {
+			endAt = endAt.Add(24 * time.Hour)
+		}
+		if !found || endAt.After(latest) {
+			latest = endAt
+			found = true
+		}
+	}
+	return latest, found
+}
+
+// weekdayOf は YYYY-MM-DD の曜日（1=月〜7=日）を返す。不正なら 0。
+func weekdayOf(date string) int {
+	t, err := time.Parse(dateLayout, date)
+	if err != nil {
+		return 0
+	}
+	w := int(t.Weekday())
+	if w == 0 {
+		w = 7
+	}
+	return w
+}
+
+// rangesOverlap は 2 つの分の範囲 [start, end) が重なるかを返す。
+func rangesOverlap(aStart, aEnd, bStart, bEnd int) bool {
+	return aStart < bEnd && bStart < aEnd
 }
 
 func parseClock(s string) (int, bool) {

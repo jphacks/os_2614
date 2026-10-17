@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -42,6 +43,9 @@ type Config struct {
 	NanoGPTKey      string
 	JevModel        string
 	FCMCredPath     string
+	EmbedURL        string
+	EmbedModel      string
+	EmbedDim        int
 	CORSOrigins     []string
 }
 
@@ -55,12 +59,14 @@ func Load() (*Config, error) {
 		RedisURL:        os.Getenv("CHAIN_REDIS_URL"),
 		MediaDir:        get("CHAIN_MEDIA_DIR", "data/media"),
 		OAuthPrivateKey: os.Getenv("CHAIN_OAUTH_PRIVATE_KEY"),
-		OAuthScopes:     strings.Fields(get("CHAIN_OAUTH_SCOPES", "atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile")),
+		OAuthScopes:     strings.Fields(get("CHAIN_OAUTH_SCOPES", "atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile repo:app.bsky.feed.post?action=create&action=delete")),
 		JetstreamURL:    get("CHAIN_JETSTREAM_URL", "wss://jetstream2.us-east.bsky.network/subscribe"),
 		NanoGPTURL:      get("CHAIN_NANOGPT_URL", "https://api.nano-gpt.com/api/v1/decisions"),
 		NanoGPTKey:      os.Getenv("CHAIN_NANOGPT_KEY"),
 		JevModel:        get("CHAIN_JEV_MODEL", "typesafe/jev-1.13"),
 		FCMCredPath:     os.Getenv("CHAIN_FCM_CREDENTIALS"),
+		EmbedURL:        os.Getenv("CHAIN_EMBED_URL"),
+		EmbedModel:      get("CHAIN_EMBED_MODEL", "embeddinggemma"),
 		CORSOrigins:     split(get("CHAIN_CORS_ORIGINS", "https://localhost,capacitor://localhost,http://localhost:3000")),
 	}
 
@@ -84,6 +90,9 @@ func Load() (*Config, error) {
 		errs = append(errs, err)
 	}
 	if c.JWTKey, err = key("CHAIN_JWT_KEY", 32, 0); err != nil {
+		errs = append(errs, err)
+	}
+	if c.EmbedDim, err = positiveInt("CHAIN_EMBED_DIM", 256); err != nil {
 		errs = append(errs, err)
 	}
 	// dev で鍵がなければ loopback クライアントになる（03 §2.1.1）。
@@ -115,6 +124,19 @@ func get(name, def string) string {
 		return v
 	}
 	return def
+}
+
+// positiveInt は正の整数の環境変数を読む。未設定なら def。
+func positiveInt(name string, def int) (int, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer: %q", name, v)
+	}
+	return n, nil
 }
 
 func split(s string) []string {
