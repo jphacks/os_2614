@@ -1,0 +1,24 @@
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--page-gutter) var(--space-3);
+}
+
+.gutter {
+  padding: 0 var(--page-gutter);
+  margin-bottom: var(--space-4);
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--page-gutter) var(--space-6);
+}
+
+.empty {
+  text-align: center;
+  color: var(--color-text-muted);
+  font: var(--text-caption);
+}
