@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">chain</string>
+    <string name="title_activity_main">chain</string>
+    <string name="package_name">jp.i32.chain</string>
+    <string name="custom_url_scheme">jp.i32.chain</string>
+</resources>
