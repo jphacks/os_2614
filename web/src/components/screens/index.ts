@@ -24,6 +24,8 @@ export { EncountersScreen } from "./EncountersScreen";
 export type { EncountersScreenProps } from "./EncountersScreen";
 export { NotificationsScreen } from "./NotificationsScreen";
 export type { NotificationsScreenProps } from "./NotificationsScreen";
+export { BlocksScreen } from "./BlocksScreen";
+export type { BlocksScreenProps, BlockAddResult } from "./BlocksScreen";
 export { ProfileScreen } from "./ProfileScreen";
 export type { ProfileScreenProps, StatusSaveResult } from "./ProfileScreen";
 export { MemoryScreen } from "./MemoryScreen";
