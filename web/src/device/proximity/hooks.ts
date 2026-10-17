@@ -147,6 +147,65 @@ function describeError(error: unknown): string {
 }
 
 /**
+ * startLocationUpdates は plugin 側にタイマーが 1 本しかない (web.ts の locationTimer)。
+ * 画面の現在地 (エリア作成など) と近接パイプラインが同時に useLocation しても互いの
+ * interval を奪い合わないよう、購読者のうち最短の interval で 1 本だけ回す。
+ */
+interface LocationUpdatesDriver {
+  subscribers: Map<symbol, number>;
+  activeIntervalMs: number;
+}
+
+let locationUpdatesDriver: LocationUpdatesDriver | null = null;
+
+function startLocationUpdatesAt(
+  driver: LocationUpdatesDriver,
+  intervalMs: number,
+  onError: (cause: unknown) => void,
+): void {
+  driver.activeIntervalMs = intervalMs;
+  ChainProximity.startLocationUpdates({ intervalMs }).catch(onError);
+}
+
+function joinLocationUpdates(
+  intervalMs: number,
+  onError: (cause: unknown) => void,
+): () => void {
+  const key = Symbol("location-updates");
+  const driver =
+    locationUpdatesDriver ??
+    (locationUpdatesDriver = { subscribers: new Map<symbol, number>(), activeIntervalMs: 0 });
+  driver.subscribers.set(key, intervalMs);
+
+  const minIntervalMs = Math.min(...driver.subscribers.values());
+  if (minIntervalMs !== driver.activeIntervalMs) {
+    startLocationUpdatesAt(driver, minIntervalMs, onError);
+  }
+
+  return () => {
+    const current = locationUpdatesDriver;
+    if (current === null) {
+      return;
+    }
+    current.subscribers.delete(key);
+    if (current.subscribers.size === 0) {
+      locationUpdatesDriver = null;
+      current.activeIntervalMs = 0;
+      void ChainProximity.stopLocationUpdates().catch(() => {
+        // すでに止まっている場合は無視する。
+      });
+      return;
+    }
+    const nextMin = Math.min(...current.subscribers.values());
+    if (nextMin !== current.activeIntervalMs) {
+      startLocationUpdatesAt(current, nextMin, () => {
+        // 残っている購読者は自分の error で状態を持つ。
+      });
+    }
+  };
+}
+
+/**
  * 位置の現在値。enabled の間だけ startLocationUpdates を回し、
  * "location" イベントの最新値を返す。アンマウントで止める。
  */
@@ -182,16 +241,14 @@ export function useLocation(opts: { intervalMs: number; enabled: boolean }): {
         setError(describeError(cause));
       });
 
-    ChainProximity.startLocationUpdates({ intervalMs }).catch((cause) => {
+    const leave = joinLocationUpdates(intervalMs, (cause) => {
       setError(describeError(cause));
     });
 
     return () => {
       disposed = true;
       void handle?.remove();
-      void ChainProximity.stopLocationUpdates().catch(() => {
-        // すでに止まっている場合は無視する。
-      });
+      leave();
     };
   }, [enabled, intervalMs]);
 

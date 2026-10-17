@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { TabBar, type TabKey } from "../TabBar";
+import { ProximityDriver } from "./ProximityDriver";
 import styles from "./AppShell.module.css";
 
 export type AppShellProps = {
@@ -16,6 +17,7 @@ export function AppShell({ tab, children, className }: AppShellProps) {
 
   return (
     <div className={classes}>
+      <ProximityDriver />
       <main className={mainClasses}>{children}</main>
       {tab && <TabBar current={tab} />}
     </div>
