@@ -25,8 +25,6 @@ object ProximityState {
 
     class Token(val windowStartSec: Long, val bytes: ByteArray)
 
-    private data class Aggregate(val firstMs: Long, val lastMs: Long, val maxRssi: Int, val count: Int)
-
     @Volatile var windowSec: Long = 900
         private set
     @Volatile var tokens: List<Token> = emptyList()
@@ -41,7 +39,8 @@ object ProximityState {
     @Volatile var currentWindowStartSec: Long? = null
     @Volatile var lastError: String? = null
 
-    private val sightings = ConcurrentHashMap<String, Aggregate>()
+    private val sightings = SightingAggregator()
+    private val clockOffsetEstimator = ClockOffsetEstimator()
     private val lastSightingEvent = ConcurrentHashMap<String, Long>()
     private var loaded = false
 
@@ -61,6 +60,8 @@ object ProximityState {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         windowSec = prefs.getLong(KEY_WINDOW_SEC, 900)
         clockOffsetMs = prefs.getLong(KEY_CLOCK_OFFSET, 0)
+        clockOffsetEstimator.clear()
+        clockOffsetEstimator.add(clockOffsetMs)
         tokens = runCatching {
             val array = JSONArray(prefs.getString(KEY_TOKENS, "[]"))
             (0 until array.length()).map {
@@ -85,6 +86,7 @@ object ProximityState {
 
     fun setClockOffset(context: Context, offsetMs: Long) {
         clockOffsetMs = offsetMs
+        clockOffsetEstimator.add(offsetMs)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putLong(KEY_CLOCK_OFFSET, offsetMs)
             .apply()
@@ -94,17 +96,14 @@ object ProximityState {
 
     /** nowMs (backend の時計) を含む窓の token。古い token は再利用しない */
     fun tokenAt(nowMs: Long): Token? {
-        val windowStart = Math.floorDiv(nowMs / 1000, windowSec) * windowSec
-        return tokens.firstOrNull { it.windowStartSec == windowStart }
+        val found = BeaconWindow.tokenFor(tokens.map { it.windowStartSec to it.bytes }, nowMs, windowSec)
+        return found?.let { Token(it.first, it.second) }
     }
 
     fun recordSighting(tokenBytes: ByteArray, rssi: Int) {
         val token = encodeToken(tokenBytes)
         val now = now()
-        sightings.compute(token) { _, old ->
-            if (old == null) Aggregate(now, now, rssi, 1)
-            else Aggregate(minOf(old.firstMs, now), maxOf(old.lastMs, now), maxOf(old.maxRssi, rssi), old.count + 1)
-        }
+        sightings.record(token, now, rssi)
         val last = lastSightingEvent[token]
         if (last == null || now - last >= SIGHTING_EVENT_INTERVAL_MS) {
             lastSightingEvent[token] = now
@@ -117,8 +116,7 @@ object ProximityState {
 
     fun drainSightings(): JSArray {
         val items = JSArray()
-        for (token in sightings.keys.toList()) {
-            val agg = sightings.remove(token) ?: continue
+        for ((token, agg) in sightings.drain(now())) {
             items.put(
                 JSObject()
                     .put("token", token)
@@ -142,7 +140,7 @@ object ProximityState {
             .put("scanning", scanning)
             .put("currentWindowStart", currentWindowStartSec?.let { iso(it * 1000) } ?: JSONObject.NULL)
             .put("tokensValidUntil", validUntil?.let { iso(it) } ?: JSONObject.NULL)
-            .put("pendingSightings", sightings.size)
+            .put("pendingSightings", sightings.pending())
             .put("clockOffsetMs", clockOffsetMs)
             .put("lastError", lastError ?: JSONObject.NULL)
     }
