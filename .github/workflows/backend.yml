@@ -1,0 +1,63 @@
+name: backend
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - 'specification/**'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'specification/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      CGO_ENABLED: "1"
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "gofmt found unformatted files:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go vet integration
+        run: go vet -tags=integration ./...
+
+      - name: lint
+        run: make lint
+
+      - name: test
+        run: go test ./...
+
+      - name: test-integration
+        run: make test-integration
+        env:
+          CHAIN_TEST_REDIS_URL: redis://localhost:6379/15
