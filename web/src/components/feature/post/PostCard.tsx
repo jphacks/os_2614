@@ -15,7 +15,6 @@ import styles from "./PostCard.module.css";
 export type PostCardProps = {
   post: Post;
   onReply?: (post: Post) => void;
-  onToggleLike?: (post: Post) => void;
 };
 
 /** moderation の分類 (11 §1) の表示名。未知はコードのまま出す。 */
@@ -33,17 +32,8 @@ function categoryLabel(category: string): string {
   return CATEGORY_LABELS[category] ?? category;
 }
 
-export function PostCard({ post, onReply, onToggleLike }: PostCardProps) {
-  const [likeOverride, setLikeOverride] = useState<boolean | null>(null);
+export function PostCard({ post, onReply }: PostCardProps) {
   const [revealed, setRevealed] = useState(false);
-  const liked = likeOverride ?? post.likedByMe;
-  const likeCount =
-    post.likeCount + (likeOverride === null ? 0 : likeOverride ? 1 : -1);
-
-  const handleLike = () => {
-    setLikeOverride(!liked);
-    onToggleLike?.(post);
-  };
 
   // moderation の表示指示 (11 §4) に従う。display="hide" は一覧側で除外済み。
   const warned = post.moderation?.label === "warn";
@@ -92,6 +82,8 @@ export function PostCard({ post, onReply, onToggleLike }: PostCardProps) {
               ))}
             </div>
           )}
+          {/* いいね / リアクションは backend が P2 で未対応 (specification/backend/README.md:71)。
+              ローカル状態で「保存された」ように見せないため、UI 自体を置かない。 */}
           <div className={styles.actions}>
             <button
               type="button"
@@ -101,18 +93,6 @@ export function PostCard({ post, onReply, onToggleLike }: PostCardProps) {
             >
               <Icon name="chat_bubble" size={18} />
               <span>{post.replyCount}</span>
-            </button>
-            <button
-              type="button"
-              className={[styles.action, liked && styles.liked]
-                .filter(Boolean)
-                .join(" ")}
-              aria-label="いいね"
-              aria-pressed={liked}
-              onClick={handleLike}
-            >
-              <Icon name="favorite" size={18} filled={liked} />
-              <span>{likeCount}</span>
             </button>
           </div>
         </div>

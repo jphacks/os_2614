@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { Post, Reply, User } from "@/domain/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
@@ -9,11 +8,6 @@ import { clockTime } from "@/data/format";
 import styles from "./ReplySheet.module.css";
 
 function ReplyRow({ reply }: { reply: Reply }) {
-  const [likeOverride, setLikeOverride] = useState<boolean | null>(null);
-  const liked = likeOverride ?? reply.likedByMe;
-  const likeCount =
-    reply.likeCount + (likeOverride === null ? 0 : likeOverride ? 1 : -1);
-
   return (
     <li className={styles.reply}>
       <Avatar user={reply.author} size={40} />
@@ -23,18 +17,6 @@ function ReplyRow({ reply }: { reply: Reply }) {
           <span className={styles.time}>・{clockTime(reply.createdAt)}</span>
         </div>
         <p className={styles.body}>{reply.body}</p>
-        <button
-          type="button"
-          className={[styles.like, liked && styles.liked]
-            .filter(Boolean)
-            .join(" ")}
-          aria-label="いいね"
-          aria-pressed={liked}
-          onClick={() => setLikeOverride(!liked)}
-        >
-          <Icon name="favorite" size={16} filled={liked} />
-          <span>{likeCount}</span>
-        </button>
       </div>
     </li>
   );

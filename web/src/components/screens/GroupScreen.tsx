@@ -76,7 +76,6 @@ export type GroupScreenProps = {
   overlay?: ReactNode;
   onCompose?: (group: Group) => void;
   onReply?: (post: Post) => void;
-  onToggleLike?: (post: Post) => void;
 };
 
 export function GroupScreen({
@@ -100,7 +99,6 @@ export function GroupScreen({
   overlay,
   onCompose,
   onReply,
-  onToggleLike,
 }: GroupScreenProps) {
   const router = useRouter();
   const [tab, setTab] = useState<GroupTab>("timeline");
@@ -230,7 +228,6 @@ export function GroupScreen({
                   key={post.id}
                   post={post}
                   onReply={goReply}
-                  onToggleLike={onToggleLike}
                 />
               ))}
               {hasMore && (
