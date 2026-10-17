@@ -160,7 +160,8 @@ test.describe("closed-group invites", () => {
     await expect
       .poll(() => calls.map((c) => c.path))
       .toContain("/api/v1/groups/g1/invites/inv1/approve");
-    await expect(page.getByText("提示済み")).toBeVisible();
+    // 注記と副題も「提示済み」を含むため、状態タグの完全一致だけを検証する。
+    await expect(page.getByText("提示済み", { exact: true })).toBeVisible();
     await expect(page.getByText("承認 2/2")).toBeVisible();
   });
 

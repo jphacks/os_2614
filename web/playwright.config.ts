@@ -1,5 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// 既定は 3000 のまま。並行実行するエージェントが同じポートを取り合って
+// 別 worktree のサーバを再利用してしまうのを避けるため、専用ポートに逃がせる。
+const PORT = process.env.CHAIN_E2E_PORT ?? "3000";
+const BASE_URL = `http://localhost:${PORT}`;
+
 export default defineConfig({
   testDir: "./e2e",
   testMatch: /\.spec\.ts$/,
@@ -7,7 +12,7 @@ export default defineConfig({
   fullyParallel: true,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: BASE_URL,
     channel: "chrome",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -23,8 +28,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm exec next dev -p 3000",
-    url: "http://localhost:3000",
+    command: `pnpm exec next dev -p ${PORT}`,
+    url: BASE_URL,
     reuseExistingServer: true,
     timeout: 120_000,
   },
