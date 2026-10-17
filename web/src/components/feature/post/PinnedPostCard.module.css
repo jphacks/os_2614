@@ -1,0 +1,21 @@
+.card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.body {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -1,0 +1,69 @@
+.card {
+  width: 100%;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.name {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+}
+
+.time {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.body {
+  font: var(--text-body);
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.media {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin-top: var(--space-1);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.action span {
+  font-variant-numeric: tabular-nums;
+}
+
+.liked {
+  color: var(--color-like);
+}
