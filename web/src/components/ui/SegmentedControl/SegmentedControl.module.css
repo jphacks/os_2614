@@ -1,0 +1,32 @@
+.control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 36px;
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
+}
+
+.trackBg {
+  background: var(--color-bg);
+}
+
+.trackSurface {
+  background: var(--color-surface-muted);
+}
+
+.segment {
+  flex: 1;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.selected {
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 700;
+}

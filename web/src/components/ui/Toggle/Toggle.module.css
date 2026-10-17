@@ -1,0 +1,28 @@
+.toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  width: 52px;
+  height: 32px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--color-placeholder-strong);
+  transition: background-color 0.15s ease;
+}
+
+.thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  transition: transform 0.15s ease;
+}
+
+.on {
+  background: var(--color-primary);
+}
+
+.on .thumb {
+  transform: translateX(20px);
+}
