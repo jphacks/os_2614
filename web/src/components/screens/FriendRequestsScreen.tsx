@@ -50,6 +50,7 @@ const VIA_LABEL: Record<string, string> = {
   encounter: "すれ違いから",
   space: "同じグループから",
   invite: "招待コードから",
+  realtime: "いま届きました",
 };
 
 function viaLabel(via: string): string {

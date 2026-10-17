@@ -2,6 +2,7 @@
 
 // /party は static export なので SSR ではデータを取らない。サインイン後に useResource が
 // GET /party/current を叩き、DTO を toParty でドメインへ写す。null は「所属パーティ無し」。
+// `party.updated` (10 §7.3) はキャッシュに溜まり、ここで取得結果へ重ねて反映する。
 
 import { useAuth } from "@/auth";
 import {
@@ -16,10 +17,27 @@ import type { InstancePost, Party as PartyDTO } from "@/data/dto";
 import { useResource, type ResourceState } from "@/data/hooks";
 import { toMedia, toParty } from "@/data/mappers";
 import type { Media, Party } from "@/domain/types";
+import type { PartyUpdatedData } from "@/realtime/events";
+import { useRealtimeResync } from "@/realtime/provider";
+import { useRealtimeCache } from "@/realtime/store";
 import { PartyScreen, type PartyActionResult } from "@/components/screens/PartyScreen";
 
 function classify(result: ResourceResult<unknown>): PartyActionResult {
   return result.status === "ok" ? { status: "ok" } : { status: result.status };
+}
+
+/** リアルタイムの party.updated を、取得済みの party へ重ねる (phase / 固定 / 在席)。 */
+function withRealtimeUpdate(party: Party, update: PartyUpdatedData): Party {
+  const present = new Set(update.present);
+  return {
+    ...party,
+    phase: update.phase,
+    locked: update.locked,
+    members: party.members.map((member) => ({
+      ...member,
+      present: present.has(member.did),
+    })),
+  };
 }
 
 export default function PartyPage() {
@@ -28,13 +46,24 @@ export default function PartyPage() {
     (signal) => getJson<PartyDTO | null>("/party/current", { signal }),
     [],
   );
+  const cache = useRealtimeCache();
+  const realtime = cache.party;
 
-  // ok のときだけ DTO をドメイン Party に写す。null は empty、それ以外は状態をそのまま渡す。
+  // 再接続後は at-most-once の取りこぼしを補うため REST を取り直す (10 §7.3)。
+  useRealtimeResync(reload);
+
+  // ok のときだけ DTO をドメイン Party に写し、リアルタイム更新を重ねる。
+  // null は empty、それ以外は状態をそのまま渡す。
   const partyState: ResourceState<Party> =
     state.status === "ok"
       ? state.data === null
         ? { status: "empty" }
-        : { status: "ok", data: toParty(state.data) }
+        : {
+            status: "ok",
+            data: realtime
+              ? withRealtimeUpdate(toParty(state.data), realtime)
+              : toParty(state.data),
+          }
       : state;
 
   const party = partyState.status === "ok" ? partyState.data : null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { ApiError } from "@/auth/errors";
 import {
   deleteJson,
@@ -15,8 +15,10 @@ import type {
   Page,
 } from "@/data/dto";
 import { useResource, type ResourceState } from "@/data/hooks";
-import { toFriendRequest, toInvite } from "@/data/mappers";
+import { toFriendRequest, toInvite, toUser } from "@/data/mappers";
 import type { FriendRequest } from "@/domain/types";
+import { useRealtimeEvent, useRealtimeResync } from "@/realtime/provider";
+import { useRealtimeCache } from "@/realtime/store";
 import {
   FriendRequestsScreen,
   type FriendActionResult,
@@ -31,6 +33,15 @@ function actionResult(result: ResourceResult<unknown>): FriendActionResult {
     return { status: "unavailable" };
   }
   return { status: "error", message: result.error.message };
+}
+
+/** リアルタイムで届いた申請を先頭側に重ね、相手 DID が同じものは二重に出さない。 */
+function mergeIncoming(
+  realtime: FriendRequest[],
+  rest: FriendRequest[],
+): FriendRequest[] {
+  const dids = new Set(realtime.map((item) => item.peer.did));
+  return [...realtime, ...rest.filter((item) => !dids.has(item.peer.did))];
 }
 
 export default function FriendRequestsPage() {
@@ -48,11 +59,32 @@ export default function FriendRequestsPage() {
     (signal) => getJson<Page<FriendRequestDTO>>("/friends/requests", { query: { box: "outgoing" }, signal }),
     [],
   );
+  const cache = useRealtimeCache();
 
   const reloadAll = useCallback(() => {
     reloadIncoming();
     reloadOutgoing();
   }, [reloadIncoming, reloadOutgoing]);
+
+  // `friend.request` は payload の相手をそのまま一覧へ重ねる (10 §7.3)。
+  const realtimeIncoming = useMemo<FriendRequest[]>(
+    () =>
+      cache.friendEvents
+        .filter((event) => event.kind === "request")
+        .map((event) => ({
+          id: `rt:${event.user.did}`,
+          peer: toUser(event.user),
+          via: "realtime",
+          status: "pending",
+          createdAt: "",
+        })),
+    [cache.friendEvents],
+  );
+
+  // 承認 / 変更は一覧の中身が変わるので取り直す。再接続後の取りこぼし補填も兼ねる (10 §7.3)。
+  useRealtimeEvent("friend.accepted", reloadAll);
+  useRealtimeEvent("friend.changed", reloadAll);
+  useRealtimeResync(reloadAll);
 
   const respond = useCallback(
     async (id: string, action: "accept" | "decline"): Promise<FriendActionResult> => {
@@ -127,7 +159,13 @@ export default function FriendRequestsPage() {
 
   const incoming: ResourceState<FriendRequest[]> =
     incomingState.status === "ok"
-      ? { status: "ok", data: incomingState.data.items.map(toFriendRequest) }
+      ? {
+          status: "ok",
+          data: mergeIncoming(
+            realtimeIncoming,
+            incomingState.data.items.map(toFriendRequest),
+          ),
+        }
       : incomingState;
   const outgoing: ResourceState<FriendRequest[]> =
     outgoingState.status === "ok"

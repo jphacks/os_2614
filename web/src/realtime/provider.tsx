@@ -24,6 +24,7 @@ import {
 
 import { useAuth } from "@/auth";
 import { RealtimeEventRouter, RealtimeEventsContext, useRealtimeRouter } from "./events";
+import { attachRealtimeStore, realtimeStore } from "./store";
 import { RealtimeClient } from "./ws";
 
 export { useRealtimeEvent } from "./events";
@@ -43,6 +44,7 @@ const TEARDOWN_DELAY_MS = 0;
 class RealtimeConnection {
   private client: RealtimeClient | null = null;
   private detach: (() => void) | null = null;
+  private detachStore: (() => void) | null = null;
   private snapshot: RealtimeEventRouter | null = null;
   private pendingStop: ReturnType<typeof setTimeout> | null = null;
   private readonly listeners = new Set<() => void>();
@@ -68,6 +70,9 @@ class RealtimeConnection {
     const client = new RealtimeClient();
     const router = new RealtimeEventRouter(client);
     this.client = client;
+    // 前のセッションの残骸を捨ててから、この接続のイベントをキャッシュへ流し始める。
+    realtimeStore.reset();
+    this.detachStore = attachRealtimeStore(router);
     this.detach = router.attach();
     this.snapshot = router;
     this.emit();
@@ -92,8 +97,12 @@ class RealtimeConnection {
     }
     this.detach?.();
     this.detach = null;
+    this.detachStore?.();
+    this.detachStore = null;
     this.client = null;
     this.snapshot = null;
+    // サインアウト / 切断でリアルタイム由来の状態を持ち越さない。
+    realtimeStore.reset();
     this.emit();
     client.close();
   }

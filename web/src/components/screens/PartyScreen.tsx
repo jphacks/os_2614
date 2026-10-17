@@ -142,7 +142,16 @@ function PartyBody({
 }: PartyBodyProps) {
   const router = useRouter();
   // 固定トグルは backend が成功を返したときだけ切り替える（楽観更新しない）。
-  const [locked, setLocked] = useState(party.locked);
+  // 表示は prop の party.locked に追従させ、楽観的な上書きだけを「元にした値」でキー付け
+  // する。こうすると party.updated で locked が変わっても古い表示が残らない。
+  const [lockOverride, setLockOverride] = useState<{
+    base: boolean;
+    value: boolean;
+  } | null>(null);
+  const locked =
+    lockOverride !== null && lockOverride.base === party.locked
+      ? lockOverride.value
+      : party.locked;
   const [busy, setBusy] = useState<PartyActionKind | null>(null);
   const [notice, setNotice] = useState<PartyActionNotice | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -162,7 +171,7 @@ function PartyBody({
     const result = await onToggleLock(party, next);
     setBusy(null);
     if (result.status === "ok") {
-      setLocked(next);
+      setLockOverride({ base: party.locked, value: next });
       return;
     }
     setNotice({ kind, status: result.status });
