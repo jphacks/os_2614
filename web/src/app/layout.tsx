@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Noto_Sans_JP } from "next/font/google";
 import { AuthProvider } from "@/auth";
 import { AuthGate } from "@/components/feature/auth";
+import { DeviceRegistrar } from "@/device/push/DeviceRegistrar";
 import { RealtimeProvider } from "@/realtime/provider";
 import "material-symbols/rounded.css";
 import "./globals.css";
@@ -30,7 +31,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body>
         <AuthProvider>
           <AuthGate>
-            <RealtimeProvider>{children}</RealtimeProvider>
+            <RealtimeProvider>
+              <DeviceRegistrar />
+              {children}
+            </RealtimeProvider>
           </AuthGate>
         </AuthProvider>
       </body>

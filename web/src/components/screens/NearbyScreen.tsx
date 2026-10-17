@@ -77,9 +77,14 @@ export function NearbyScreen({
         title="ちかく"
         subtitle="近くのグループ"
         trailing={
-          <Link className={styles.headerLink} href="/encounters/" aria-label="すれ違い">
-            <Icon name="near_me" size={22} />
-          </Link>
+          <span className={styles.headerActions}>
+            <Link className={styles.headerLink} href="/notifications/" aria-label="通知">
+              <Icon name="notifications" size={22} />
+            </Link>
+            <Link className={styles.headerLink} href="/encounters/" aria-label="すれ違い">
+              <Icon name="near_me" size={22} />
+            </Link>
+          </span>
         }
       />
 

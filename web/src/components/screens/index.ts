@@ -22,6 +22,8 @@ export { NearbyScreen } from "./NearbyScreen";
 export type { NearbyScreenProps } from "./NearbyScreen";
 export { EncountersScreen } from "./EncountersScreen";
 export type { EncountersScreenProps } from "./EncountersScreen";
+export { NotificationsScreen } from "./NotificationsScreen";
+export type { NotificationsScreenProps } from "./NotificationsScreen";
 export { ProfileScreen } from "./ProfileScreen";
 export type { ProfileScreenProps, StatusSaveResult } from "./ProfileScreen";
 export { MemoryScreen } from "./MemoryScreen";
