@@ -27,10 +27,12 @@ class ProximityService : Service() {
         private const val NOTIFICATION_ID = 2614
 
         fun start(context: Context) {
+            BootState.setStartedByUser(context, true)
             ContextCompat.startForegroundService(context, Intent(context, ProximityService::class.java))
         }
 
         fun stop(context: Context) {
+            BootState.setStartedByUser(context, false)
             context.stopService(Intent(context, ProximityService::class.java))
         }
     }
@@ -44,6 +46,7 @@ class ProximityService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            BootState.setStartedByUser(this, false)
             stopSelf()
             return START_NOT_STICKY
         }

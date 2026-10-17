@@ -50,6 +50,16 @@
             android:name=".proximity.ProximityService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- 再起動後、ユーザーが start していたら FGS を再開する -->
+        <receiver
+            android:name=".proximity.BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <!-- Permissions -->
@@ -59,7 +69,7 @@
     <!-- BLE: Android 11 以下は旧権限 + 位置権限で scan/advertise する -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <!-- neverForLocation は付けない (specification/android/README.md §4) -->
+    <!-- 位置目的フラグ (never for location) は付けない (specification/android/README.md §4) -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
@@ -70,4 +80,6 @@
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- 再起動後にすれ違いモードを再開する (RECEIVE_BOOT_COMPLETED; BootReceiver) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>
