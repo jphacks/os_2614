@@ -1,0 +1,17 @@
+.ring {
+  flex: none;
+  transform: rotate(-90deg);
+}
+
+.track {
+  fill: none;
+  stroke: var(--color-surface-muted);
+  stroke-width: 3;
+}
+
+.bar {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
