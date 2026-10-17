@@ -26,6 +26,7 @@
 | `encounter.daily` | 毎日 21:00 JST | on | 「今日のすれ違い: 12 人」 | P1 |
 | `encounter.weekly` | 毎週月曜 21:00 JST（前週分） | on | 「先週のすれ違い: 48 人」 | P1 |
 | `encounter.monthly` | 毎月 1 日 21:00 JST（前月分） | on | 「10 月のすれ違い: 160 人」 | P1 |
+| `post.new` | グループ / party に新しい投稿があった（投稿者本人・ブロック関係は除く） | on | 「Bob: 今から行きます」 | P1 |
 | `moderation.hidden` | 後からの判定で投稿が非表示になった | on（切れない） | 「投稿が非表示になりました」 | P1 |
 
 - 設定: `PATCH /api/v1/me/settings {"notify": {"group.nearby": false}}`。`user_settings.notify_json` に、既定から変えた種類だけを保存する

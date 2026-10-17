@@ -135,4 +135,7 @@ type FeedSource interface {
 
 - Feed コンポーネントは 1 つで、`source` を受け取って `GET /feed` を呼ぶ
 - ホーム画面は `home`、グループ一覧の画面は `groups`、個別のグループ / Party の画面は `space:{id}`、プロフィール画面は `user:{did}`
-- WebSocket の `post.created`（10 §7.3）は `space:{id}` と `groups` の画面だけが使う。`home` は引っぱって更新する（公開投稿には WebSocket の配信がないため）
+- WebSocket の `post.created`（10 §7.3）は `space:{id}` の画面が使う
+- `home` と `groups` の画面は、ユーザー宛ての `feed.updated`（10 §7.3）を受けて取り直す。配る先は次のとおり
+  - `groups`: グループ（Party は含めない）の instance に投稿が入ったとき（moderation が ok のときだけ）、投稿者以外の未離脱メンバー
+  - `home`: 公開投稿を `public_posts` に入れたとき（作成と Jetstream の取り込みで、内容が変わったときだけ）、投稿者と、`homeAuthors` に投稿者を含むユーザー（自分・フレンド・直近 30 日に revealed な encounter の相手。関係は対称なので、投稿者の `homeAuthors` と同じ集合）
