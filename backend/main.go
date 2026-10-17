@@ -172,7 +172,14 @@ func run() error {
 	app.Use(recover.New())
 	app.Use(cors.New(cors.Config{AllowOrigins: cfg.CORSOrigins}))
 
-	controller.Mount(app, httpx.RequireAuth(cfg.JWTKey, deps.Clock, sessions), httpx.RateLimit(httpx.RateLimitConfig{Redis: rdb, Clock: deps.Clock}), controller.Routes{
+	// CHAIN_DISABLE_RATE_LIMIT=1 で一時的にレート制限を無効化する（開発・負荷確認用）。
+	var rateLimit fiber.Handler
+	if os.Getenv("CHAIN_DISABLE_RATE_LIMIT") == "1" {
+		slog.Warn("rate limit disabled by CHAIN_DISABLE_RATE_LIMIT")
+	} else {
+		rateLimit = httpx.RateLimit(httpx.RateLimitConfig{Redis: rdb, Clock: deps.Clock})
+	}
+	controller.Mount(app, httpx.RequireAuth(cfg.JWTKey, deps.Clock, sessions), rateLimit, controller.Routes{
 		Root: []controller.Registrar{
 			&controller.HealthController{Health: health},
 			&authctrl.OAuthController{Config: cfg, App: oauthApp, Auth: authSvc},
