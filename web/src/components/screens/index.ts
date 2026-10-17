@@ -25,4 +25,4 @@ export type { MemoryScreenProps } from "./MemoryScreen";
 export { StatsScreen } from "./StatsScreen";
 export type { StatsScreenProps } from "./StatsScreen";
 export { SettingsScreen } from "./SettingsScreen";
-export type { SettingsScreenProps } from "./SettingsScreen";
+export type { SettingsScreenProps, AccountDeleteResult } from "./SettingsScreen";

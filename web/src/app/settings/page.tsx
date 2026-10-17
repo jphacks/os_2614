@@ -22,7 +22,7 @@ import { toArea, toSettings } from "@/data/mappers";
 import { useLocation } from "@/device/proximity/hooks";
 import type { Area, Settings } from "@/domain/types";
 import type { AreaDraft, AreaMutationResult } from "@/components/feature/settings";
-import { SettingsScreen } from "@/components/screens";
+import { SettingsScreen, type AccountDeleteResult } from "@/components/screens";
 
 const LOCATION_INTERVAL_MS = 5_000;
 
@@ -86,6 +86,22 @@ export default function SettingsPage() {
 
   const areaItems: Area[] = areas.items.map(toArea);
 
+  const deleteAccount = async (opts: {
+    deletePdsRecords: boolean;
+  }): Promise<AccountDeleteResult> => {
+    const result = await toResult(() =>
+      deleteJson<void>("/me", { query: { deletePdsRecords: opts.deletePdsRecords } }),
+    );
+    switch (result.status) {
+      case "ok":
+        return { status: "ok" };
+      case "unavailable":
+        return { status: "unavailable" };
+      case "error":
+        return { status: "error", message: result.error.message };
+    }
+  };
+
   return (
     <SettingsScreen
       state={save.state}
@@ -106,6 +122,7 @@ export default function SettingsPage() {
         onCreate: createArea,
         onDelete: deleteArea,
       }}
+      onDeleteAccount={deleteAccount}
     />
   );
 }

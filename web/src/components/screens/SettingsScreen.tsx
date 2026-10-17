@@ -67,7 +67,18 @@ export type SettingsScreenProps = {
   onRetry?: () => void;
   /** エリア管理 (07 §4.3)。未指定なら節を出さない。 */
   areas?: AreaManagerProps;
+  /** アカウント削除 (13 §5)。未指定なら節を出さない。 */
+  onDeleteAccount?: (opts: { deletePdsRecords: boolean }) => Promise<AccountDeleteResult>;
 };
+
+/** アカウント削除 (DELETE /me, 13 §5) の結果。 */
+export type AccountDeleteResult =
+  | { status: "ok" }
+  | { status: "unavailable" }
+  | { status: "error"; message: string };
+
+/** 破壊的操作の確認語。これと一致しないかぎり削除できない。 */
+const DELETE_CONFIRM_WORD = "削除";
 
 export function SettingsScreen({
   state,
@@ -77,6 +88,7 @@ export function SettingsScreen({
   onRetrySave,
   onRetry,
   areas,
+  onDeleteAccount,
 }: SettingsScreenProps) {
   return (
     <AppShell>
@@ -114,7 +126,7 @@ export function SettingsScreen({
 
         {areas && <AreaManager {...areas} />}
 
-        <AccountSection />
+        <AccountSection onDeleteAccount={onDeleteAccount} />
       </div>
     </AppShell>
   );
@@ -291,8 +303,16 @@ function ToggleRow({
   );
 }
 
-function AccountSection() {
+type AccountSectionProps = {
+  onDeleteAccount?: (opts: { deletePdsRecords: boolean }) => Promise<AccountDeleteResult>;
+};
+
+function AccountSection({ onDeleteAccount }: AccountSectionProps) {
   const [loggingOut, setLoggingOut] = useState(false);
+  const [deletePdsRecords, setDeletePdsRecords] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const router = useRouter();
   const { logout } = useAuth();
 
@@ -306,6 +326,30 @@ function AccountSection() {
     } finally {
       router.replace(WELCOME_PATH);
     }
+  };
+
+  const canDelete =
+    onDeleteAccount !== undefined && confirm === DELETE_CONFIRM_WORD && !deleting;
+
+  const handleDelete = async () => {
+    if (!onDeleteAccount || !canDelete) {
+      return;
+    }
+    setDeleting(true);
+    setDeleteError(null);
+    const result = await onDeleteAccount({ deletePdsRecords });
+    if (result.status === "ok") {
+      // backend 側でセッションは失効済み。手元を消して welcome へ戻す。
+      await logout();
+      router.replace(WELCOME_PATH);
+      return;
+    }
+    setDeleting(false);
+    setDeleteError(
+      result.status === "unavailable"
+        ? "アカウント削除はまだ利用できません。"
+        : result.message,
+    );
   };
 
   return (
@@ -327,6 +371,61 @@ function AccountSection() {
             {loggingOut ? "ログアウトしています…" : "ログアウト"}
           </Button>
         </div>
+
+        {onDeleteAccount && (
+          <>
+            <div className={styles.divider} />
+            <div className={styles.deleteBlock}>
+              <div className={styles.rowText}>
+                <span className={styles.rowTitle}>アカウントを削除</span>
+                <span className={styles.rowNote}>
+                  プロフィール・すれ違い・参加中のグループなどが消えます。取り消せません
+                </span>
+              </div>
+
+              <ToggleRow
+                title="Bluesky 上の投稿も削除"
+                note="あなたの PDS にある CHAIN のレコードを削除します"
+                checked={deletePdsRecords}
+                onChange={setDeletePdsRecords}
+                disabled={deleting}
+              />
+
+              <div className={styles.field}>
+                <label className={styles.fieldLabel} htmlFor="delete-confirm">
+                  確認のため「{DELETE_CONFIRM_WORD}」と入力してください
+                </label>
+                <input
+                  id="delete-confirm"
+                  className={styles.input}
+                  value={confirm}
+                  disabled={deleting}
+                  onChange={(event) => setConfirm(event.target.value)}
+                />
+              </div>
+
+              <div className={styles.actions}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="delete_forever"
+                  onClick={() => void handleDelete()}
+                  disabled={!canDelete}
+                >
+                  {deleting ? "削除しています…" : "アカウントを削除"}
+                </Button>
+              </div>
+
+              {deleteError && (
+                <div role="alert">
+                  <Notice tone="warning" icon="error">
+                    {deleteError}
+                  </Notice>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </Card>
     </section>
   );
