@@ -8,9 +8,17 @@
 
 import { Suspense, useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { deleteJson, getJson, postJson, toResult } from "@/data/api";
+import { ApiError } from "@/auth/errors";
+import {
+  deleteJson,
+  getJson,
+  patchJson,
+  postJson,
+  toResult,
+} from "@/data/api";
 import type {
   Group as GroupDTO,
+  GroupMember as GroupMemberDTO,
   InstancePost,
   Pin as PinDTO,
 } from "@/data/dto";
@@ -19,9 +27,13 @@ import {
   useResource,
   type ResourceState,
 } from "@/data/hooks";
-import { toGroup, toPin, toPost } from "@/data/mappers";
-import type { Group, Pin, Post } from "@/domain/types";
-import { GroupScreen } from "@/components/screens/GroupScreen";
+import { toGroup, toGroupMember, toPin, toPost } from "@/data/mappers";
+import type { Group, GroupMember, Pin, Post } from "@/domain/types";
+import {
+  GroupScreen,
+  type GroupSaveResult,
+  type GroupUpdateDraft,
+} from "@/components/screens/GroupScreen";
 import {
   useRealtimeEvent,
   useRealtimeResync,
@@ -32,6 +44,21 @@ import {
 function rkeyOf(uri: string): string {
   const parts = uri.split("/");
   return parts[parts.length - 1] ?? "";
+}
+
+/** 400 invalid_request の details.fields (backend) を行ごとのエラー文言に直す。 */
+function readFieldErrors(error: ApiError): Record<string, string> | undefined {
+  const raw = error.details?.fields;
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === "string") {
+      fields[key] = value;
+    }
+  }
+  return Object.keys(fields).length > 0 ? fields : undefined;
 }
 
 /**
@@ -69,6 +96,24 @@ function GroupTimeline() {
   }>(
     (signal) => getJson<{ items: PinDTO[] }>(`/instances/${id}/pins`, { signal }),
     [id],
+  );
+
+  // メンバー一覧はメンバーだけが読める (09 §4)。owner は必ずメンバーなので、
+  // 「非 owner かつ非メンバー」のときだけ取得しない。
+  const canReadMembers =
+    groupState.status === "ok" &&
+    (groupState.data.isMember === true || groupState.data.role === "owner");
+  const { state: membersState, reload: reloadMembers } = useResource<{
+    items: GroupMemberDTO[];
+  }>(
+    (signal) =>
+      canReadMembers
+        ? getJson<{ items: GroupMemberDTO[] }>(
+            `/groups/${encodeURIComponent(id)}/members`,
+            { signal },
+          )
+        : Promise.resolve({ items: [] }),
+    [id, canReadMembers],
   );
 
   const pins = useMemo(
@@ -138,6 +183,31 @@ function GroupTimeline() {
     [id, pinBusy, reloadPins],
   );
 
+  // PATCH /groups/{id} (09 §4)。geofence は変更できないので送らない。
+  // 成功したら group とメンバーを取り直す (変更でタグや一覧が変わりうる)。
+  const saveGroup = useCallback(
+    async (draft: GroupUpdateDraft): Promise<GroupSaveResult> => {
+      const result = await toResult(() =>
+        patchJson<GroupDTO>(`/groups/${encodeURIComponent(id)}`, draft),
+      );
+      switch (result.status) {
+        case "ok":
+          reloadGroup();
+          reloadMembers();
+          return { status: "ok" };
+        case "unavailable":
+          return { status: "unavailable" };
+        case "error":
+          return {
+            status: "error",
+            message: result.error.message,
+            fields: readFieldErrors(result.error),
+          };
+      }
+    },
+    [id, reloadGroup, reloadMembers],
+  );
+
   // 表示中のグループ (Space) を購読し、リアルタイム更新を反映する (10 §7.2)。
   useRealtimeSubscription(id);
   // 再接続後は at-most-once の取りこぼしを補うためタイムラインと Pin を取り直す (10 §7.3)。
@@ -175,6 +245,18 @@ function GroupTimeline() {
   const pinResource: ResourceState<Pin[]> =
     pinsState.status === "ok" ? { status: "ok", data: pins } : pinsState;
 
+  const members: GroupMember[] = useMemo(
+    () =>
+      membersState.status === "ok"
+        ? membersState.data.items.map(toGroupMember)
+        : [],
+    [membersState],
+  );
+  const membersResource: ResourceState<GroupMember[]> =
+    membersState.status === "ok"
+      ? { status: "ok", data: members }
+      : membersState;
+
   return (
     <GroupScreen
       state={groupResource}
@@ -192,6 +274,10 @@ function GroupTimeline() {
       pinError={pinError}
       onPin={(post) => void pinPost(post)}
       onUnpin={(pin) => void unpin(pin)}
+      members={members}
+      membersState={membersResource}
+      membersRetry={reloadMembers}
+      onSave={saveGroup}
     />
   );
 }

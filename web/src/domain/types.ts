@@ -101,12 +101,31 @@ export type Group = {
   id: ID;
   name: string;
   iconUrl?: string;
+  /** 説明文 (service.GroupDetail.description、09 §4)。 */
+  description: string;
   visibility: GroupVisibility;
   memberCount: number;
   /** 例: "GPSエリア" */
   areaLabel: string;
-  /** エリア内にいるときだけ投稿できる */
+  /** エリア内にいるときだけ投稿できる (= backend の isMember) */
   insideArea: boolean;
+  /** 閲覧者の役割 (owner / member)。メンバーでなければ undefined (09 §4)。 */
+  role?: string;
+  /** 招待制のときに必要な承認人数 (09 §4)。 */
+  inviteQuorum?: number;
+};
+
+/** グループのメンバー (service.MemberItem、09 §4)。プロフィールの要約だけを持つ。 */
+export type GroupMember = {
+  did: DID;
+  handle: string;
+  /** 表示名。displayName || handle から導出する */
+  name: string;
+  avatarUrl?: string;
+  tone: AvatarTone;
+  /** "owner" | "member"。 */
+  role: string;
+  joinedAt: Timestamp;
 };
 
 /** メディア (service.MediaItem、10 §4.4)。url / thumbUrl は署名付き URL。 */
