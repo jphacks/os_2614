@@ -14,4 +14,7 @@ ext {
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
     playServicesLocationVersion = '21.3.0'
+    roomVersion = '2.8.5'
+    securityCryptoVersion = '1.1.0'
+    kspVersion = '2.2.21-2.0.5'
 }

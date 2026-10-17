@@ -149,6 +149,28 @@ test.describe("encounters", () => {
     await expect(page.getByText("アリス", { exact: true })).toBeVisible();
   });
 
+  test("links each encounter to the profile with the encounter and relation", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    await mockApi(page, async (route, request) => {
+      if (apiPath(request.url()) === "/api/v1/encounters") {
+        await fulfillJson(route, 200, PAGE_ONE);
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/encounters/");
+
+    const link = page.getByRole("link", { name: /アリス/ });
+    await expect(link).toHaveAttribute("href", /encounter=e1/);
+    await expect(link).toHaveAttribute("href", /relation=friend/);
+  });
+
   test("shows the empty explanation when there are no encounters", async ({
     page,
   }) => {

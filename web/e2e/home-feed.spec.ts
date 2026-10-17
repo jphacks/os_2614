@@ -145,7 +145,54 @@ test.describe("home feed", () => {
     await expect(page.getByText("はじめまして")).toBeVisible();
   });
 
-  test("creates a standalone public post via POST /feed/posts", async ({ page }) => {
+  test("switches to the groups source and labels each post with its space", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    const sources: (string | null)[] = [];
+    await mockApi(page, async (route, request) => {
+      if (apiPath(request.url()) === "/api/v1/feed") {
+        const source = new URL(request.url()).searchParams.get("source");
+        sources.push(source);
+        await fulfillJson(
+          route,
+          200,
+          source === "groups"
+            ? {
+                items: [
+                  {
+                    kind: "instance_post",
+                    uri: "at://did:web:chain.i32.jp/space/g1/did:plc:carol/jp.i32.chain.instance.post/3",
+                    space: { id: "g1", type: "group", name: "情報工学科 3年" },
+                    author: { did: "did:plc:carol", handle: "carol.bsky.social", displayName: "キャロル" },
+                    text: "3限おわった",
+                    createdAt: "2026-10-05T10:00:00Z",
+                  },
+                ],
+              }
+            : PAGE_ONE,
+        );
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/home/");
+    await expect(page.getByText("はじめまして")).toBeVisible();
+
+    await page.getByRole("radio", { name: "グループ" }).click();
+
+    await expect(page.getByText("3限おわった")).toBeVisible();
+    await expect(page.getByRole("link", { name: "情報工学科 3年" })).toHaveAttribute(
+      "href",
+      "/group/?id=g1",
+    );
+    await expect(page.getByText("はじめまして")).toHaveCount(0);
+    expect(sources).toEqual(["home", "groups"]);
+  });
+
+  test("creates a standalone public post from compose via POST /feed/posts", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
 
     let body: unknown;
@@ -153,6 +200,10 @@ test.describe("home feed", () => {
       const method = request.method();
       const pathname = apiPath(request.url());
       if (pathname === "/api/v1/feed" && method === "GET") {
+        await fulfillJson(route, 200, { items: [] });
+        return;
+      }
+      if (pathname === "/api/v1/instances") {
         await fulfillJson(route, 200, { items: [] });
         return;
       }
@@ -170,10 +221,18 @@ test.describe("home feed", () => {
     });
 
     await page.goto("/home/");
-    await page.getByLabel("公開投稿の本文").fill("公開テスト");
-    await page.getByRole("button", { name: "公開する" }).click();
+    await page.getByRole("button", { name: "投稿する" }).click();
+    await expect(page).toHaveURL(/\/compose\/\?target=public$/);
+
+    await expect(page.getByRole("button", { name: "公開", exact: true, pressed: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.getByLabel("投稿本文").fill("公開テスト");
+    await page.getByRole("button", { name: "投稿する" }).click();
 
     await expect.poll(() => body).toEqual({ text: "公開テスト" });
+    await expect(page).toHaveURL(/\/home\/?$/);
   });
 
   test("shows the empty explanation when the feed is empty", async ({ page }) => {

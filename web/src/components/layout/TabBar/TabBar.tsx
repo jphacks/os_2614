@@ -5,7 +5,7 @@ import { Icon } from "@/components/ui/Icon";
 import styles from "./TabBar.module.css";
 import { PressableLink } from "@/components/ui/Pressable";
 
-export type TabKey = "nearby" | "party" | "friends" | "profile";
+export type TabKey = "nearby" | "party" | "feed" | "friends" | "profile";
 
 type TabDef = {
   key: TabKey;
@@ -17,6 +17,7 @@ type TabDef = {
 const TABS: TabDef[] = [
   { key: "nearby", label: "ちかく", icon: "hub", href: "/" },
   { key: "party", label: "パーティ", icon: "celebration", href: "/party/" },
+  { key: "feed", label: "フィード", icon: "dynamic_feed", href: "/home/" },
   { key: "friends", label: "友達", icon: "group", href: "/friends/" },
   { key: "profile", label: "プロフィール", icon: "person", href: "/profile/" },
 ];

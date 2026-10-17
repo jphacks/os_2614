@@ -114,21 +114,39 @@ type MockOptions = {
   profileStatus?: number;
   /** /me の応答。自分自身を開くテストで上書きする。 */
   me?: unknown;
+  /**
+   * POST /friends/requests (07 §2.2) の応答。既定は 201 と {}。
+   * 400 以上のときの本文は既存と同じ { error: { code, message } } 形式。
+   */
+  friendRequest?: { status: number; body?: unknown };
 };
 
 /**
- * /users/{did}、/feed、/me をモックする。feedSources には
- * GET /feed の source クエリを到着順に積む。
+ * /users/{did}、/feed、/me、POST /friends/requests をモックする。
+ * feedSources には GET /feed の source クエリを、friendRequests には
+ * POST /friends/requests の JSON body を到着順に積む。
  */
 async function mockProfileApi(
   page: Page,
   opts: MockOptions = {},
-): Promise<{ feedSources: string[] }> {
+): Promise<{ feedSources: string[]; friendRequests: unknown[] }> {
   const feedSources: string[] = [];
+  const friendRequests: unknown[] = [];
   await mockApi(page, async (route, request) => {
     const url = new URL(request.url());
     const path = apiPath(request.url());
 
+    if (path === "/api/v1/friends/requests" && request.method() === "POST") {
+      friendRequests.push(request.postDataJSON());
+      const status = opts.friendRequest?.status ?? 201;
+      const body =
+        opts.friendRequest?.body ??
+        (status >= 400
+          ? { error: { code: "bad_request", message: "申請を送れませんでした" } }
+          : {});
+      await fulfillJson(route, status, body);
+      return;
+    }
     if (path === "/api/v1/me") {
       await fulfillJson(route, 200, opts.me ?? ME);
       return;
@@ -153,7 +171,12 @@ async function mockProfileApi(
       error: { code: "not_found", message: "not found" },
     });
   });
-  return { feedSources };
+  return { feedSources, friendRequests };
+}
+
+/** プロフィールの主要部分 (タブバーを含まない <main>)。 */
+function profileMain(page: Page) {
+  return page.locator("main");
 }
 
 test.describe("user profile", () => {
@@ -262,5 +285,105 @@ test.describe("user profile", () => {
     const link = page.getByRole("link", { name: "自分のプロフィール" });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", /^\/profile\/?$/);
+  });
+
+  test("sends the encounter as the via ref and switches to 申請済み", async ({
+    page,
+  }) => {
+    const { friendRequests } = await mockProfileApi(page);
+
+    await page.goto(
+      `/users/?did=${TARGET_DID}&encounter=enc-1&relation=none`,
+    );
+
+    const button = page.getByRole("button", { name: "友達申請" });
+    await expect(button).toBeVisible();
+    await button.click();
+
+    await expect.poll(() => friendRequests.length).toBe(1);
+    expect(friendRequests[0]).toEqual({
+      did: TARGET_DID,
+      via: "encounter",
+      viaRef: "enc-1",
+    });
+
+    await expect(page.getByRole("button", { name: "申請済み" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "友達申請" })).toHaveCount(0);
+  });
+
+  test("shows the requested relation as a disabled 申請済み", async ({ page }) => {
+    await mockProfileApi(page);
+
+    await page.goto(
+      `/users/?did=${TARGET_DID}&encounter=enc-1&relation=requested`,
+    );
+
+    await expect(page.getByRole("button", { name: "申請済み" })).toBeDisabled();
+  });
+
+  test("shows the incoming relation as a link to the requests screen", async ({
+    page,
+  }) => {
+    await mockProfileApi(page);
+
+    await page.goto(
+      `/users/?did=${TARGET_DID}&encounter=enc-1&relation=incoming`,
+    );
+
+    const link = profileMain(page).getByRole("link", {
+      name: /この人から友達申請が届いています/,
+    });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", "/friends/requests/");
+  });
+
+  test("shows a 友達 tag for the friend relation", async ({ page }) => {
+    await mockProfileApi(page);
+
+    await page.goto(
+      `/users/?did=${TARGET_DID}&encounter=enc-1&relation=friend`,
+    );
+
+    await expect(
+      profileMain(page).getByText("友達", { exact: true }),
+    ).toBeVisible();
+  });
+
+  test("hides the request UI when the encounter query is missing", async ({
+    page,
+  }) => {
+    await mockProfileApi(page);
+
+    await page.goto(`/users/?did=${TARGET_DID}&relation=none`);
+
+    await expect(page.getByText(PROFILE.description)).toBeVisible();
+    await expect(page.getByRole("button", { name: "友達申請" })).toHaveCount(0);
+  });
+
+  test("shows 友達申請はまだ使えません when POST is 501", async ({ page }) => {
+    await mockProfileApi(page, { friendRequest: { status: 501 } });
+
+    await page.goto(
+      `/users/?did=${TARGET_DID}&encounter=enc-1&relation=none`,
+    );
+    await page.getByRole("button", { name: "友達申請" }).click();
+
+    await expect(page.getByText("友達申請はまだ使えません")).toBeVisible();
+  });
+
+  test("shows the error message when POST fails with 400", async ({ page }) => {
+    await mockProfileApi(page, {
+      friendRequest: {
+        status: 400,
+        body: { error: { code: "invalid_request", message: "bad" } },
+      },
+    });
+
+    await page.goto(
+      `/users/?did=${TARGET_DID}&encounter=enc-1&relation=none`,
+    );
+    await page.getByRole("button", { name: "友達申請" }).click();
+
+    await expect(page.getByText("bad")).toBeVisible();
   });
 });

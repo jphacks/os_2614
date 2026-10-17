@@ -19,7 +19,6 @@ import { Icon } from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/IconButton";
 import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 import { Notice } from "@/components/ui/Notice";
-import { Toggle } from "@/components/ui/Toggle";
 import styles from "./ComposeScreen.module.css";
 import { Pressable } from "@/components/ui/Pressable";
 
@@ -44,6 +43,8 @@ export type ComposeScreenProps = {
   targetsState: ResourceState<PostTarget[]>;
   /** URL (?target=type:spaceId) から復元する初期送信先。 */
   initialSpaceIds?: string[];
+  /** URL (?target=public) から開いたとき、公開だけを初期の送信先にする。 */
+  initialPublic?: boolean;
   /** 添付。未アップロードのものは id を持たない (todo 15)。 */
   attachments?: ComposeAttachment[];
   /** POST /posts の送信中か。 */
@@ -66,9 +67,14 @@ export type ComposeScreenProps = {
   onCancel?: () => void;
 };
 
-function hintFor(targets: PostTarget[]): string {
+function hintFor(targets: PostTarget[], alsoPublic: boolean): string {
   if (targets.length === 0) {
-    return "送信先を 1〜5 件選んでください";
+    return alsoPublic
+      ? "フレンドやすれ違った人のホームに公開で表示されます"
+      : "送信先を選んでください";
+  }
+  if (alsoPublic) {
+    return "選んだ Space のタイムラインと、公開のホームに表示されます";
   }
   if (targets.length > 1) {
     return "選んだ Space のタイムラインに表示されます";
@@ -87,6 +93,7 @@ export function ComposeScreen({
   me,
   targetsState,
   initialSpaceIds,
+  initialPublic = false,
   attachments = [],
   submitting = false,
   uploading = false,
@@ -109,7 +116,7 @@ export function ComposeScreen({
   // (targets は非同期に届くので、effect で setState せず描画時に決める)。
   const [override, setOverride] = useState<string[] | null>(null);
   const [body, setBody] = useState("");
-  const [alsoPublic, setAlsoPublic] = useState(false);
+  const [alsoPublic, setAlsoPublic] = useState(initialPublic);
   const [menuOpen, setMenuOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -122,8 +129,11 @@ export function ComposeScreen({
     if (initial.length > 0) {
       return initial;
     }
+    if (initialPublic) {
+      return [];
+    }
     return targets.length > 0 ? [targets[0].spaceId] : [];
-  }, [override, targets, initialSpaceIds]);
+  }, [override, targets, initialSpaceIds, initialPublic]);
 
   const selectedTargets = useMemo(
     () => selectedIds
@@ -164,7 +174,7 @@ export function ComposeScreen({
     (body.length > 0 || attachments.length > 0 || selectedIds.length === 0);
 
   const canPost =
-    validation.ok && targets.length > 0 && !submitting && !uploading && !consentRequired;
+    validation.ok && !submitting && !uploading && !consentRequired;
 
   const submit = () => {
     if (!canPost) {
@@ -181,14 +191,23 @@ export function ComposeScreen({
     }
   };
 
+  // 公開は送信先の 1 つとして数える (表示上だけ。POST の spaceIds には入らない)。
+  const selectedNames = [
+    ...(alsoPublic ? ["公開"] : []),
+    ...selectedTargets.map((target) => target.name),
+  ];
   const selectorLabel =
-    selectedTargets.length === 0
+    selectedNames.length === 0
       ? "送信先を選ぶ"
-      : selectedTargets.length === 1
-        ? selectedTargets[0].name
-        : `${selectedTargets[0].name} 他${selectedTargets.length - 1}件`;
+      : selectedNames.length === 1
+        ? selectedNames[0]
+        : `${selectedNames[0]} 他${selectedNames.length - 1}件`;
   const selectorIcon =
-    selectedTargets.length === 1 ? iconFor(selectedTargets[0]) : "hub";
+    selectedNames.length !== 1
+      ? "hub"
+      : alsoPublic
+        ? "public"
+        : iconFor(selectedTargets[0]);
 
   const remaining = HINT_LENGTH - body.length;
 
@@ -226,25 +245,8 @@ export function ComposeScreen({
           </Card>
         )}
 
-        {targetsState.status === "unavailable" && (
-          <Card padding="md" className={styles.stateCard}>
-            投稿先はまだ利用できません
-          </Card>
-        )}
-
-        {targetsState.status === "empty" && (
-          <Card padding="md" className={styles.stateCard}>
-            投稿できる送信先がありません
-          </Card>
-        )}
-
-        {targetsState.status === "ok" && targets.length === 0 && (
-          <Card padding="md" className={styles.stateCard}>
-            投稿できる送信先がありません
-          </Card>
-        )}
-
-        {targetsState.status === "ok" && targets.length > 0 && (
+        {/* Space が無い・取れないときも、公開だけの投稿はできる。 */}
+        {targetsState.status !== "loading" && (
           <>
             <div className={styles.targetRow}>
               {me && <Avatar user={me} size={40} />}
@@ -256,6 +258,17 @@ export function ComposeScreen({
                 />
                 {menuOpen && (
                   <div className={styles.menu} role="menu">
+                    <Pressable
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={alsoPublic}
+                      className={styles.menuItem}
+                      onClick={() => setAlsoPublic((value) => !value)}
+                    >
+                      <Icon name="public" size={18} />
+                      <span className={styles.menuName}>公開</span>
+                      {alsoPublic && <Icon name="check" size={18} />}
+                    </Pressable>
                     {targets.map((item) => (
                       <Pressable
                         key={item.spaceId}
@@ -314,6 +327,13 @@ export function ComposeScreen({
             <div className={styles.targets}>
               <span className={styles.caption}>送信先</span>
               <div className={styles.chipRow}>
+                <Chip
+                  label="公開"
+                  icon="public"
+                  selected={alsoPublic}
+                  surface="surface"
+                  onClick={() => setAlsoPublic((value) => !value)}
+                />
                 {targets.map((item) => (
                   <Chip
                     key={item.spaceId}
@@ -325,21 +345,7 @@ export function ComposeScreen({
                   />
                 ))}
               </div>
-              <p className={styles.hint}>{hintFor(selectedTargets)}</p>
-            </div>
-
-            <div className={styles.optionRow}>
-              <div className={styles.optionText}>
-                <span className={styles.optionTitle}>公開投稿も作成</span>
-                <span className={styles.optionDesc}>
-                  プロフィールの公開フィードにも同じ本文を投稿します
-                </span>
-              </div>
-              <Toggle
-                checked={alsoPublic}
-                onChange={setAlsoPublic}
-                label="公開投稿も作成"
-              />
+              <p className={styles.hint}>{hintFor(selectedTargets, alsoPublic)}</p>
             </div>
 
             {consentRequired && (

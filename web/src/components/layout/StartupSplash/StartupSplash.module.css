@@ -1,0 +1,62 @@
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  animation: fade var(--splash-total, 1900ms) ease-in forwards;
+}
+
+.character {
+  width: min(52vw, 220px);
+  height: auto;
+  overflow: visible;
+}
+
+.blob {
+  fill: #d9d9d9;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0);
+  animation: pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.b1 { animation-delay: 80ms; }
+.b2 { animation-delay: 200ms; }
+.b3 { animation-delay: 320ms; }
+.b4 { animation-delay: 440ms; }
+
+.eyes {
+  fill: #ffffff;
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation:
+    appear 200ms ease-out 800ms forwards,
+    blink 380ms ease-in-out 1150ms;
+}
+
+@keyframes pop {
+  to { transform: scale(1); }
+}
+
+@keyframes appear {
+  to { opacity: 1; }
+}
+
+@keyframes blink {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.1); }
+}
+
+/* 1500ms まで表示を保ち、残りでフェードアウト。 */
+@keyframes fade {
+  0%, 78% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blob { transform: scale(1); animation: none; }
+  .eyes { opacity: 1; animation: none; }
+}

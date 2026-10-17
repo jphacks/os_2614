@@ -2,7 +2,7 @@
 // 画面（ComposeScreen）と e2e が同じ規則を見るように、検証と body 生成はここだけに置く。
 //
 // 規則は backend `internal/controller/instance.go` の `createPostRequest.Validate` に合わせる:
-//   - spaceIds は 1〜5 件
+//   - spaceIds は 1〜5 件（alsoPublic なら 0 件も可。そのときは POST /feed/posts の単独公開投稿、17 §2.1）
 //   - media は 4 件まで、かつ spaceIds が 1 件のときだけ
 //   - text が空なら media が必要
 //   - text は 2000 ルーンまで（Go の utf8.RuneCountInString と同じ数え方）
@@ -76,9 +76,38 @@ export function runeCount(text: string): number {
   return Array.from(text).length;
 }
 
+/** 単独の公開投稿の本文上限（17 §2.1 の 1000 grapheme）。 */
+export const MAX_PUBLIC_GRAPHEMES = 1000;
+
+/** grapheme 数。Intl.Segmenter が無い環境ではルーン数で近似する。 */
+export function graphemeCount(text: string): number {
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter("ja", { granularity: "grapheme" });
+    return Array.from(segmenter.segment(text)).length;
+  }
+  return runeCount(text);
+}
+
+/** Space を選ばず公開だけで投稿する（POST /feed/posts、17 §2.1）か。 */
+export function isPublicOnly(input: ComposeSubmitInput): boolean {
+  return input.alsoPublic && input.spaceIds.length === 0;
+}
+
 /** 送信可能かを検証する。サーバの 400 になる前にクライアントで拒否する。 */
 export function validateComposeInput(input: ComposeSubmitInput): ComposeValidation {
   const { spaceIds, text, attachments } = input;
+  if (isPublicOnly(input)) {
+    if (attachments.length > 0) {
+      return { ok: false, message: "公開だけの投稿には画像を付けられません" };
+    }
+    if (text.trim().length === 0) {
+      return { ok: false, message: "本文が必要です" };
+    }
+    if (graphemeCount(text) > MAX_PUBLIC_GRAPHEMES) {
+      return { ok: false, message: "公開投稿は 1000 文字までです" };
+    }
+    return { ok: true };
+  }
   if (spaceIds.length < 1 || spaceIds.length > 5) {
     return { ok: false, message: "送信先は 1〜5 件で選んでください" };
   }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import type { FeedPost } from "@/domain/types";
+import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import type { FeedPost, FeedSpace } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { relativeTime } from "@/data/format";
 import { useNow } from "@/hooks/useNow";
@@ -10,97 +11,73 @@ import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Fab } from "@/components/ui/Fab";
 import { Icon } from "@/components/ui/Icon";
 import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
-import { Notice } from "@/components/ui/Notice";
+import { PressableLink } from "@/components/ui/Pressable";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import styles from "./HomeFeedScreen.module.css";
 
-/** POST /feed/posts (17 §2.1) の結果。 */
-export type PublicPostResult =
-  | { status: "ok" }
-  | { status: "unavailable" }
-  | { status: "error"; message: string };
+/** フィードの取得元 (17 §3.1)。ホームは公開投稿、グループは参加中グループの投稿。 */
+export type FeedSource = "home" | "groups";
+
+const SOURCES: { value: FeedSource; label: string }[] = [
+  { value: "home", label: "ホーム" },
+  { value: "groups", label: "グループ" },
+];
+
+const SUBTITLES: Record<FeedSource, string> = {
+  home: "フレンドやすれ違った人の公開投稿",
+  groups: "参加中のグループの投稿",
+};
+
+const EMPTY_DESCRIPTIONS: Record<FeedSource, string> = {
+  home: "フレンドやすれ違った人の公開投稿がここに並びます。",
+  groups: "参加中のグループに投稿されると、ここに並びます。",
+};
 
 export type HomeFeedScreenProps = {
-  /** GET /feed?source=home (17 §3.1) の取得状態。 */
+  source: FeedSource;
+  onSourceChange: (source: FeedSource) => void;
+  /** GET /feed?source={source} (17 §3.1) の取得状態。 */
   state: ResourceState<FeedPost[]>;
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
-  /** 単独の公開投稿を作る。未指定なら投稿欄を出さない。 */
-  onCreatePublicPost?: (text: string) => Promise<PublicPostResult>;
 };
 
+function spaceHref(space: FeedSpace): string {
+  return space.type === "party"
+    ? "/party/"
+    : `/group/?id=${encodeURIComponent(space.id)}`;
+}
+
 export function HomeFeedScreen({
+  source,
+  onSourceChange,
   state,
   hasMore = false,
   loadingMore = false,
   onLoadMore,
   onRetry,
-  onCreatePublicPost,
 }: HomeFeedScreenProps) {
+  const router = useRouter();
   const now = useNow(60_000);
   const posts = state.status === "ok" ? state.data : [];
-  const [draft, setDraft] = useState("");
-  const [posting, setPosting] = useState(false);
-  const [postError, setPostError] = useState<string | null>(null);
 
-  const submit = async () => {
-    if (!onCreatePublicPost || posting) {
-      return;
-    }
-    const text = draft.trim();
-    if (text.length === 0) {
-      return;
-    }
-    setPostError(null);
-    setPosting(true);
-    const result = await onCreatePublicPost(text);
-    setPosting(false);
-    if (result.status === "ok") {
-      setDraft("");
-      return;
-    }
-    setPostError(
-      result.status === "unavailable"
-        ? "公開投稿はまだ利用できません。"
-        : result.message,
-    );
+  // ホームからは公開だけ、グループからは既定の Space を送信先にして Compose を開く。
+  const goCompose = () => {
+    router.push(source === "home" ? "/compose/?target=public" : "/compose/");
   };
 
   return (
-    <AppShell>
-      <ScreenHeader back="/" title="ホーム" subtitle="みんなの公開投稿" />
+    <AppShell tab="feed">
+      <ScreenHeader title="フィード" subtitle={SUBTITLES[source]} />
 
-      {onCreatePublicPost && (
-        <div className={styles.composer}>
-          <textarea
-            className={styles.composerInput}
-            aria-label="公開投稿の本文"
-            placeholder="公開で投稿する…"
-            value={draft}
-            maxLength={1000}
-            disabled={posting}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <div className={styles.composerActions}>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => void submit()}
-              disabled={posting || draft.trim().length === 0}
-            >
-              {posting ? "投稿中…" : "公開する"}
-            </Button>
-          </div>
-          {postError && (
-            <Notice tone="warning" icon="error">
-              {postError}
-            </Notice>
-          )}
-        </div>
-      )}
+      <div className={styles.gutter}>
+        <SegmentedControl options={SOURCES} value={source} onChange={onSourceChange} />
+      </div>
 
       {state.status === "ok" ? (
         posts.length > 0 ? (
@@ -109,6 +86,15 @@ export function HomeFeedScreen({
               {posts.map((post) => (
                 <li key={post.uri}>
                   <Card padding="md" className={styles.item}>
+                    {post.space && (
+                      <PressableLink className={styles.space} href={spaceHref(post.space)}>
+                        <Icon
+                          name={post.space.type === "party" ? "celebration" : "hub"}
+                          size={14}
+                        />
+                        <span className={styles.spaceName}>{post.space.name}</span>
+                      </PressableLink>
+                    )}
                     <div className={styles.head}>
                       <Avatar user={post.author} size={32} />
                       <div className={styles.headText}>
@@ -146,7 +132,7 @@ export function HomeFeedScreen({
           <HomeState
             icon="dynamic_feed"
             title="まだ投稿がありません"
-            description="フレンドやすれ違った人の公開投稿がここに並びます。"
+            description={EMPTY_DESCRIPTIONS[source]}
           />
         )
       ) : state.status === "loading" ? (
@@ -167,10 +153,12 @@ export function HomeFeedScreen({
       ) : (
         <HomeState
           icon="construction"
-          title="ホームは準備中です"
+          title="フィードは準備中です"
           description="この機能はまだ提供されていません。"
         />
       )}
+
+      <Fab label="投稿する" onClick={goCompose} />
     </AppShell>
   );
 }

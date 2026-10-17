@@ -303,6 +303,7 @@ func NewApp(e *Env) *fiber.App {
 		AppName:      "chain-test",
 		ErrorHandler: httpx.ErrorHandler,
 		BodyLimit:    16 << 20,
+		UnescapePath: true,
 	})
 
 	rateLimit := httpx.RateLimitConfig{Redis: e.Redis, Clock: e.Clock}

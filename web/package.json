@@ -17,7 +17,8 @@
     "emulator": "bash scripts/emulator.sh",
     "device": "bash scripts/device.sh",
     "test:e2e": "playwright test",
-    "test:e2e:android": "bash scripts/device.sh cdp 9222 && node e2e/android-webview.mjs"
+    "test:e2e:android": "bash scripts/device.sh cdp 9222 && node e2e/android-webview.mjs",
+    "test:android:native": "bash scripts/android-native-test.sh"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

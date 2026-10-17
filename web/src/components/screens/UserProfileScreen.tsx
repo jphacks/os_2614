@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import type { Profile } from "@/domain/types";
+import { useState, type ReactNode } from "react";
+import type { EncounterRelation, Profile } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
@@ -14,6 +14,12 @@ import { List, ListItem } from "@/components/ui/List";
 import { Tag } from "@/components/ui/Tag";
 import styles from "./UserProfileScreen.module.css";
 
+/** 友達申請 (POST /friends/requests、07 §2.2) の結果。unavailable はエンドポイント未対応。 */
+export type FriendRequestResult =
+  | { status: "ok" }
+  | { status: "unavailable" }
+  | { status: "error"; message: string };
+
 export type UserProfileScreenProps = {
   /** クエリ `?did=` の対象 DID。公開投稿の取得にも使う。 */
   did: string;
@@ -21,6 +27,10 @@ export type UserProfileScreenProps = {
   state: ResourceState<Profile>;
   /** GET /me の DID が対象と一致したときだけ true。判定できなければ false。 */
   isSelf?: boolean;
+  /** すれ違い一覧から渡された相手との関係。無ければ申請 UI を出さない。 */
+  relation?: EncounterRelation;
+  /** 友達申請を送る。すれ違いの ID が分かるときだけ渡す。 */
+  onRequestFriend?: () => Promise<FriendRequestResult>;
   /** error 状態の再取得。useResource の reload を渡す。 */
   onRetry?: () => void;
 };
@@ -33,6 +43,8 @@ export function UserProfileScreen({
   did,
   state,
   isSelf = false,
+  relation,
+  onRequestFriend,
   onRetry,
 }: UserProfileScreenProps) {
   return (
@@ -40,7 +52,13 @@ export function UserProfileScreen({
       <ScreenHeader title="プロフィール" back />
       <div className={styles.content}>
         {state.status === "ok" ? (
-          <ProfileBody user={state.data} did={did} isSelf={isSelf} />
+          <ProfileBody
+            user={state.data}
+            did={did}
+            isSelf={isSelf}
+            relation={relation}
+            onRequestFriend={onRequestFriend}
+          />
         ) : state.status === "loading" ? (
           <ProfileSkeleton />
         ) : state.status === "error" ? (
@@ -73,9 +91,33 @@ type ProfileBodyProps = {
   user: Profile;
   did: string;
   isSelf: boolean;
+  relation?: EncounterRelation;
+  onRequestFriend?: () => Promise<FriendRequestResult>;
 };
 
-function ProfileBody({ user, did, isSelf }: ProfileBodyProps) {
+function ProfileBody({
+  user,
+  did,
+  isSelf,
+  relation,
+  onRequestFriend,
+}: ProfileBodyProps) {
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const send = async () => {
+    if (!onRequestFriend || sending) return;
+    setSending(true);
+    setMessage(null);
+    const result = await onRequestFriend();
+    setSending(false);
+    if (result.status === "unavailable") {
+      setMessage("友達申請はまだ使えません");
+    } else if (result.status === "error") {
+      setMessage(result.message);
+    }
+  };
+
   return (
     <>
       <div className={styles.bannerWrap}>
@@ -96,13 +138,59 @@ function ProfileBody({ user, did, isSelf }: ProfileBodyProps) {
         </span>
       </div>
 
-      <div className={styles.identity}>
-        <div className={styles.nameRow}>
-          <h1 className={styles.name}>{user.name}</h1>
-          {user.status && <Tag label={user.status} />}
+      <div className={styles.identityRow}>
+        <div className={styles.identity}>
+          <div className={styles.nameRow}>
+            <h1 className={styles.name}>{user.name}</h1>
+            {user.status && <Tag label={user.status} />}
+          </div>
+          {user.handle && <p className={styles.handle}>@{user.handle}</p>}
         </div>
-        {user.handle && <p className={styles.handle}>@{user.handle}</p>}
+        {!isSelf && relation === "none" && onRequestFriend && (
+          <div className={styles.friendAction}>
+            <Button
+              variant="primary"
+              size="sm"
+              icon="person_add"
+              onClick={send}
+              disabled={sending}
+            >
+              {sending ? "送信中…" : "友達申請"}
+            </Button>
+          </div>
+        )}
+        {!isSelf && relation === "requested" && (
+          <div className={styles.friendAction}>
+            <Button variant="secondary" size="sm" icon="schedule" disabled>
+              申請済み
+            </Button>
+          </div>
+        )}
+        {!isSelf && relation === "friend" && (
+          <div className={styles.friendAction}>
+            <Tag label="友達" />
+          </div>
+        )}
       </div>
+
+      {!isSelf && message && (
+        <p className={styles.friendActionMessage} role="alert">
+          {message}
+        </p>
+      )}
+
+      {!isSelf && relation === "incoming" && (
+        <Card padding="md">
+          <List>
+            <ListItem
+              leading={<Icon name="mail" size={22} />}
+              title="この人から友達申請が届いています"
+              href="/friends/requests/"
+              trailing={<Icon name="chevron_right" size={20} />}
+            />
+          </List>
+        </Card>
+      )}
 
       {user.bio && <p className={styles.bio}>{user.bio}</p>}
 

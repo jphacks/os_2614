@@ -78,9 +78,6 @@ export function NearbyScreen({
         subtitle="近くのグループ"
         trailing={
           <span className={styles.headerActions}>
-            <PressableLink className={styles.headerLink} href="/home/" aria-label="ホーム">
-              <Icon name="public" size={22} />
-            </PressableLink>
             <PressableLink className={styles.headerLink} href="/notifications/" aria-label="通知">
               <Icon name="notifications" size={22} />
             </PressableLink>

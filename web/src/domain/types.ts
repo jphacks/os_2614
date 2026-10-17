@@ -187,6 +187,15 @@ export type FeedPost = {
   text: string;
   createdAt: Timestamp;
   attachments: Media[];
+  /** instance の投稿のときだけ、どの Space の投稿か (17 §3.2)。 */
+  space?: FeedSpace;
+};
+
+/** フィードの要素が属する Space (17 §3.2)。 */
+export type FeedSpace = {
+  id: string;
+  type: "group" | "party";
+  name: string;
 };
 
 /** party の段階 (08 §4.2)。 */

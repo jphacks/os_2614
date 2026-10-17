@@ -161,6 +161,8 @@ func run() error {
 		AppName:      "chain",
 		ErrorHandler: httpx.ErrorHandler,
 		BodyLimit:    16 << 20, // メディアの上限 15 MB（10 §4.4）に余裕を持たせる
+		// フロントは DID を encodeURIComponent して送る（did%3Aplc%3A...）。:did パラメータを復号して受ける。
+		UnescapePath: true,
 		// Cloudflare Tunnel 経由では接続元がすべて手元の cloudflared（ループバック）に見える。
 		// ループバックから来たリクエストに限り CF-Connecting-IP を信頼し、c.IP() を本来の接続元にする
 		// （/auth/* の IP 単位のレート制限が全ユーザーで共有されないように。01 §6、02 §5）。

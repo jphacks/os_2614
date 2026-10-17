@@ -292,6 +292,13 @@ export function toFeedPost(dto: Maybe<FeedItemDTO>): FeedPost {
     text: dto?.text ?? "",
     createdAt: dto?.createdAt ?? "",
     attachments: (dto?.media ?? []).map(toMedia),
+    space: dto?.space
+      ? {
+          id: dto.space.id ?? "",
+          type: dto.space.type === "party" ? "party" : "group",
+          name: dto.space.name ?? "",
+        }
+      : undefined,
   };
 }
 

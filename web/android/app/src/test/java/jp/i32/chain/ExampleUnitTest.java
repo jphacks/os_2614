@@ -1,4 +1,4 @@
-package com.getcapacitor.myapp;
+package jp.i32.chain;
 
 import static org.junit.Assert.*;
 

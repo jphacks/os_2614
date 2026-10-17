@@ -42,7 +42,7 @@ export type { BlocksScreenProps, BlockAddResult } from "./BlocksScreen";
 export { ConsentScreen } from "./ConsentScreen";
 export type { ConsentScreenProps, ConsentState } from "./ConsentScreen";
 export { HomeFeedScreen } from "./HomeFeedScreen";
-export type { HomeFeedScreenProps, PublicPostResult } from "./HomeFeedScreen";
+export type { FeedSource, HomeFeedScreenProps } from "./HomeFeedScreen";
 export { ProfileScreen } from "./ProfileScreen";
 export type { ProfileScreenProps, StatusSaveResult } from "./ProfileScreen";
 export { MemoryScreen } from "./MemoryScreen";

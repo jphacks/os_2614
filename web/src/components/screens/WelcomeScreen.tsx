@@ -2,17 +2,15 @@
 
 import { useState } from "react";
 import { useAuth } from "@/auth";
-import { Icon } from "@/components/ui/Icon";
 import { Notice } from "@/components/ui/Notice";
 import { Pressable } from "@/components/ui/Pressable";
 import styles from "./WelcomeScreen.module.css";
 
 export type WelcomeScreenProps = {
   onBluesky?: () => void;
-  onEmail?: () => void;
 };
 
-export function WelcomeScreen({ onBluesky, onEmail }: WelcomeScreenProps) {
+export function WelcomeScreen({ onBluesky }: WelcomeScreenProps) {
   const { state, login } = useAuth();
   const [loggingIn, setLoggingIn] = useState(false);
   const expired = state.status === "signedOut" && state.reason === "expired";
@@ -75,15 +73,6 @@ export function WelcomeScreen({ onBluesky, onEmail }: WelcomeScreenProps) {
             </svg>
           </span>
           <span className={styles.buttonLabel}>Blueskyで続ける</span>
-        </Pressable>
-        <Pressable
-          className={`${styles.button} ${styles.email}`}
-          onClick={() => onEmail?.()}
-        >
-          <span className={styles.buttonIcon} aria-hidden>
-            <Icon name="mail" size={20} />
-          </span>
-          <span className={styles.buttonLabel}>メールアドレス</span>
         </Pressable>
       </div>
     </div>
