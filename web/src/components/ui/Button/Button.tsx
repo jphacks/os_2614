@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Icon } from "../Icon";
+import { Pressable } from "../Pressable";
 import styles from "./Button.module.css";
 
 export type ButtonProps = {
@@ -36,7 +37,7 @@ export function Button({
     .join(" ");
 
   return (
-    <button
+    <Pressable
       type={type}
       className={classes}
       onClick={onClick}
@@ -44,6 +45,6 @@ export function Button({
     >
       {icon && <Icon name={icon} size={size === "sm" ? 18 : 20} />}
       <span>{children}</span>
-    </button>
+    </Pressable>
   );
 }

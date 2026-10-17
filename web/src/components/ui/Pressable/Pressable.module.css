@@ -1,0 +1,25 @@
+.pressable {
+  transition:
+    transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+    filter 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  /* 長押しで OS 標準の振動やメニューが重ならないようにする */
+  -webkit-touch-callout: none;
+}
+
+/* 押した瞬間は素早く沈め、離したときだけゆっくり戻す */
+.pressable[data-pressed] {
+  transform: scale(0.95);
+  filter: brightness(0.92);
+  transition-duration: 0.08s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pressable,
+  .pressable[data-pressed] {
+    transform: none;
+    transition: filter 0.08s ease;
+  }
+}
