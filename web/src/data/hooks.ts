@@ -20,7 +20,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth";
 import { ApiError } from "@/auth/errors";
-import { fetchPage, toResult, type ResourceResult } from "./api";
+import type { Settings } from "@/domain/types";
+import { fetchPage, patchJson, putJson, toResult, type ResourceResult } from "./api";
+import { fromSettings } from "./mappers";
 
 /** UI が出し分ける 5 状態。empty は ok から派生する (ok かつ空の特別形)。 */
 export type ResourceState<T> =
@@ -293,4 +295,217 @@ export function usePagedResource<T>(
     reload,
     loadMore,
   };
+}
+
+/** 設定保存のデバウンス幅 (ms)。連続トグルを 1 リクエストに畳む。 */
+export const SETTINGS_SAVE_DEBOUNCE_MS = 400;
+
+function hasPatchKeys(patch: Partial<Settings>): boolean {
+  return Object.keys(patch).length > 0;
+}
+
+export interface SettingsPersistence {
+  /** 楽観更新を反映した設定の取得状態。元が ok のときだけ ok になる。 */
+  state: ResourceState<Settings>;
+  /** 変更されたキーだけを受ける。表示は即時反映し、デバウンスして保存する。 */
+  onChange: (patch: Partial<Settings>) => void;
+  saving: boolean;
+  /** 直近の保存失敗。成功で消える。 */
+  error: ApiError | null;
+  /** 失敗した保存を同じ内容で再送する。 */
+  retry: () => void;
+}
+
+/**
+ * 設定の保存を、楽観更新 + デバウンス + 失敗ロールバックで扱う。
+ *
+ * - `PATCH /me/settings` には変更キーだけを載せる (`fromSettings`)。`locationPaused`
+ *   は `PUT /me/location-sharing {paused}` が所有し、PATCH には含めない (todo 35 の
+ *   `contentScanConsent` も同様に fromSettings が弾く)。
+ * - 失敗したら直前に確定した値へ戻し、`error` を立てる。`retry()` で再送できる。
+ * - unmount でデバウンスタイマーと送信中のリクエストを片付ける。
+ *
+ * setState は effect 本体では呼ばない (react-hooks/set-state-in-effect 回避)。
+ * 楽観値は「どの server リビジョンを基にしたか」を key に持ち、key が変わったら
+ * server 値に戻す (useResource と同じ keyed-state パターン)。
+ */
+export function useSettingsPersistence(
+  state: ResourceState<Settings>,
+): SettingsPersistence {
+  const serverSettings = state.status === "ok" ? state.data : null;
+  const serverKey = serverSettings ? JSON.stringify(serverSettings) : "";
+
+  const [optimistic, setOptimistic] = useState<{ key: string; value: Settings | null }>({
+    key: "",
+    value: null,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+
+  const serverRef = useRef<Settings | null>(serverSettings);
+  // 表示中の楽観値。flush が送信スナップショットとして読む。
+  const valueRef = useRef<Settings | null>(serverSettings);
+  // 直近でサーバに受理された値。失敗時のロールバック先。
+  const confirmedRef = useRef<Settings | null>(serverSettings);
+  // 失敗した変更 (retry 用)。
+  const failedRef = useRef<Partial<Settings> | null>(null);
+  // 未送信の変更。
+  const pendingRef = useRef<Partial<Settings>>({});
+  const inflightRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+  const flushRef = useRef<() => Promise<void>>(async () => {});
+  const scheduleRef = useRef<() => void>(() => {});
+
+  // 最新の server 値を毎レンダー取り込む (deps 無しの effect なので lint を汚さない)。
+  useEffect(() => {
+    serverRef.current = serverSettings;
+  });
+
+  // server リビジョンが変わったら (初回 ok / reload)、楽観値と確定値を server に戻す。
+  useEffect(() => {
+    if (optimistic.key !== serverKey) {
+      valueRef.current = serverSettings;
+      confirmedRef.current = serverSettings;
+      failedRef.current = null;
+      pendingRef.current = {};
+    }
+  });
+
+  const scheduleFlush = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      void flushRef.current();
+    }, SETTINGS_SAVE_DEBOUNCE_MS);
+  }, []);
+
+  const flush = useCallback(async () => {
+    // 送信中に来た変更は、完了後の finally で拾い直す。
+    if (inflightRef.current) {
+      return;
+    }
+    const patch = pendingRef.current;
+    if (!hasPatchKeys(patch)) {
+      return;
+    }
+    pendingRef.current = {};
+    const sentValue = valueRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    inflightRef.current = true;
+    setSaving(true);
+    try {
+      const settingsPatch = fromSettings(patch);
+      if (hasPatchKeys(settingsPatch)) {
+        await patchJson<unknown>("/me/settings", settingsPatch, {
+          signal: controller.signal,
+        });
+      }
+      if (patch.locationPaused !== undefined) {
+        await putJson<void>(
+          "/me/location-sharing",
+          { paused: patch.locationPaused },
+          { signal: controller.signal },
+        );
+      }
+      if (controller.signal.aborted || !mountedRef.current) {
+        return;
+      }
+      confirmedRef.current = sentValue;
+      failedRef.current = null;
+      setError(null);
+    } catch (e) {
+      if (controller.signal.aborted || !mountedRef.current) {
+        return;
+      }
+      failedRef.current = patch;
+      const revert = confirmedRef.current ?? serverRef.current;
+      valueRef.current = revert;
+      setOptimistic({ key: serverKey, value: revert });
+      const message = e instanceof Error ? e.message : String(e);
+      setError(e instanceof ApiError ? e : new ApiError(0, "network", message));
+    } finally {
+      abortRef.current = null;
+      inflightRef.current = false;
+      if (mountedRef.current) {
+        if (hasPatchKeys(pendingRef.current)) {
+          scheduleRef.current();
+        } else {
+          setSaving(false);
+        }
+      }
+    }
+  }, [serverKey]);
+
+  // flush から最新の flush / scheduleFlush を呼ぶ (相互参照の循環を避ける)。
+  useEffect(() => {
+    flushRef.current = flush;
+    scheduleRef.current = scheduleFlush;
+  });
+
+  // unmount でタイマーと送信中のリクエストを止める。StrictMode の疑似 unmount 後に
+  // 再実行されるため、effect 本体で mounted を立て直す (ref は remount を跨いで残る)。
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const update = useCallback(
+    (patch: Partial<Settings>) => {
+      if (!hasPatchKeys(patch)) {
+        return;
+      }
+      const base = valueRef.current ?? serverRef.current;
+      if (!base) {
+        return;
+      }
+      const next = { ...base, ...patch };
+      valueRef.current = next;
+      pendingRef.current = { ...pendingRef.current, ...patch };
+      setOptimistic({ key: serverKey, value: next });
+      setError(null);
+      scheduleFlush();
+    },
+    [serverKey, scheduleFlush],
+  );
+
+  const retry = useCallback(() => {
+    const failed = failedRef.current;
+    if (!failed) {
+      return;
+    }
+    failedRef.current = null;
+    const base = confirmedRef.current ?? serverRef.current;
+    if (!base) {
+      return;
+    }
+    const next = { ...base, ...failed };
+    valueRef.current = next;
+    pendingRef.current = { ...pendingRef.current, ...failed };
+    setOptimistic({ key: serverKey, value: next });
+    setError(null);
+    void flushRef.current();
+  }, [serverKey]);
+
+  const current =
+    serverSettings === null
+      ? null
+      : optimistic.key === serverKey && optimistic.value
+        ? optimistic.value
+        : serverSettings;
+
+  const outState: ResourceState<Settings> =
+    serverSettings === null ? state : { status: "ok", data: current ?? serverSettings };
+
+  return { state: outState, onChange: update, saving, error, retry };
 }

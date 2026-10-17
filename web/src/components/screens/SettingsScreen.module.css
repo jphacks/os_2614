@@ -63,6 +63,23 @@
   text-align: center;
 }
 
+.saveError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.saveError > :first-child {
+  align-self: stretch;
+}
+
+.saveNote {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
 .state {
   display: flex;
   flex-direction: column;

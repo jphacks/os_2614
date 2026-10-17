@@ -111,6 +111,49 @@ async function mockMe(page: Page, status = 200, body: unknown = ME): Promise<voi
   });
 }
 
+type CapturedRequest = { method: string; path: string; body: unknown };
+
+/**
+ * 設定の保存エンドポイントをモックする。GET /me は ME、PATCH /me/settings と
+ * PUT /me/location-sharing は受けた body を captured に積んで返す。
+ */
+async function mockSettingsApi(
+  page: Page,
+  handlers: { patchStatus?: number; locationStatus?: number } = {},
+): Promise<CapturedRequest[]> {
+  const captured: CapturedRequest[] = [];
+  await mockApi(page, async (route, request) => {
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+    if (path === "/api/v1/me" && method === "GET") {
+      await fulfillJson(route, 200, ME);
+      return;
+    }
+    if (path === "/api/v1/me/settings" && method === "PATCH") {
+      captured.push({ method, path, body: request.postDataJSON() });
+      const status = handlers.patchStatus ?? 200;
+      await fulfillJson(route, status, ME.settings);
+      return;
+    }
+    if (path === "/api/v1/me/location-sharing" && method === "PUT") {
+      captured.push({ method, path, body: request.postDataJSON() });
+      await route.fulfill({
+        status: handlers.locationStatus ?? 204,
+        headers: CORS_HEADERS,
+      });
+      return;
+    }
+    await fulfillJson(route, 404, {
+      error: { code: "not_found", message: "not found" },
+    });
+  });
+  return captured;
+}
+
+function byMethod(captured: CapturedRequest[], method: string): CapturedRequest[] {
+  return captured.filter((request) => request.method === method);
+}
+
 const EVIDENCE_PATH = path.resolve(
   process.cwd(),
   "../.omo/evidence/chain-fe-be-gap-closure/task-9-chain-fe-be-gap-closure.png",
@@ -317,3 +360,80 @@ test.describe("settings backend model", () => {
     ).toBeVisible();
   });
 });
+
+test.describe("settings persistence", () => {
+  test.beforeEach(async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+  });
+
+  test("PATCHes only the changed key and reflects it", async ({ page }) => {
+    const captured = await mockSettingsApi(page);
+    await page.goto("/settings/");
+
+    const beacon = page.getByRole("switch", { name: "フレンドへのビーコン共有" });
+    await beacon.click();
+    await expect(beacon).toHaveAttribute("aria-checked", "false");
+
+    await expect
+      .poll(() => byMethod(captured, "PATCH").length, { timeout: 3000 })
+      .toBe(1);
+    expect(byMethod(captured, "PATCH")[0]).toEqual({
+      method: "PATCH",
+      path: "/api/v1/me/settings",
+      body: { friendBeaconShare: false },
+    });
+  });
+
+  test("debounces rapid toggles into one PATCH", async ({ page }) => {
+    const captured = await mockSettingsApi(page);
+    await page.goto("/settings/");
+
+    await page.getByRole("switch", { name: "フレンドへのビーコン共有" }).click();
+    await page.getByRole("switch", { name: "パーティに自動参加" }).click();
+    await page
+      .locator("section", { hasText: "通知の種類" })
+      .getByRole("switch", { name: "すれ違い（毎日）" })
+      .click();
+
+    await expect
+      .poll(() => byMethod(captured, "PATCH").length, { timeout: 3000 })
+      .toBe(1);
+    expect(byMethod(captured, "PATCH")[0].body).toEqual({
+      friendBeaconShare: false,
+      partyAuto: true,
+      notify: { "encounter.daily": true },
+    });
+  });
+
+  test("rolls back and surfaces an error when PATCH fails", async ({ page }) => {
+    await mockSettingsApi(page, { patchStatus: 500 });
+    await page.goto("/settings/");
+
+    const beacon = page.getByRole("switch", { name: "フレンドへのビーコン共有" });
+    await beacon.click();
+    await expect(beacon).toHaveAttribute("aria-checked", "false");
+
+    await expect(page.getByText("設定を保存できませんでした")).toBeVisible();
+    await expect(beacon).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("pausing location uses PUT /me/location-sharing, not PATCH", async ({
+    page,
+  }) => {
+    const captured = await mockSettingsApi(page);
+    await page.goto("/settings/");
+
+    await page.getByRole("switch", { name: "位置共有の一時停止" }).click();
+
+    await expect
+      .poll(() => byMethod(captured, "PUT").length, { timeout: 3000 })
+      .toBe(1);
+    expect(byMethod(captured, "PUT")[0]).toEqual({
+      method: "PUT",
+      path: "/api/v1/me/location-sharing",
+      body: { paused: true },
+    });
+    expect(byMethod(captured, "PATCH")).toHaveLength(0);
+  });
+});
+

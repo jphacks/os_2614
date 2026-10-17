@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, WELCOME_PATH } from "@/auth";
+import type { ApiError } from "@/auth/errors";
 import type { NotificationType, Settings, WarnDisplay } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
@@ -46,23 +47,40 @@ const NOTIFY_LOCKED: NotificationType = "moderation.hidden";
 export type SettingsScreenProps = {
   /**
    * GET /me の設定の取得状態。ok のときだけ本体を描画し、loading / error /
-   * unavailable (404・405・501) はインラインで出し分ける。
+   * unavailable (404・405・501) はインラインで出し分ける。ok の data は
+   * 楽観更新が反映された現在値 (useSettingsPersistence の戻り)。
    */
   state: ResourceState<Settings>;
-  /** 変更されたキーだけを通知する。永続化 (PATCH) は後続 todo。 */
+  /** 変更されたキーだけを通知する。永続化は useSettingsPersistence。 */
   onChange?: (patch: Partial<Settings>) => void;
+  /** 保存中の小さな進捗表示。 */
+  saving?: boolean;
+  /** 直近の保存失敗。あれば警告と再試行を出す。 */
+  saveError?: ApiError | null;
+  /** 失敗した保存の再送。 */
+  onRetrySave?: () => void;
   /** error 状態の再取得。useResource の reload を渡す。 */
   onRetry?: () => void;
 };
 
-export function SettingsScreen({ state, onChange, onRetry }: SettingsScreenProps) {
+export function SettingsScreen({
+  state,
+  onChange,
+  saving,
+  saveError,
+  onRetrySave,
+  onRetry,
+}: SettingsScreenProps) {
   return (
     <AppShell>
       <ScreenHeader back title="設定" />
 
       <div className={styles.content}>
         {state.status === "ok" ? (
-          <SettingsBody settings={state.data} onChange={onChange} />
+          <>
+            <SaveStatus saving={saving} error={saveError} onRetry={onRetrySave} />
+            <SettingsBody settings={state.data} onChange={onChange} />
+          </>
         ) : state.status === "loading" ? (
           <SettingsSkeleton />
         ) : state.status === "error" ? (
@@ -98,15 +116,43 @@ type SettingsBodyProps = {
   onChange?: (patch: Partial<Settings>) => void;
 };
 
-function SettingsBody({ settings, onChange }: SettingsBodyProps) {
-  const [current, setCurrent] = useState<Settings>(settings);
+type SaveStatusProps = {
+  saving?: boolean;
+  error?: ApiError | null;
+  onRetry?: () => void;
+};
 
+function SaveStatus({ saving, error, onRetry }: SaveStatusProps) {
+  if (error) {
+    return (
+      <div className={styles.saveError} role="alert">
+        <Notice tone="warning" icon="cloud_off">
+          設定を保存できませんでした
+        </Notice>
+        {onRetry && (
+          <Button variant="secondary" size="sm" icon="refresh" onClick={onRetry}>
+            再試行
+          </Button>
+        )}
+      </div>
+    );
+  }
+  if (saving) {
+    return (
+      <p className={styles.saveNote} role="status">
+        保存しています…
+      </p>
+    );
+  }
+  return null;
+}
+
+function SettingsBody({ settings, onChange }: SettingsBodyProps) {
   const patch = (partial: Partial<Settings>) => {
-    setCurrent((prev) => ({ ...prev, ...partial }));
     onChange?.(partial);
   };
 
-  const notifyOn = (type: NotificationType) => current.notify[type] ?? true;
+  const notifyOn = (type: NotificationType) => settings.notify[type] ?? true;
 
   const setNotify = (type: NotificationType, on: boolean) => {
     // backend は true を削除して「既定に戻す」ため、変えた 1 種類だけを送る (12 §3)。
@@ -123,8 +169,8 @@ function SettingsBody({ settings, onChange }: SettingsBodyProps) {
           </p>
         </div>
         <RevealDelaySetting
-          encounterMode={current.encounterMode}
-          encounterDelaySec={current.encounterDelaySec}
+          encounterMode={settings.encounterMode}
+          encounterDelaySec={settings.encounterDelaySec}
           onChange={(next) => patch(next)}
         />
       </section>
@@ -135,21 +181,21 @@ function SettingsBody({ settings, onChange }: SettingsBodyProps) {
           <ToggleRow
             title="フレンドへのビーコン共有"
             note="近くにいるとき、フレンドに自分のビーコンを届けます"
-            checked={current.friendBeaconShare}
+            checked={settings.friendBeaconShare}
             onChange={(friendBeaconShare) => patch({ friendBeaconShare })}
           />
           <div className={styles.divider} />
           <ToggleRow
             title="パーティに自動参加"
             note="近くのフレンドとすれ違ったとき、自動でパーティに入ります"
-            checked={current.partyAuto}
+            checked={settings.partyAuto}
             onChange={(partyAuto) => patch({ partyAuto })}
           />
           <div className={styles.divider} />
           <ToggleRow
             title="位置共有の一時停止"
             note="オンにすると、位置の共有とすれ違いの記録を止めます"
-            checked={current.locationPaused}
+            checked={settings.locationPaused}
             onChange={(locationPaused) => patch({ locationPaused })}
           />
         </Card>
@@ -165,7 +211,7 @@ function SettingsBody({ settings, onChange }: SettingsBodyProps) {
         <Card padding="md">
           <SegmentedControl
             options={WARN_OPTIONS}
-            value={current.warnDisplay}
+            value={settings.warnDisplay}
             onChange={(warnDisplay) => patch({ warnDisplay })}
             track="bg"
           />
