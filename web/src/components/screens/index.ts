@@ -10,6 +10,8 @@ export type {
   GroupInvitesScreenProps,
   GroupInviteActionResult,
 } from "./GroupInvitesScreen";
+export { GroupGraphScreen } from "./GroupGraphScreen";
+export type { GroupGraphScreenProps } from "./GroupGraphScreen";
 export { GroupReplyScreen } from "./GroupReplyScreen";
 export type { GroupReplyScreenProps } from "./GroupReplyScreen";
 export { CreateGroupScreen } from "./CreateGroupScreen";

@@ -20,6 +20,8 @@ import type {
   FriendLocation,
   FriendRequest,
   Group,
+  GroupGraph,
+  GroupGraphEdgeKind,
   GroupInvite,
   GroupInviteInboxItem,
   GroupNearby,
@@ -55,6 +57,7 @@ import type {
   FriendLocation as FriendLocationDTO,
   FriendRequest as FriendRequestDTO,
   Group as GroupDTO,
+  GroupGraph as GroupGraphDTO,
   GroupInvite as GroupInviteDTO,
   GroupInviteInboxItem as GroupInviteInboxItemDTO,
   GroupNearby as GroupNearbyDTO,
@@ -116,6 +119,11 @@ const RELATIONS: readonly EncounterRelation[] = [
 ];
 const PHASES: readonly PartyPhase[] = ["tentative", "confirmed"];
 const VISIBILITIES: readonly GroupVisibility[] = ["open", "closed"];
+const GROUP_EDGE_KINDS: readonly GroupGraphEdgeKind[] = [
+  "contains",
+  "overlaps",
+  "shared_members",
+];
 const NOTIFICATION_TYPES: readonly NotificationType[] = [
   "friend.request",
   "friend.accepted",
@@ -359,6 +367,27 @@ export function toGroupInviteInboxItem(
     groupName: dto?.groupName ?? "",
     inviter: dto?.inviter ? toUser(dto.inviter) : undefined,
     expiresAt: dto?.expiresAt ?? "",
+  };
+}
+
+/** GraphResult → GroupGraph (09 §7)。中心座標は無い。weight は shared_members のときだけ。 */
+export function toGroupGraph(dto: Maybe<GroupGraphDTO>): GroupGraph {
+  return {
+    nodes: (dto?.nodes ?? []).map((node) => ({
+      id: node?.id ?? "",
+      name: node?.name ?? "",
+      radiusM: num(node?.radiusM),
+      memberCount: num(node?.memberCount),
+      isMember: node?.isMember ?? false,
+      inside: node?.inside ?? false,
+      origin: node?.origin,
+    })),
+    edges: (dto?.edges ?? []).map((edge) => ({
+      from: edge?.from ?? "",
+      to: edge?.to ?? "",
+      kind: oneOf(edge?.kind, GROUP_EDGE_KINDS, "contains"),
+      weight: typeof edge?.weight === "number" ? edge.weight : undefined,
+    })),
   };
 }
 

@@ -328,7 +328,7 @@ export type GroupInviteInboxItem = {
   expiresAt: Timestamp;
 };
 
-/** グループグラフのノード (09 §7、spec-only)。 */
+/** グループグラフのノード (09 §7)。中心座標は持たない。 */
 export type GroupGraphNode = {
   id: ID;
   name: string;
@@ -336,13 +336,11 @@ export type GroupGraphNode = {
   memberCount: number;
   isMember: boolean;
   inside: boolean;
+  origin?: string;
 };
 
-/** 辺の種類 (09 §7)。共通メンバーの値は backend の表記に合わせる。 */
-export type GroupGraphEdgeKind =
-  | "contains"
-  | "overlaps"
-  | `shared${"_"}members`;
+/** 辺の種類 (09 §7)。shared_members の weight は共通メンバーの人数。 */
+export type GroupGraphEdgeKind = "contains" | "overlaps" | "shared_members";
 
 export type GroupGraphEdge = {
   from: string;

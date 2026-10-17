@@ -461,7 +461,7 @@ export type Stats = {
   posts: { month: number };
 };
 
-/** GET /groups/graph（09 §7）。未実装（spec-only）。中心座標は返さない。 */
+/** GET /groups/graph（09 §7）。中心座標は返さない。 */
 export type GroupGraphNode = {
   id: string;
   name: string;
@@ -469,13 +469,11 @@ export type GroupGraphNode = {
   memberCount: number;
   isMember: boolean;
   inside: boolean;
+  origin?: GroupOrigin;
 };
 
-/** 辺の種類（09 §7）。共通メンバーの値は backend の表記に合わせる。 */
-export type GroupGraphEdgeKind =
-  | "contains"
-  | "overlaps"
-  | `shared${"_"}members`;
+/** 辺の種類（09 §7）。shared_members の weight は共通メンバーの人数。 */
+export type GroupGraphEdgeKind = "contains" | "overlaps" | "shared_members";
 
 export type GroupGraphEdge = {
   from: string;

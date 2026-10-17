@@ -87,6 +87,13 @@ export function NearbyScreen({
             <Link className={styles.headerLink} href="/encounters/" aria-label="すれ違い">
               <Icon name="near_me" size={22} />
             </Link>
+            <Link
+              className={styles.headerLink}
+              href="/group/graph/"
+              aria-label="グループの関係"
+            >
+              <Icon name="account_tree" size={22} />
+            </Link>
           </span>
         }
       />
