@@ -56,11 +56,14 @@ func CountFriends(ctx context.Context, q db.Querier, did string) (int, error) {
 }
 
 // CreateFriendship は行を作る。a, b は正規化済み（user_a < user_b）であること。
+// 同時に、双方向の既定（area）の位置共有の行も作る（07 §4.1）。
 func CreateFriendship(ctx context.Context, q db.Querier, a, b, via string, now time.Time) error {
-	_, err := db.Execute(ctx, q,
+	if _, err := db.Execute(ctx, q,
 		"INSERT INTO friendships (user_a, user_b, created_at, via) VALUES (?, ?, ?, ?)",
-		a, b, clock.UnixMilli(now), via)
-	return err
+		a, b, clock.UnixMilli(now), via); err != nil {
+		return err
+	}
+	return CreateDefaultLocationShares(ctx, q, a, b, now)
 }
 
 // FriendRequest は friend_requests の行（04 §2.3、07 §2.2）。

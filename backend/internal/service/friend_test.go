@@ -388,8 +388,10 @@ func TestFriendRequestViaEncounter(t *testing.T) {
 
 	// 削除で双方向の location_shares も消え、両者に friend.changed（07 §2.3）。
 	nowMS := h.env.Clock.Now().UnixMilli()
-	h.exec(`INSERT INTO location_shares (owner, viewer, precision, updated_at) VALUES (?, ?, 'exact', ?)`, alice, bob, nowMS)
-	h.exec(`INSERT INTO location_shares (owner, viewer, precision, updated_at) VALUES (?, ?, 'area', ?)`, bob, alice, nowMS)
+	h.exec(`INSERT INTO location_shares (owner, viewer, precision, updated_at) VALUES (?, ?, 'exact', ?)
+		ON CONFLICT (owner, viewer) DO UPDATE SET precision = excluded.precision, updated_at = excluded.updated_at`, alice, bob, nowMS)
+	h.exec(`INSERT INTO location_shares (owner, viewer, precision, updated_at) VALUES (?, ?, 'area', ?)
+		ON CONFLICT (owner, viewer) DO UPDATE SET precision = excluded.precision, updated_at = excluded.updated_at`, bob, alice, nowMS)
 	h.broker.Reset()
 	if err := h.friends.Delete(ctx, alice, bob); err != nil {
 		t.Fatalf("Delete: %v", err)
