@@ -146,6 +146,13 @@ func LeaveSpaceMember(ctx context.Context, q db.Querier, spaceID, did string, le
 	return err
 }
 
+// HideSpaceMemberFromMemory は自分の memory から Space を隠す（hidden_from_memory = 1、13 §2）。
+func HideSpaceMemberFromMemory(ctx context.Context, q db.Querier, spaceID, did string) error {
+	_, err := db.Execute(ctx, q,
+		"UPDATE space_members SET hidden_from_memory = 1 WHERE space_id = ? AND did = ?", spaceID, did)
+	return err
+}
+
 func SetSpaceMemberRole(ctx context.Context, q db.Querier, spaceID, did, role string) error {
 	_, err := db.Execute(ctx, q, "UPDATE space_members SET role = ? WHERE space_id = ? AND did = ?",
 		role, spaceID, did)

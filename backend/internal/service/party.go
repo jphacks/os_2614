@@ -466,13 +466,13 @@ func (s *PartyService) confirmedText(ctx context.Context, self string, members [
 	return "party が始まりました"
 }
 
-// Memories は archived の Party のうち自分が hidden_from_memory = 0 のものを返す（13 §2）。
+// Memories は archived の Party とグループのうち自分が hidden_from_memory = 0 のものを返す（13 §2）。
 func (s *PartyService) Memories(ctx context.Context, me, cursor string, limit int) (*MemoryPage, error) {
 	beforeAt, beforeID, err := utils.DecodeCursor(cursor)
 	if err != nil {
 		return nil, httpx.ErrInvalidRequest.With("fields", map[string]string{"cursor": "カーソルが不正です"})
 	}
-	rows, err := model.ListMemoryParties(ctx, s.DB, me, beforeAt, beforeID, limit+1)
+	rows, err := model.ListMemories(ctx, s.DB, me, beforeAt, beforeID, limit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -483,7 +483,7 @@ func (s *PartyService) Memories(ctx context.Context, me, cursor string, limit in
 			break
 		}
 		item := MemoryItem{
-			SpaceID: r.SpaceID, Type: "party", Name: r.Name,
+			SpaceID: r.SpaceID, Type: memoryTypeName(r.Type), Name: r.Name,
 			From: r.From, Until: r.Until,
 			MemberCount: r.MemberCount, MediaCount: r.MediaCount,
 		}
@@ -496,9 +496,42 @@ func (s *PartyService) Memories(ctx context.Context, me, cursor string, limit in
 	}
 	if len(rows) > limit {
 		last := rows[len(page.Items)-1]
-		page.Cursor = utils.EncodeCursor(last.ArchivedAt.UnixMilli(), last.SpaceID)
+		page.Cursor = utils.EncodeCursor(last.Until.UnixMilli(), last.SpaceID)
 	}
 	return page, nil
+}
+
+// HideMemory は自分の memory から Space を隠す（hidden_from_memory = 1、13 §2）。
+// 自分がメンバーだった archived の Space でなければ 404。
+func (s *PartyService) HideMemory(ctx context.Context, me, spaceID string) error {
+	sp, err := model.GetSpace(ctx, s.DB, spaceID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return httpx.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if sp.State != "archived" {
+		return httpx.ErrNotFound
+	}
+	if _, err := model.GetSpaceMember(ctx, s.DB, spaceID, me); errors.Is(err, sql.ErrNoRows) {
+		return httpx.ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	return model.HideSpaceMemberFromMemory(ctx, s.DB, spaceID, me)
+}
+
+// memoryTypeName は DB の Space の type（NSID）を memory の type に変換する（13 §2）。
+func memoryTypeName(nsid string) string {
+	switch nsid {
+	case spaceTypeParty:
+		return "party"
+	case spaceTypeGroup:
+		return "group"
+	default:
+		return nsid
+	}
 }
 
 // RebuildIndex は SQLite の party 所属から party:of:* を組み直す（08 §4、再起動時）。
