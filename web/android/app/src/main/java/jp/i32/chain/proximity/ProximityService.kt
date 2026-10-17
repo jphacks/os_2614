@@ -1,5 +1,6 @@
 package jp.i32.chain.proximity
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
@@ -73,8 +75,16 @@ class ProximityService : Service() {
 
         if (engine == null) {
             engine = BleEngine(this) {
-                // startedByUser=false: 権限取消でユーザーの「オン」意思を履行できないため boot 再試行を止める
-                BootState.setStartedByUser(this, false)
+                // F-13: a transient SecurityException (e.g. a race while Bluetooth toggles) is not a
+                // revocation. Only discard the persisted "on" intent when the runtime permission is
+                // genuinely gone (specification/android/README.md §5). If it is still granted, the
+                // failure is transient, so keep the intent and let the boot restore retry.
+                if (RevocationPolicy.shouldClearPersistedIntent(blePermissionGranted())) {
+                    // startedByUser=false: 権限取消でユーザーの「オン」意思を履行できないため boot 再試行を止める
+                    BootState.setStartedByUser(this, false)
+                } else {
+                    Log.w(TAG, "permission still granted; treating revocation signal as transient")
+                }
                 stopSelf()
             }.also { it.start() }
         }
@@ -95,6 +105,21 @@ class ProximityService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * Runtime permission state for the BLE engine (Android 12+/S gates BLE with
+     * BLUETOOTH_SCAN/ADVERTISE; older releases use location for scan). The behaviour contract
+     * itself is pure and covered by [RevocationPolicy].
+     */
+    private fun blePermissionGranted(): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) ==
+            PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE) ==
+            PackageManager.PERMISSION_GRANTED
+    } else {
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+    }
 
     private fun buildNotification(): Notification {
         val manager = getSystemService(NotificationManager::class.java)
