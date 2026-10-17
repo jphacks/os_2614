@@ -13,6 +13,8 @@ import (
 
 type InstanceController struct {
 	Instances *service.InstanceService
+	Pins      *service.PinService
+	Feed      *service.FeedService
 }
 
 func (h *InstanceController) Register(r fiber.Router) {
@@ -20,6 +22,9 @@ func (h *InstanceController) Register(r fiber.Router) {
 	r.Post("/posts", h.createPost)
 	r.Get("/instances/:spaceId/posts", h.listPosts)
 	r.Delete("/instances/:spaceId/posts/:rkey", h.deletePost)
+	r.Get("/instances/:spaceId/pins", h.listPins)
+	r.Post("/instances/:spaceId/pins", h.createPin)
+	r.Delete("/instances/:spaceId/pins/:rkey", h.deletePin)
 }
 
 type mediaRefRequest struct {
@@ -27,12 +32,19 @@ type mediaRefRequest struct {
 	Alt string `json:"alt"`
 }
 
+type replyRequest struct {
+	Root   string `json:"root"`
+	Parent string `json:"parent"`
+}
+
 type createPostRequest struct {
-	SpaceIDs   []string          `json:"spaceIds"`
-	Text       string            `json:"text"`
-	Format     string            `json:"format"`
-	Media      []mediaRefRequest `json:"media"`
-	AlsoPublic bool              `json:"alsoPublic"`
+	SpaceIDs    []string          `json:"spaceIds"`
+	Text        string            `json:"text"`
+	Format      string            `json:"format"`
+	Media       []mediaRefRequest `json:"media"`
+	Reply       *replyRequest     `json:"reply"`
+	AlsoPublic  bool              `json:"alsoPublic"`
+	AlsoBluesky bool              `json:"alsoBluesky"`
 }
 
 func (r *createPostRequest) Validate() map[string]string {
@@ -45,6 +57,14 @@ func (r *createPostRequest) Validate() map[string]string {
 	}
 	if len(r.Media) > 0 && len(r.SpaceIDs) != 1 {
 		f["media"] = "メディアを付けられるのは 1 つの Space への投稿だけです"
+	}
+	if r.Reply != nil {
+		if len(r.SpaceIDs) != 1 {
+			f["reply"] = "返信できるのは 1 つの Space への投稿だけです"
+		}
+		if r.Reply.Root == "" || r.Reply.Parent == "" {
+			f["reply"] = "root と parent が必要です"
+		}
 	}
 	if r.Format != "" && r.Format != "plain" && r.Format != "markdown" {
 		f["format"] = "plain / markdown のいずれかです"
@@ -68,9 +88,6 @@ func (h *InstanceController) createPost(c fiber.Ctx) error {
 	if err := httpx.Bind(c, &req); err != nil {
 		return err
 	}
-	if req.AlsoPublic {
-		return httpx.ErrInvalidRequest.With("fields", map[string]string{"alsoPublic": "未対応です"})
-	}
 	format := req.Format
 	if format == "" {
 		format = "plain"
@@ -79,11 +96,19 @@ func (h *InstanceController) createPost(c fiber.Ctx) error {
 	for _, m := range req.Media {
 		media = append(media, service.MediaInput{ID: m.ID, Alt: m.Alt})
 	}
+	var reply *service.ReplyInput
+	if req.Reply != nil {
+		reply = &service.ReplyInput{Root: req.Reply.Root, Parent: req.Reply.Parent}
+	}
 	res, err := h.Instances.CreatePosts(c.Context(), httpx.DID(c), service.CreatePostInput{
-		SpaceIDs: req.SpaceIDs,
-		Text:     req.Text,
-		Format:   format,
-		Media:    media,
+		SpaceIDs:    req.SpaceIDs,
+		Text:        req.Text,
+		Format:      format,
+		Media:       media,
+		Reply:       reply,
+		SessionID:   httpx.SessionID(c),
+		AlsoPublic:  req.AlsoPublic,
+		AlsoBluesky: req.AlsoBluesky,
 	})
 	if err != nil {
 		return err
@@ -92,7 +117,7 @@ func (h *InstanceController) createPost(c fiber.Ctx) error {
 }
 
 func (h *InstanceController) listPosts(c fiber.Ctx) error {
-	page, err := h.Instances.ListPosts(c.Context(), httpx.DID(c), c.Params("spaceId"), c.Query("cursor"), pageLimit(c))
+	page, err := h.Feed.List(c.Context(), httpx.DID(c), "space:"+c.Params("spaceId"), c.Query("cursor"), pageLimit(c))
 	if err != nil {
 		return err
 	}
@@ -104,6 +129,48 @@ func (h *InstanceController) deletePost(c fiber.Ctx) error {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+type pinRequest struct {
+	Subject string `json:"subject"`
+}
+
+func (r *pinRequest) Validate() map[string]string {
+	if r.Subject == "" {
+		return map[string]string{"subject": "必須です"}
+	}
+	return nil
+}
+
+func (h *InstanceController) createPin(c fiber.Ctx) error {
+	var req pinRequest
+	if err := httpx.Bind(c, &req); err != nil {
+		return err
+	}
+	pin, err := h.Pins.CreateManual(c.Context(), httpx.DID(c), c.Params("spaceId"), req.Subject)
+	if err != nil {
+		return err
+	}
+	return c.Status(fiber.StatusCreated).JSON(pin)
+}
+
+func (h *InstanceController) deletePin(c fiber.Ctx) error {
+	if err := h.Pins.Delete(c.Context(), httpx.DID(c), c.Params("spaceId"), c.Params("rkey")); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+type pinsResponse struct {
+	Items []service.Pin `json:"items"`
+}
+
+func (h *InstanceController) listPins(c fiber.Ctx) error {
+	pins, err := h.Pins.List(c.Context(), httpx.DID(c), c.Params("spaceId"))
+	if err != nil {
+		return err
+	}
+	return c.JSON(pinsResponse{Items: pins})
 }
 
 type instanceItem struct {

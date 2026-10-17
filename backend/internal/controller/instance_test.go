@@ -190,11 +190,21 @@ func TestCreatePostErrors(t *testing.T) {
 		t.Fatalf("details.fields.media is empty (body=%s)", body)
 	}
 
-	// alsoPublic は未対応（10 §4.1）。
+	// alsoPublic は公開投稿も作る（10 §4.1）。既定の fake Writer では成功する。
 	status, body = request(t, app, http.MethodPost, "/api/v1/posts",
 		`{"spaceIds":["sp1"],"text":"hi","alsoPublic":true}`, alice)
-	if status != http.StatusBadRequest {
-		t.Fatalf("alsoPublic: status = %d, want 400 (body=%s)", status, body)
+	if status != http.StatusCreated {
+		t.Fatalf("alsoPublic: status = %d, want 201 (body=%s)", status, body)
+	}
+	var withPublic struct {
+		Public *struct {
+			URI   string `json:"uri"`
+			Error string `json:"error"`
+		} `json:"public"`
+	}
+	mustJSONBody(t, body, &withPublic)
+	if withPublic.Public == nil || withPublic.Public.URI == "" || withPublic.Public.Error != "" {
+		t.Fatalf("public = %+v, want uri and no error", withPublic.Public)
 	}
 }
 
@@ -280,5 +290,123 @@ func TestBlockedPostsHiddenAndDelete(t *testing.T) {
 	}
 	if page := listPosts(t, app, alice, "sp1"); len(page.Items) != 0 {
 		t.Fatalf("after delete: %+v, want empty", page.Items)
+	}
+}
+
+type replyPostItem struct {
+	URI   string `json:"uri"`
+	Text  string `json:"text"`
+	Reply *struct {
+		Root   string `json:"root"`
+		Parent string `json:"parent"`
+	} `json:"reply"`
+}
+
+func createPost(t *testing.T, app *fiber.App, token, spaceID, text string) string {
+	t.Helper()
+	status, body := request(t, app, http.MethodPost, "/api/v1/posts",
+		fmt.Sprintf(`{"spaceIds":[%q],"text":%q}`, spaceID, text), token)
+	if status != http.StatusCreated {
+		t.Fatalf("create post %q: status = %d (body=%s)", text, status, body)
+	}
+	var created struct {
+		Items []struct {
+			URI string `json:"uri"`
+		} `json:"items"`
+	}
+	mustJSONBody(t, body, &created)
+	return created.Items[0].URI
+}
+
+func replyPosts(t *testing.T, app *fiber.App, token, spaceID string) []replyPostItem {
+	t.Helper()
+	status, body := request(t, app, http.MethodGet, "/api/v1/instances/"+spaceID+"/posts", "", token)
+	if status != http.StatusOK {
+		t.Fatalf("list posts: status = %d (body=%s)", status, body)
+	}
+	var page struct {
+		Items []replyPostItem `json:"items"`
+	}
+	mustJSONBody(t, body, &page)
+	return page.Items
+}
+
+// 返信（10 §3）の API。
+func TestCreatePostReply(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+
+	env.CreateUser(t, "did:plc:alice", "alice.test")
+	env.Consent(t, "did:plc:alice")
+	alice := env.Login(t, "did:plc:alice")
+	space(t, env, "sp1", "jp.i32.chain.space.group", "active", "did:plc:alice")
+	group(t, env, "sp1", true)
+	member(t, env, "sp1", "did:plc:alice", true)
+
+	root := createPost(t, app, alice, "sp1", "根の投稿")
+
+	status, body := request(t, app, http.MethodPost, "/api/v1/posts",
+		fmt.Sprintf(`{"spaceIds":["sp1"],"text":"返信","reply":{"root":%q,"parent":%q}}`, root, root), alice)
+	if status != http.StatusCreated {
+		t.Fatalf("reply: status = %d, want 201 (body=%s)", status, body)
+	}
+
+	items := replyPosts(t, app, alice, "sp1")
+	var found bool
+	for _, it := range items {
+		if it.Text == "返信" {
+			found = true
+			if it.Reply == nil || it.Reply.Root != root || it.Reply.Parent != root {
+				t.Fatalf("reply = %+v, want root/parent %s", it.Reply, root)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("reply が一覧にない: %+v", items)
+	}
+}
+
+func TestCreatePostReplyErrors(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+
+	env.CreateUser(t, "did:plc:alice", "alice.test")
+	env.Consent(t, "did:plc:alice")
+	alice := env.Login(t, "did:plc:alice")
+	space(t, env, "sp1", "jp.i32.chain.space.group", "active", "did:plc:alice")
+	group(t, env, "sp1", true)
+	member(t, env, "sp1", "did:plc:alice", true)
+	space(t, env, "sp2", "jp.i32.chain.space.group", "active", "did:plc:alice")
+	group(t, env, "sp2", true)
+	member(t, env, "sp2", "did:plc:alice", true)
+
+	root1 := createPost(t, app, alice, "sp1", "根1")
+	root2 := createPost(t, app, alice, "sp1", "根2")
+	foreign := createPost(t, app, alice, "sp2", "別 Space の根")
+
+	// parent の root と指定 root が不一致 → 400。
+	status, body := request(t, app, http.MethodPost, "/api/v1/posts",
+		fmt.Sprintf(`{"spaceIds":["sp1"],"text":"x","reply":{"root":%q,"parent":%q}}`, root1, root2), alice)
+	if status != http.StatusBadRequest {
+		t.Fatalf("mismatch: status = %d, want 400 (body=%s)", status, body)
+	}
+	wantErrorCode(t, body, "invalid_request")
+
+	// 別 Space の root → 400。
+	status, body = request(t, app, http.MethodPost, "/api/v1/posts",
+		fmt.Sprintf(`{"spaceIds":["sp1"],"text":"x","reply":{"root":%q,"parent":%q}}`, foreign, foreign), alice)
+	if status != http.StatusBadRequest {
+		t.Fatalf("foreign root: status = %d, want 400 (body=%s)", status, body)
+	}
+
+	// spaceIds 2 件で reply → 400。
+	status, body = request(t, app, http.MethodPost, "/api/v1/posts",
+		fmt.Sprintf(`{"spaceIds":["sp1","sp2"],"text":"x","reply":{"root":%q,"parent":%q}}`, root1, root1), alice)
+	if status != http.StatusBadRequest {
+		t.Fatalf("two spaces: status = %d, want 400 (body=%s)", status, body)
+	}
+	e := wantErrorCode(t, body, "invalid_request")
+	if e.Error.Details.Fields["reply"] == "" {
+		t.Fatalf("details.fields.reply is empty (body=%s)", body)
 	}
 }

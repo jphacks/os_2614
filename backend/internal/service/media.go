@@ -153,9 +153,9 @@ func (s *MediaService) ShareToSpace(ctx context.Context, did, spaceID, mediaID s
 		return nil, invalidMedia("使用できないメディアです")
 	}
 
-	item := &PostItem{
-		Kind: "media", URI: rec.URI, SpaceID: sp.ID, CreatedAt: rec.CreatedAt,
-		Moderation: &ModerationInfo{Label: "ok", Display: "show"},
+	item := &FeedItem{
+		Kind: "instance_media", URI: rec.URI, Space: feedSpaceOf(sp), CreatedAt: rec.CreatedAt,
+		authorDID: did, Moderation: &ModerationInfo{Label: "ok", Display: "show"},
 	}
 	if author, err := authorSummaryFor(ctx, s.DB, did); err == nil {
 		item.Author = author
