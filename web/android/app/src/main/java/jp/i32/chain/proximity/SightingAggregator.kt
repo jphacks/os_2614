@@ -43,6 +43,12 @@ class SightingAggregator(private val ttlMs: Long = 24L * 60 * 60 * 1000) {
         return result
     }
 
-    /** 現在保持している entry 数。 */
-    fun pending(): Int = entries.size
+    /**
+     * [nowMs] 時点で生きた entry 数。TTL 切れ (`lastMs <= nowMs - ttlMs`) は数えない (F-04)。
+     * [drain] が返す集合と同じ規則。
+     */
+    fun pending(nowMs: Long): Int {
+        val cutoff = nowMs - ttlMs
+        return entries.values.count { it.lastMs > cutoff }
+    }
 }

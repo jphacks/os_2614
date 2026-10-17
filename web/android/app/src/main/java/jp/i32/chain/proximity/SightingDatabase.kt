@@ -27,9 +27,6 @@ interface SightingDao {
     @Query("DELETE FROM sightings")
     suspend fun deleteAll()
 
-    @Query("DELETE FROM sightings WHERE token IN (:tokens)")
-    suspend fun deleteByTokens(tokens: List<String>)
-
     /** 24h ルール: lastMs <= cutoff の行は送らずに捨てる。 */
     @Query("DELETE FROM sightings WHERE lastMs <= :cutoff")
     suspend fun deleteExpired(cutoff: Long)
@@ -55,7 +52,7 @@ abstract class SightingDatabase : RoomDatabase() {
                     context.applicationContext,
                     SightingDatabase::class.java,
                     NAME,
-                ).fallbackToDestructiveMigration().build().also { instance = it }
+                ).fallbackToDestructiveMigration(dropAllTables = true).build().also { instance = it }
             }
     }
 }

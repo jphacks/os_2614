@@ -1,5 +1,8 @@
 package jp.i32.chain.proximity
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,7 +29,7 @@ class SightingAggregatorTest {
     @Test
     fun `entry exactly at the ttl boundary is dropped`() {
         val aggregator = SightingAggregator(ttlMs = 1000L)
-        aggregator.record("boundary", 0L, -50) // lastMs == nowMs - ttlMs
+        aggregator.record("boundary", 0L, -50)
         val drained = aggregator.drain(1000L)
         assertFalse(drained.containsKey("boundary"))
     }
@@ -34,7 +37,7 @@ class SightingAggregatorTest {
     @Test
     fun `entry one millisecond inside the ttl is kept`() {
         val aggregator = SightingAggregator(ttlMs = 1000L)
-        aggregator.record("fresh", 1L, -50) // lastMs == nowMs - ttlMs + 1
+        aggregator.record("fresh", 1L, -50)
         val drained = aggregator.drain(1000L)
         assertTrue(drained.containsKey("fresh"))
         assertEquals(1, drained.size)
@@ -50,17 +53,56 @@ class SightingAggregatorTest {
         assertEquals(1, drained.size)
         assertFalse(drained.containsKey("stale"))
         assertTrue(drained.containsKey("live"))
-        assertEquals(0, aggregator.pending())
+        assertEquals(0, aggregator.pending(1000L))
     }
 
     @Test
-    fun `pending reflects the map size`() {
+    fun `pending counts the live map size`() {
         val aggregator = SightingAggregator()
-        assertEquals(0, aggregator.pending())
+        assertEquals(0, aggregator.pending(0L))
         aggregator.record("a", 0L, -1)
         aggregator.record("b", 0L, -1)
-        assertEquals(2, aggregator.pending())
+        assertEquals(2, aggregator.pending(0L))
         aggregator.record("a", 1L, -1)
-        assertEquals(2, aggregator.pending())
+        assertEquals(2, aggregator.pending(0L))
+    }
+
+    @Test
+    fun `pending excludes ttl-expired entries before a drain`() {
+        val aggregator = SightingAggregator(ttlMs = 1000L)
+        aggregator.record("stale", 0L, -50)
+        aggregator.record("live", 1L, -50)
+        assertEquals(1, aggregator.pending(1000L))
+    }
+
+    @Test
+    fun `concurrent records merge without lost updates`() {
+        val aggregator = SightingAggregator()
+        val threads = 8
+        val perThread = 250
+        val pool = Executors.newFixedThreadPool(threads)
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(threads)
+        try {
+            repeat(threads) { t ->
+                pool.execute {
+                    start.await()
+                    repeat(perThread) { i ->
+                        aggregator.record("tok", (t * perThread + i).toLong(), -100 + i)
+                    }
+                    done.countDown()
+                }
+            }
+            start.countDown()
+            assertTrue(done.await(10, TimeUnit.SECONDS))
+        } finally {
+            pool.shutdown()
+        }
+
+        val agg = aggregator.drain(1000L).getValue("tok")
+        assertEquals(threads * perThread, agg.count)
+        assertEquals(0L, agg.firstMs)
+        assertEquals((threads * perThread - 1).toLong(), agg.lastMs)
+        assertEquals(-100 + perThread - 1, agg.maxRssi)
     }
 }
