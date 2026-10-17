@@ -3,9 +3,11 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Group, Post } from "@/domain/types";
+import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { PinnedPostCard, PostCard } from "@/components/feature/post";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Fab } from "@/components/ui/Fab";
 import { IconButton } from "@/components/ui/IconButton";
@@ -31,8 +33,30 @@ const EMPTY_LABEL: Record<GroupTab, string> = {
 };
 
 export type GroupScreenProps = {
-  group: Group;
+  /**
+   * GET /groups/{id} の取得状態。指定時はこのデータを描画の source にする
+   * (loading / error / unavailable はヘッダー下にインライン表示する)。
+   */
+  state?: ResourceState<Group>;
+  /** state 未指定時に使う取得済みグループ (返信画面のオーバーレイなど)。 */
+  group?: Group;
+  /** タイムラインに並べる投稿 (ドメイン変換済み)。 */
   posts: Post[];
+  /**
+   * GET /instances/{spaceId}/posts の取得状態。未指定なら posts をそのまま ok として描画する。
+   * loading / error / unavailable はタイムライン内にインライン表示する。
+   */
+  postsState?: ResourceState<Post[]>;
+  /** 続きのページがあるか (usePagedResource.hasMore)。 */
+  hasMore?: boolean;
+  /** 続きの取得中か (usePagedResource.loadingMore)。 */
+  loadingMore?: boolean;
+  /** 次のページを末尾に足す (usePagedResource.loadMore)。 */
+  onLoadMore?: () => void;
+  /** グループ取得の再実行 (useResource.reload)。 */
+  groupRetry?: () => void;
+  /** 投稿一覧の再実行 (usePagedResource.reload)。 */
+  postsRetry?: () => void;
   tabBar?: boolean;
   overlay?: ReactNode;
   onCompose?: (group: Group) => void;
@@ -41,8 +65,15 @@ export type GroupScreenProps = {
 };
 
 export function GroupScreen({
-  group,
+  state,
+  group: groupProp,
   posts,
+  postsState,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+  groupRetry,
+  postsRetry,
   tabBar = true,
   overlay,
   onCompose,
@@ -51,6 +82,10 @@ export function GroupScreen({
 }: GroupScreenProps) {
   const router = useRouter();
   const [tab, setTab] = useState<GroupTab>("timeline");
+
+  // state があればそれを、無ければ group をそのまま ok として扱う (返信画面の互換)。
+  const groupState: ResourceState<Group> =
+    state ?? (groupProp ? { status: "ok", data: groupProp } : { status: "loading" });
 
   const { pinned, rest } = useMemo(() => {
     const pinnedPosts: Post[] = [];
@@ -61,6 +96,42 @@ export function GroupScreen({
     return { pinned: pinnedPosts, rest: restPosts };
   }, [posts]);
 
+  if (groupState.status !== "ok") {
+    return (
+      <AppShell tab={tabBar ? "nearby" : undefined}>
+        <ScreenHeader
+          title="グループ"
+          back
+          trailing={<IconButton icon="more_horiz" label="グループのメニュー" />}
+        />
+        <div className={styles.gutter}>
+          {groupState.status === "loading" ? (
+            <Card padding="md" className={styles.empty}>
+              読み込み中…
+            </Card>
+          ) : groupState.status === "error" ? (
+            <Card padding="md" className={styles.stack}>
+              <p className={styles.empty}>グループを読み込めませんでした</p>
+              {groupRetry && (
+                <Button variant="secondary" icon="refresh" onClick={groupRetry}>
+                  再読み込み
+                </Button>
+              )}
+            </Card>
+          ) : (
+            // empty / unavailable (404・405・501) は「まだ無い / 未対応」。
+            <Card padding="md" className={styles.empty}>
+              グループが見つかりません
+            </Card>
+          )}
+        </div>
+        {overlay}
+      </AppShell>
+    );
+  }
+
+  const group = groupState.data;
+
   const goCompose = () => {
     onCompose?.(group);
     router.push(`/compose/?target=group:${group.id}`);
@@ -70,6 +141,8 @@ export function GroupScreen({
     onReply?.(post);
     router.push(`/group/replies/?id=${group.id}&post=${post.id}`);
   };
+
+  const postsStatus = postsState?.status ?? "ok";
 
   return (
     <AppShell tab={tabBar ? "nearby" : undefined}>
@@ -101,17 +174,54 @@ export function GroupScreen({
 
       {tab === "timeline" ? (
         <div className={styles.timeline}>
-          {pinned.map((post) => (
-            <PinnedPostCard key={post.id} post={post} />
-          ))}
-          {rest.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              onReply={goReply}
-              onToggleLike={onToggleLike}
-            />
-          ))}
+          {postsStatus === "loading" ? (
+            <Card padding="md" className={styles.empty}>
+              読み込み中…
+            </Card>
+          ) : postsStatus === "error" ? (
+            <Card padding="md" className={styles.stack}>
+              <p className={styles.empty}>投稿を読み込めませんでした</p>
+              {postsRetry && (
+                <Button variant="secondary" icon="refresh" onClick={postsRetry}>
+                  再読み込み
+                </Button>
+              )}
+            </Card>
+          ) : postsStatus === "unavailable" ? (
+            // 404・405・501 は「まだ無い / 未対応」。
+            <Card padding="md" className={styles.empty}>
+              まだ投稿はありません
+            </Card>
+          ) : posts.length === 0 ? (
+            <Card padding="md" className={styles.empty}>
+              まだ投稿はありません
+            </Card>
+          ) : (
+            <>
+              {pinned.map((post) => (
+                <PinnedPostCard key={post.id} post={post} />
+              ))}
+              {rest.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  onReply={goReply}
+                  onToggleLike={onToggleLike}
+                />
+              ))}
+              {hasMore && (
+                <div className={styles.more}>
+                  <Button
+                    variant="secondary"
+                    onClick={onLoadMore}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? "読み込み中…" : "もっと見る"}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       ) : (
         <div className={styles.gutter}>
