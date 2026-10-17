@@ -1,50 +1,199 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import type { Party, User } from "@/domain/types";
+import type { Media, Party } from "@/domain/types";
+import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
 import { MemberStrip, PartyHero, PhotoGrid } from "@/components/feature/party";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Fab } from "@/components/ui/Fab";
 import { Icon } from "@/components/ui/Icon";
+import { IconButton } from "@/components/ui/IconButton";
+import { Notice } from "@/components/ui/Notice";
 import { Toggle } from "@/components/ui/Toggle";
 import styles from "./PartyScreen.module.css";
 
+/** 変更系 API（leave / lock / rename）の分類結果。unavailable は 404/405/501（未実装）。 */
+export type PartyActionResult =
+  | { status: "ok" }
+  | { status: "unavailable" }
+  | { status: "error" };
+
+export type PartyActionKind = "lock" | "unlock" | "leave" | "rename";
+
+export type PartyActionNotice = {
+  kind: PartyActionKind;
+  status: "unavailable" | "error";
+};
+
 export type PartyScreenProps = {
-  party: Party | null;
-  me: User;
-  onToggleFixed?: (fixed: boolean) => void;
+  /** GET /party/current の取得状態。ok のときだけ data（マップ済み Party）を描画する。 */
+  state: ResourceState<Party>;
+  /** パーティの Space に投稿された写真（GET /instances/{spaceId}/posts 由来）。 */
+  photos: Media[];
+  /** 自分の DID。合流メンバーの表示から自分を除くために使う。 */
+  meDid?: string;
+  /** error 状態の再取得。useResource の reload を渡す。 */
+  onRetry?: () => void;
+  onLeave?: (party: Party) => Promise<PartyActionResult>;
+  onToggleLock?: (party: Party, locked: boolean) => Promise<PartyActionResult>;
+  onRename?: (party: Party, name: string) => Promise<PartyActionResult>;
   onCompose?: (party: Party) => void;
 };
 
 export function PartyScreen({
-  party,
-  me,
-  onToggleFixed,
+  state,
+  photos,
+  meDid,
+  onRetry,
+  onLeave,
+  onToggleLock,
+  onRename,
   onCompose,
 }: PartyScreenProps) {
-  const router = useRouter();
-  const [fixed, setFixed] = useState(party?.fixed ?? false);
+  return (
+    <AppShell tab="party">
+      {state.status === "ok" ? (
+        <PartyBody
+          key={state.data.id}
+          party={state.data}
+          photos={photos}
+          meDid={meDid}
+          onLeave={onLeave}
+          onToggleLock={onToggleLock}
+          onRename={onRename}
+          onCompose={onCompose}
+        />
+      ) : state.status === "loading" ? (
+        <PartySkeleton />
+      ) : state.status === "error" ? (
+        <PartyState
+          icon="cloud_off"
+          title="パーティを読み込めませんでした"
+          description="通信の状態を確認して、もう一度お試しください。"
+          action={
+            onRetry ? (
+              <Button variant="secondary" icon="refresh" onClick={onRetry}>
+                再読み込み
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : state.status === "unavailable" ? (
+        // 404/405/501 は「まだ無い / 未対応」。
+        <PartyState
+          icon="construction"
+          title="パーティ機能は準備中です"
+          description="この機能はまだ提供されていません。"
+        />
+      ) : (
+        // empty（GET /party/current が null）は「所属中の party が無い」。
+        <PartyState
+          icon="group"
+          title="今はパーティに参加していません"
+          description="近くのフレンドと会うとパーティが始まります。"
+        />
+      )}
+    </AppShell>
+  );
+}
 
-  if (!party) {
-    return (
-      <AppShell tab="party">
-        <div className={styles.empty}>
-          <p>近くのフレンドと会うとパーティが始まります</p>
-        </div>
-      </AppShell>
-    );
+type PartyBodyProps = {
+  party: Party;
+  photos: Media[];
+  meDid?: string;
+  onLeave?: PartyScreenProps["onLeave"];
+  onToggleLock?: PartyScreenProps["onToggleLock"];
+  onRename?: PartyScreenProps["onRename"];
+  onCompose?: PartyScreenProps["onCompose"];
+};
+
+const NOTICE_LABEL: Record<PartyActionKind, string> = {
+  lock: "固定",
+  unlock: "固定の解除",
+  leave: "退出",
+  rename: "名前の変更",
+};
+
+function noticeText(notice: PartyActionNotice): string {
+  if (notice.status === "unavailable") {
+    return `${NOTICE_LABEL[notice.kind]}は準備中です`;
   }
+  return `${NOTICE_LABEL[notice.kind]}に失敗しました。もう一度お試しください。`;
+}
+
+/** 表示名。displayName → handle → did の順で落とす。 */
+function memberName(
+  member: Party["members"][number],
+): string {
+  return member.displayName || member.handle || member.did;
+}
+
+function PartyBody({
+  party,
+  photos,
+  meDid,
+  onLeave,
+  onToggleLock,
+  onRename,
+  onCompose,
+}: PartyBodyProps) {
+  const router = useRouter();
+  // 固定トグルは backend が成功を返したときだけ切り替える（楽観更新しない）。
+  const [locked, setLocked] = useState(party.locked);
+  const [busy, setBusy] = useState<PartyActionKind | null>(null);
+  const [notice, setNotice] = useState<PartyActionNotice | null>(null);
+  const [renaming, setRenaming] = useState(false);
 
   const companions = party.members
-    .filter((member) => member.id !== me.id)
-    .map((member) => member.name)
+    .filter((member) => member.did !== meDid && !member.left)
+    .map(memberName)
     .join("・");
 
-  const handleFixed = (next: boolean) => {
-    setFixed(next);
-    onToggleFixed?.(next);
+  const handleToggleLock = async (next: boolean) => {
+    if (busy !== null || !onToggleLock) {
+      return;
+    }
+    const kind: PartyActionKind = next ? "lock" : "unlock";
+    setBusy(kind);
+    setNotice(null);
+    const result = await onToggleLock(party, next);
+    setBusy(null);
+    if (result.status === "ok") {
+      setLocked(next);
+      return;
+    }
+    setNotice({ kind, status: result.status });
+  };
+
+  const handleLeave = async () => {
+    if (busy !== null || !onLeave) {
+      return;
+    }
+    setBusy("leave");
+    setNotice(null);
+    const result = await onLeave(party);
+    setBusy(null);
+    if (result.status !== "ok") {
+      setNotice({ kind: "leave", status: result.status });
+    }
+  };
+
+  const handleRename = async (name: string) => {
+    if (busy !== null || !onRename) {
+      return;
+    }
+    setBusy("rename");
+    setNotice(null);
+    const result = await onRename(party, name);
+    setBusy(null);
+    if (result.status === "ok") {
+      setRenaming(false);
+      return;
+    }
+    setNotice({ kind: "rename", status: result.status });
   };
 
   const handleCompose = () => {
@@ -52,11 +201,35 @@ export function PartyScreen({
     router.push(`/compose/?target=party:${party.id}`);
   };
 
+  const subtitle = companions
+    ? `${companions} と合流しました`
+    : party.members.length > 1
+      ? `${party.members.length}人で合流しています`
+      : "パーティを組んでいます";
+
   return (
-    <AppShell tab="party">
+    <>
       <header className={styles.header}>
-        <h1 className={styles.title}>パーティ</h1>
-        <p className={styles.subtitle}>{companions} と合流しました</p>
+        {renaming ? (
+          <RenameForm
+            initial={party.name}
+            busy={busy === "rename"}
+            onSubmit={handleRename}
+            onCancel={() => setRenaming(false)}
+          />
+        ) : (
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>{party.name}</h1>
+            {onRename && (
+              <IconButton
+                icon="edit"
+                label="パーティ名を変更"
+                onClick={() => setRenaming(true)}
+              />
+            )}
+          </div>
+        )}
+        <p className={styles.subtitle}>{subtitle}</p>
       </header>
 
       <div className={styles.gutter}>
@@ -65,27 +238,37 @@ export function PartyScreen({
 
       <div className={styles.gutter}>
         <Card padding="md">
-          <div className={styles.fixedRow}>
+          <div className={styles.row}>
             <Icon name="push_pin" size={22} />
-            <div className={styles.fixedText}>
-              <span className={styles.fixedTitle}>パーティを固定</span>
-              <span className={styles.fixedNote}>
+            <div className={styles.rowText}>
+              <span className={styles.rowTitle}>パーティを固定</span>
+              <span className={styles.rowNote}>
                 旅行のときなど、はぐれても解散しません
               </span>
             </div>
             <Toggle
-              checked={fixed}
-              onChange={handleFixed}
+              checked={locked}
+              onChange={handleToggleLock}
               label="パーティを固定"
             />
           </div>
         </Card>
       </div>
 
+      {notice && (
+        <div className={styles.gutter}>
+          <Notice
+            tone={notice.status === "unavailable" ? "info" : "warning"}
+            icon={notice.status === "unavailable" ? "construction" : "error"}
+          >
+            {noticeText(notice)}
+          </Notice>
+        </div>
+      )}
+
       <div className={styles.section}>
         <div className={styles.sectionHead}>
           <h2 className={styles.sectionTitle}>メンバー {party.members.length}</h2>
-          <span className={styles.hint}>点線 ＝ フレンドのフレンド</span>
         </div>
       </div>
       <div className={styles.members}>
@@ -95,14 +278,111 @@ export function PartyScreen({
       <div className={styles.section}>
         <div className={styles.sectionHead}>
           <h2 className={styles.sectionTitle}>共有された写真</h2>
-          <span className={styles.hint}>{party.photoCount}枚</span>
+          <span className={styles.hint}>{photos.length}枚</span>
         </div>
       </div>
       <div className={styles.gutter}>
-        <PhotoGrid photos={party.photos} photoCount={party.photoCount} />
+        {photos.length > 0 ? (
+          <PhotoGrid photos={photos} />
+        ) : (
+          <p className={styles.photoEmpty}>まだ写真はありません</p>
+        )}
+      </div>
+
+      <div className={styles.gutter}>
+        <Card padding="md">
+          <div className={styles.row}>
+            <Icon name="logout" size={22} />
+            <div className={styles.rowText}>
+              <span className={styles.rowTitle}>パーティから退出</span>
+              <span className={styles.rowNote}>
+                このパーティのメンバーから外れます
+              </span>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleLeave}
+              disabled={busy === "leave"}
+            >
+              {busy === "leave" ? "退出中…" : "退出"}
+            </Button>
+          </div>
+        </Card>
       </div>
 
       <Fab label="投稿する" onClick={handleCompose} />
-    </AppShell>
+    </>
+  );
+}
+
+type RenameFormProps = {
+  initial: string;
+  busy: boolean;
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+};
+
+function RenameForm({ initial, busy, onSubmit, onCancel }: RenameFormProps) {
+  const [name, setName] = useState(initial);
+
+  return (
+    <form
+      className={styles.renameForm}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const value = name.trim();
+        if (value === "") {
+          onCancel();
+          return;
+        }
+        onSubmit(value);
+      }}
+    >
+      <input
+        className={styles.renameInput}
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        maxLength={60}
+        aria-label="パーティ名"
+        autoFocus
+      />
+      <Button variant="primary" size="sm" type="submit" disabled={busy}>
+        保存
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+        取消
+      </Button>
+    </form>
+  );
+}
+
+type PartyStateProps = {
+  icon: string;
+  title: string;
+  description: string;
+  action?: ReactNode;
+};
+
+function PartyState({ icon, title, description, action }: PartyStateProps) {
+  return (
+    <div className={styles.state}>
+      <span className={styles.stateIcon} aria-hidden>
+        <Icon name={icon} size={32} />
+      </span>
+      <p className={styles.stateTitle}>{title}</p>
+      <p className={styles.stateDescription}>{description}</p>
+      {action}
+    </div>
+  );
+}
+
+function PartySkeleton() {
+  return (
+    <div className={styles.skeleton} aria-hidden>
+      <div className={styles.skeletonHero} />
+      <div className={styles.skeletonCard} />
+      <div className={styles.skeletonStrip} />
+    </div>
   );
 }

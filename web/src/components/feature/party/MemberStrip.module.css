@@ -21,6 +21,10 @@
   width: 56px;
 }
 
+.left {
+  opacity: 0.55;
+}
+
 .name {
   font: var(--text-caption);
   color: var(--color-text-secondary);
@@ -28,4 +32,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.status {
+  font: var(--text-micro);
+  color: var(--color-text-muted);
 }
