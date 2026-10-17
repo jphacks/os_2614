@@ -5,6 +5,7 @@ package controller_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -388,6 +389,14 @@ func TestGetUser(t *testing.T) {
 	da, db := testutil.Pair(viewer, targets["deleted"])
 	testutil.Exec(t, env, `INSERT INTO friendships (user_a, user_b, created_at, via) VALUES (?, ?, ?, 'encounter')`, da, db, now)
 	testutil.Exec(t, env, `UPDATE users SET deleted_at = ? WHERE did = ?`, now, targets["deleted"])
+
+	// フロントは encodeURIComponent した DID（did%3Aplc%3A...）を送るので、パスは unescape されて解釈される。
+	t.Run("percentEncodedDID", func(t *testing.T) {
+		status, body := testutil.Request(t, app, http.MethodGet, "/api/v1/users/"+url.QueryEscape(targets["friend"]), "", token)
+		if status != http.StatusOK {
+			t.Fatalf("status = %d, want %d (body=%s)", status, http.StatusOK, body)
+		}
+	})
 
 	cases := []struct {
 		name       string
