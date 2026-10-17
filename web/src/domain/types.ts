@@ -58,6 +58,30 @@ export type FriendRequest = {
   createdAt: Timestamp;
 };
 
+/**
+ * フレンドの現在位置 (GET /friends/locations、07 §4.2)。相手が自分に見せる精度で
+ * 毎回計算された値。stale のときは位置を含まない (30 分以上更新なし)。
+ */
+export type FriendLocation = {
+  did: DID;
+  precision: LocationPrecision;
+  stale: boolean;
+  updatedAt?: Timestamp;
+  lat?: number;
+  lon?: number;
+  accuracyM?: number;
+  /** area 精度のときの、相手が今いるエリアの label。 */
+  areaLabel?: string;
+  /** area 精度で、どの登録エリアにもいない。 */
+  outside: boolean;
+  /** direction 精度の 8 方位 (N/NE/...)。 */
+  direction?: string;
+  /** direction 精度の距離帯 (<100m/<500m/<2km/<10km/far)。 */
+  distanceBucket?: string;
+  /** direction 精度で、見る側 (自分) の位置が古い / 無い。 */
+  viewerStale: boolean;
+};
+
 /** 相手との関係 (06 §6)。 */
 export type EncounterRelation = "none" | "requested" | "incoming" | "friend";
 

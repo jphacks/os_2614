@@ -17,6 +17,7 @@ import type {
   EncounterRelation,
   FeedPost,
   Friend,
+  FriendLocation,
   FriendRequest,
   Group,
   GroupNearby,
@@ -49,6 +50,7 @@ import type {
   Encounter as EncounterDTO,
   FeedItem as FeedItemDTO,
   Friend as FriendDTO,
+  FriendLocation as FriendLocationDTO,
   FriendRequest as FriendRequestDTO,
   Group as GroupDTO,
   GroupNearby as GroupNearbyDTO,
@@ -238,6 +240,27 @@ export function toInvite(dto: Maybe<InviteDTO>): Invite {
     code: dto?.code ?? "",
     url: dto?.url ?? "",
     expiresAt: dto?.expiresAt ?? "",
+  };
+}
+
+/**
+ * friendLocationResponse → FriendLocation (07 §4.2)。precision ごとに項目が変わるため、
+ * 欠けている項目は undefined のまま残し、既定 boolean だけ埋める。
+ */
+export function toFriendLocation(dto: Maybe<FriendLocationDTO>): FriendLocation {
+  return {
+    did: dto?.did ?? "",
+    precision: oneOf(dto?.precision, PRECISIONS, "area"),
+    stale: dto?.stale ?? false,
+    updatedAt: dto?.updatedAt,
+    lat: typeof dto?.lat === "number" ? dto.lat : undefined,
+    lon: typeof dto?.lon === "number" ? dto.lon : undefined,
+    accuracyM: typeof dto?.accuracyM === "number" ? dto.accuracyM : undefined,
+    areaLabel: dto?.area?.label,
+    outside: dto?.outside ?? false,
+    direction: dto?.direction,
+    distanceBucket: dto?.distanceBucket,
+    viewerStale: dto?.viewerStale ?? false,
   };
 }
 
