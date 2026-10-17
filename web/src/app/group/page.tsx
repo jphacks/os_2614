@@ -17,6 +17,11 @@ import {
 import { toGroup, toPost } from "@/data/mappers";
 import type { Group, Post } from "@/domain/types";
 import { GroupScreen } from "@/components/screens/GroupScreen";
+import {
+  useRealtimeEvent,
+  useRealtimeResync,
+  useRealtimeSubscription,
+} from "@/realtime/provider";
 
 /**
  * 論理削除 (hidden) の投稿と、moderation の表示指示が hide の投稿は出さない
@@ -47,6 +52,16 @@ function GroupTimeline() {
   } = usePagedResource<InstancePost>(id ? `/instances/${id}/posts` : "", [id]);
 
   const posts = useMemo(() => toTimelinePosts(items), [items]);
+
+  // 表示中のグループ (Space) を購読し、リアルタイム更新を反映する (10 §7.2)。
+  useRealtimeSubscription(id);
+  // 再接続後は at-most-once の取りこぼしを補うためタイムラインを取り直す (10 §7.3)。
+  useRealtimeResync(reloadPosts);
+  useRealtimeEvent("post.created", (post) => {
+    if (post.spaceId === id) {
+      reloadPosts();
+    }
+  });
 
   // ok のときだけ DTO をドメインへ写す。それ以外は取得状態をそのまま渡す。
   const groupResource: ResourceState<Group> =
