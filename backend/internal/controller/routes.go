@@ -19,7 +19,13 @@ type Routes struct {
 	Private []Registrar
 }
 
-func Mount(app *fiber.App, requireAuth fiber.Handler, routes Routes) {
+// Mount はルートを fiber.App に登録する。
+// rateLimit は 2 箇所に差す。app 全体には /auth/* の IP 単位の制限のため（認証前は DID が無いので
+// 他のルートは素通りする）、認証グループには DID 単位の制限のため。requireAuth の後に来るので DID は設定済み。
+func Mount(app *fiber.App, requireAuth fiber.Handler, rateLimit fiber.Handler, routes Routes) {
+	if rateLimit != nil {
+		app.Use(rateLimit)
+	}
 	for _, c := range routes.Root {
 		c.Register(app)
 	}
@@ -27,7 +33,11 @@ func Mount(app *fiber.App, requireAuth fiber.Handler, routes Routes) {
 	for _, c := range routes.Public {
 		c.Register(api)
 	}
-	private := api.Group("", requireAuth)
+	privateHandlers := []any{requireAuth}
+	if rateLimit != nil {
+		privateHandlers = append(privateHandlers, rateLimit)
+	}
+	private := api.Group("", privateHandlers...)
 	for _, c := range routes.Private {
 		c.Register(private)
 	}
