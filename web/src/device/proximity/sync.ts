@@ -11,7 +11,7 @@ const MS_PER_DAY = 24 * MS_PER_HOUR;
 const CLOCK_SAMPLE_LIMIT = 5;
 
 /** backend 06 §2: lastSeenAt が 24 時間より前の項目は捨てる。 */
-const SIGHTING_MAX_AGE_MS = MS_PER_DAY;
+export const SIGHTING_MAX_AGE_MS = MS_PER_DAY;
 
 /** backend 06 §2: 1 リクエスト 500 件まで。 */
 const OUTBOX_DEFAULT_LIMIT = 500;
