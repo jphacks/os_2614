@@ -61,7 +61,7 @@ Redis の固定窓カウンタ（`rl:{bucket}:{did}:{window}`）で、DID 単位
 | `presence` | 12 回 / 分 | `POST /party/presence` |
 | `location` | 6 回 / 分 | `PUT /me/location` |
 | `post` | 30 回 / 分 | instance・公開投稿の作成 |
-| `media` | 20 回 / 分 | メディアのアップロード |
+| `media` | 20 回 / 分 | メディアのアップロード（アイコン・バナーの差し替えを含む） |
 | `friend_req` | 30 回 / 時 | フレンド申請 |
 | `default` | 300 回 / 分 | その他すべて |
 
@@ -81,7 +81,7 @@ Redis の固定窓カウンタ（`rl:{bucket}:{did}:{window}`）で、DID 単位
 | `CHAIN_SECRET_KEY` | ✓ | 32 バイトの base64 | DB 内の秘密情報を暗号化する AES-256-GCM 鍵 |
 | `CHAIN_JWT_KEY` | ✓ | 32 バイト以上の base64 | アクセス JWT（HS256）と署名付きメディア URL の鍵 |
 | `CHAIN_OAUTH_PRIVATE_KEY` | prod で ✓ | P-256 秘密鍵の multibase（`go run ./cmd/keygen`） | OAuth confidential client の `private_key_jwt` 用。dev で未設定なら loopback クライアントになる（03 §2.1.1） |
-| `CHAIN_OAUTH_SCOPES` | | `atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile repo:app.bsky.feed.post?action=create&action=delete` | 要求する scope（空白区切り）。granular scope が通らない場合は `atproto transition:generic` にする |
+| `CHAIN_OAUTH_SCOPES` | | `atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile repo:app.bsky.feed.post?action=create&action=delete repo:app.bsky.actor.profile?action=create&action=update blob:image/*` | 要求する scope（空白区切り）。granular scope が通らない場合は `atproto transition:generic` にする |
 | `CHAIN_JETSTREAM_URL` | | `wss://jetstream2.us-east.bsky.network/subscribe` | |
 | `CHAIN_NANOGPT_URL` | | `https://api.nano-gpt.com/api/v1/decisions` | NanoGPT Decisions API（11 §5） |
 | `CHAIN_NANOGPT_KEY` | | | 未設定なら moderation は常に `ok`、Pin は常に `false` を返す（開発用） |

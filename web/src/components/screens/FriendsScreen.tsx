@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
-import type { Friend } from "@/domain/types";
+import type { Friend, FriendLocation, LocationPrecision } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
@@ -12,6 +12,7 @@ import { Icon } from "@/components/ui/Icon";
 import { List } from "@/components/ui/List";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import styles from "./FriendsScreen.module.css";
+import { PressableLink } from "@/components/ui/Pressable";
 
 const EMPTY_TITLE = "まだ友達はいません";
 const EMPTY_DESCRIPTION = "すれ違ったことのある人とだけ友達になれます。";
@@ -30,6 +31,16 @@ export type FriendsScreenProps = {
   onLoadMore?: () => void;
   /** DELETE /friends/{did} (07 §2.3)。成功しなければ reject する。 */
   onDelete: (did: string) => Promise<void>;
+  /** GET /friends/locations (07 §4.2) の結果。did で引く。 */
+  locations?: ReadonlyMap<string, FriendLocation>;
+  /** GET /friends/locations が ok のときだけ true。未取得の行は「位置は準備中」。 */
+  locationsReady?: boolean;
+  /** PUT /friends/{did}/location-share (07 §4.2)。成功しなければ reject する。 */
+  onSharePrecision?: (
+    did: string,
+    precision: LocationPrecision,
+    areasOnly: boolean,
+  ) => Promise<void>;
   /** error 状態の再取得。useResource / usePagedResource の reload を渡す。 */
   onRetry?: () => void;
 };
@@ -40,6 +51,9 @@ export function FriendsScreen({
   loadingMore = false,
   onLoadMore,
   onDelete,
+  locations,
+  locationsReady = false,
+  onSharePrecision,
   onRetry,
 }: FriendsScreenProps) {
   // 楽観削除のための画面ローカル状態。送信中は行を隠し、失敗したら戻す。
@@ -74,6 +88,15 @@ export function FriendsScreen({
         title="友達"
         count={state.status === "ok" ? `${friends.length}人` : undefined}
         subtitle="位置はエリア名だけ共有しています"
+        trailing={
+          <PressableLink
+            className={styles.addFriend}
+            href="/friends/requests/"
+            aria-label="友達申請と招待"
+          >
+            <Icon name="person_add" size={22} />
+          </PressableLink>
+        }
       />
 
       {state.status === "ok" ? (
@@ -93,7 +116,14 @@ export function FriendsScreen({
                     <FriendRow
                       key={friend.did}
                       friend={friend}
+                      location={locationsReady ? (locations?.get(friend.did) ?? null) : null}
                       onDelete={handleDelete}
+                      onShare={
+                        onSharePrecision
+                          ? (precision, areasOnly) =>
+                              onSharePrecision(friend.did, precision, areasOnly)
+                          : undefined
+                      }
                     />
                   ))}
                 </List>

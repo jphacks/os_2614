@@ -6,12 +6,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/applemango/chain/internal/httpx"
-	"github.com/applemango/chain/internal/service"
+	notifysvc "github.com/applemango/chain/internal/service/notify"
 )
 
 // DeviceController は端末の登録・削除（12 §2、14「自分」）。
 type DeviceController struct {
-	Devices *service.DeviceService
+	Devices *notifysvc.DeviceService
 }
 
 func (h *DeviceController) Register(r fiber.Router) {

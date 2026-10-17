@@ -58,7 +58,7 @@ func InsertParty(ctx context.Context, q db.Querier, p Party) error {
 		INSERT INTO parties (space_id, phase, locked, tentative_at, confirmed_at, ended_at, last_activity_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		p.SpaceID, p.Phase, p.Locked, clock.UnixMilli(p.TentativeAt),
-		nullableTime(p.ConfirmedAt), nullableTime(p.EndedAt), clock.UnixMilli(p.LastActivityAt))
+		NullableTime(p.ConfirmedAt), NullableTime(p.EndedAt), clock.UnixMilli(p.LastActivityAt))
 	return err
 }
 
@@ -66,7 +66,7 @@ func InsertParty(ctx context.Context, q db.Querier, p Party) error {
 func SetPartyPhase(ctx context.Context, q db.Querier, spaceID, phase string, confirmedAt, endedAt *time.Time) error {
 	_, err := db.Execute(ctx, q,
 		"UPDATE parties SET phase = ?, confirmed_at = ?, ended_at = ? WHERE space_id = ?",
-		phase, nullableTime(confirmedAt), nullableTime(endedAt), spaceID)
+		phase, NullableTime(confirmedAt), NullableTime(endedAt), spaceID)
 	return err
 }
 
@@ -128,7 +128,7 @@ func PartyAutoMap(ctx context.Context, q db.Querier, dids []string) (map[string]
 		out[d] = true
 	}
 	rows, err := db.GetItems(ctx, q,
-		"SELECT did, party_auto FROM user_settings WHERE did IN ("+placeholders(len(dids))+")",
+		"SELECT did, party_auto FROM user_settings WHERE did IN ("+Placeholders(len(dids))+")",
 		args, func(scan db.Scan, v *partyAutoRow) error { return scan(&v.DID, &v.Auto) })
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func DeletedDIDs(ctx context.Context, q db.Querier, dids []string) (map[string]b
 		args = append(args, d)
 	}
 	rows, err := db.GetItems(ctx, q,
-		"SELECT did FROM users WHERE deleted_at IS NOT NULL AND did IN ("+placeholders(len(dids))+")",
+		"SELECT did FROM users WHERE deleted_at IS NOT NULL AND did IN ("+Placeholders(len(dids))+")",
 		args, func(scan db.Scan, s *string) error { return scan(s) })
 	if err != nil {
 		return nil, err

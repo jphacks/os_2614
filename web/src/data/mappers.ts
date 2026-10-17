@@ -17,15 +17,34 @@ import type {
   EncounterRelation,
   FeedPost,
   Friend,
+  FriendLocation,
+  FriendRequest,
   Group,
+  GroupGraph,
+  GroupGraphEdgeKind,
+  GroupInvite,
+  GroupInviteInboxItem,
+  GroupMember,
+  GroupNearby,
   GroupVisibility,
+  GroupVote,
+  GroupVoteKind,
+  GroupVoteStatus,
+  Invite,
   LocationPrecision,
   Media,
   Memory,
+  ModerationDisplay,
+  ModerationLabel,
+  Notification,
+  NotificationType,
   Party,
   PartyMember,
   PartyPhase,
+  Pin,
   Post,
+  PostFormat,
+  PostModeration,
   PostTarget,
   Profile,
   Reply,
@@ -39,13 +58,25 @@ import type {
   Encounter as EncounterDTO,
   FeedItem as FeedItemDTO,
   Friend as FriendDTO,
+  FriendLocation as FriendLocationDTO,
+  FriendRequest as FriendRequestDTO,
   Group as GroupDTO,
+  GroupGraph as GroupGraphDTO,
+  GroupInvite as GroupInviteDTO,
+  GroupInviteInboxItem as GroupInviteInboxItemDTO,
+  GroupMember as GroupMemberDTO,
+  GroupNearby as GroupNearbyDTO,
+  GroupVote as GroupVoteDTO,
   Instance as InstanceDTO,
   InstancePost as PostDTO,
+  Invite as InviteDTO,
   Media as MediaDTO,
   Memory as MemoryDTO,
+  ModerationInfo as ModerationInfoDTO,
+  Notification as NotificationDTO,
   Party as PartyDTO,
   PartyMember as PartyMemberDTO,
+  Pin as PinDTO,
   Profile as ProfileDTO,
   Settings as SettingsDTO,
   Stats as StatsDTO,
@@ -94,6 +125,29 @@ const RELATIONS: readonly EncounterRelation[] = [
 ];
 const PHASES: readonly PartyPhase[] = ["tentative", "confirmed"];
 const VISIBILITIES: readonly GroupVisibility[] = ["open", "closed"];
+const GROUP_EDGE_KINDS: readonly GroupGraphEdgeKind[] = [
+  "contains",
+  "overlaps",
+  "shared_members",
+];
+const VOTE_KINDS: readonly GroupVoteKind[] = ["make_closed", "make_persistent"];
+const VOTE_STATUSES: readonly GroupVoteStatus[] = ["open", "passed", "failed"];
+const NOTIFICATION_TYPES: readonly NotificationType[] = [
+  "friend.request",
+  "friend.accepted",
+  "party.confirmed",
+  "group.nearby",
+  "group.invited",
+  "group.suggested",
+  "encounter.daily",
+  "encounter.weekly",
+  "encounter.monthly",
+  "moderation.hidden",
+];
+const PIN_REASONS: readonly Pin["reason"][] = ["auto", "manual"];
+const POST_FORMATS: readonly PostFormat[] = ["plain", "markdown"];
+const MODERATION_LABELS: readonly ModerationLabel[] = ["ok", "warn", "block"];
+const MODERATION_DISPLAYS: readonly ModerationDisplay[] = ["show", "blur", "hide"];
 
 /** 数値でなければ既定値にする。0 や負値は有効な値として通す。 */
 function num(value: unknown, fallback = 0): number {
@@ -188,6 +242,48 @@ export function toFriend(dto: Maybe<FriendDTO>): Friend {
   };
 }
 
+/** FriendRequestItem → FriendRequest (07 §2.2)。status の既定は "pending"。 */
+export function toFriendRequest(dto: Maybe<FriendRequestDTO>): FriendRequest {
+  return {
+    id: dto?.id ?? "",
+    peer: toUser(dto?.peer),
+    via: dto?.via ?? "",
+    viaRef: dto?.viaRef,
+    status: dto?.status ?? "pending",
+    createdAt: dto?.createdAt ?? "",
+  };
+}
+
+/** friendInviteResponse → Invite (07 §2.1)。code / url / expiresAt は必須。 */
+export function toInvite(dto: Maybe<InviteDTO>): Invite {
+  return {
+    code: dto?.code ?? "",
+    url: dto?.url ?? "",
+    expiresAt: dto?.expiresAt ?? "",
+  };
+}
+
+/**
+ * friendLocationResponse → FriendLocation (07 §4.2)。precision ごとに項目が変わるため、
+ * 欠けている項目は undefined のまま残し、既定 boolean だけ埋める。
+ */
+export function toFriendLocation(dto: Maybe<FriendLocationDTO>): FriendLocation {
+  return {
+    did: dto?.did ?? "",
+    precision: oneOf(dto?.precision, PRECISIONS, "area"),
+    stale: dto?.stale ?? false,
+    updatedAt: dto?.updatedAt,
+    lat: typeof dto?.lat === "number" ? dto.lat : undefined,
+    lon: typeof dto?.lon === "number" ? dto.lon : undefined,
+    accuracyM: typeof dto?.accuracyM === "number" ? dto.accuracyM : undefined,
+    areaLabel: dto?.area?.label,
+    outside: dto?.outside ?? false,
+    direction: dto?.direction,
+    distanceBucket: dto?.distanceBucket,
+    viewerStale: dto?.viewerStale ?? false,
+  };
+}
+
 /** FeedItem → FeedPost (17 §3.2)。著者不明は空ユーザーに寄せる。 */
 export function toFeedPost(dto: Maybe<FeedItemDTO>): FeedPost {
   return {
@@ -222,32 +318,152 @@ export function toEncounter(dto: Maybe<EncounterDTO>): Encounter {
   };
 }
 
-/** GroupDetail → Group。isMember を insideArea に写す。 */
+/** GroupDetail → Group。isMember を insideArea に写す。role は非メンバーでは欠ける。 */
 export function toGroup(dto: Maybe<GroupDTO>): Group {
   return {
     id: dto?.id ?? "",
     name: dto?.name ?? "",
+    description: dto?.description ?? "",
     visibility: oneOf(dto?.visibility, VISIBILITIES, "open"),
     memberCount: num(dto?.memberCount),
     // 半径 (geofence) がある = エリア型グループ。domain の表示ラベル。
     areaLabel: dto?.radiusM != null ? "GPSエリア" : "",
     insideArea: dto?.isMember ?? false,
+    role: dto?.role,
+    inviteQuorum:
+      typeof dto?.inviteQuorum === "number" ? dto.inviteQuorum : undefined,
   };
 }
 
-/** InstancePost → Post。moderation が付いた投稿は自動ピン扱い。 */
+/** MemberItem → GroupMember (09 §4)。name は displayName || handle。role の既定は "member"。 */
+export function toGroupMember(dto: Maybe<GroupMemberDTO>): GroupMember {
+  const handle = dto?.handle ?? "";
+  return {
+    did: dto?.did ?? "",
+    handle,
+    name: dto?.displayName || handle,
+    avatarUrl: dto?.avatarUrl,
+    tone: avatarToneFor(dto?.did || handle),
+    role: dto?.role ?? "member",
+    joinedAt: dto?.joinedAt ?? "",
+  };
+}
+
+/** NearbyResult → GroupNearby (09 §5)。inside は距離を返さず、near は帯だけ返す。 */
+export function toGroupNearby(dto: Maybe<GroupNearbyDTO>): GroupNearby {
+  return {
+    inside: (dto?.inside ?? []).map((item) => ({
+      id: item?.id ?? "",
+      name: item?.name ?? "",
+      memberCount: num(item?.memberCount),
+      isMember: item?.isMember ?? false,
+      persistent: item?.persistent ?? false,
+      radiusM: num(item?.radiusM),
+    })),
+    near: (dto?.near ?? []).map((item) => ({
+      id: item?.id ?? "",
+      name: item?.name ?? "",
+      memberCount: num(item?.memberCount),
+      distanceBucket: item?.distanceBucket ?? "",
+    })),
+  };
+}
+
+/** InviteItem → GroupInvite (09 §6)。status の既定は "collecting"。 */
+export function toGroupInvite(dto: Maybe<GroupInviteDTO>): GroupInvite {
+  return {
+    id: dto?.id ?? "",
+    targetDid: dto?.targetDid ?? "",
+    createdBy: dto?.createdBy ?? "",
+    status: dto?.status ?? "collecting",
+    approvedCount: num(dto?.approvedCount),
+    requiredCount: num(dto?.requiredCount),
+    createdAt: dto?.createdAt ?? "",
+    expiresAt: dto?.expiresAt ?? "",
+  };
+}
+
+/** InviteInboxItem → GroupInviteInboxItem (09 §6)。inviter は任意。 */
+export function toGroupInviteInboxItem(
+  dto: Maybe<GroupInviteInboxItemDTO>,
+): GroupInviteInboxItem {
+  return {
+    id: dto?.id ?? "",
+    spaceId: dto?.spaceId ?? "",
+    groupName: dto?.groupName ?? "",
+    inviter: dto?.inviter ? toUser(dto.inviter) : undefined,
+    expiresAt: dto?.expiresAt ?? "",
+  };
+}
+
+/** VoteItem → GroupVote (09 §8.6)。kind / status の既定は make_closed / open。 */
+export function toGroupVote(dto: Maybe<GroupVoteDTO>): GroupVote {
+  return {
+    id: dto?.id ?? "",
+    kind: oneOf(dto?.kind, VOTE_KINDS, "make_closed"),
+    status: oneOf(dto?.status, VOTE_STATUSES, "open"),
+    createdBy: dto?.createdBy ?? "",
+    yesCount: num(dto?.yesCount),
+    noCount: num(dto?.noCount),
+    requiredCount: num(dto?.requiredCount),
+    createdAt: dto?.createdAt ?? "",
+    closesAt: dto?.closesAt ?? "",
+    myBallot: typeof dto?.myBallot === "boolean" ? dto.myBallot : undefined,
+  };
+}
+
+/** GraphResult → GroupGraph (09 §7)。中心座標は無い。weight は shared_members のときだけ。 */
+export function toGroupGraph(dto: Maybe<GroupGraphDTO>): GroupGraph {
+  return {
+    nodes: (dto?.nodes ?? []).map((node) => ({
+      id: node?.id ?? "",
+      name: node?.name ?? "",
+      radiusM: num(node?.radiusM),
+      memberCount: num(node?.memberCount),
+      isMember: node?.isMember ?? false,
+      inside: node?.inside ?? false,
+      origin: node?.origin,
+    })),
+    edges: (dto?.edges ?? []).map((edge) => ({
+      from: edge?.from ?? "",
+      to: edge?.to ?? "",
+      kind: oneOf(edge?.kind, GROUP_EDGE_KINDS, "contains"),
+      weight: typeof edge?.weight === "number" ? edge.weight : undefined,
+    })),
+  };
+}
+
+/** service.ModerationInfo → PostModeration (11 §4)。未知の値は ok/show に寄せる。 */
+function toModeration(dto: Maybe<ModerationInfoDTO>): PostModeration | undefined {
+  if (!dto) {
+    return undefined;
+  }
+  return {
+    label: oneOf(dto.label, MODERATION_LABELS, "ok"),
+    display: oneOf(dto.display, MODERATION_DISPLAYS, "show"),
+    categories: (dto.categories ?? []).filter(
+      (category): category is string => typeof category === "string",
+    ),
+  };
+}
+
+/** InstancePost → Post。moderation の表示指示 (11 §4) はそのまま保持する。 */
 export function toPost(dto: Maybe<PostDTO>): Post {
+  const moderation = toModeration(dto?.moderation);
   return {
     id: dto?.uri ?? "",
     author: dto?.author ? toUser(dto.author) : emptyUser(),
     body: dto?.text ?? "",
+    format: oneOf(dto?.format, POST_FORMATS, "plain"),
     createdAt: dto?.createdAt ?? "",
     attachments: (dto?.media ?? []).map(toMedia),
     replyCount: 0,
     likeCount: 0,
     likedByMe: false,
-    // moderation / hidden は backend 側の判定。フラグ付きは自動ピンとして先頭に置く。
-    pinned: Boolean(dto?.moderation),
+    // Pin は Space の Pin 一覧 (GET /instances/{spaceId}/pins, 10 §6) が正。
+    // タイムラインの投稿は既定で非 Pin とし、呼び出し側が subjects で上書きする。
+    pinned: false,
+    ...(moderation ? { moderation } : {}),
   };
 }
 
@@ -273,6 +489,17 @@ export function toPostTarget(dto: Maybe<InstanceDTO>): PostTarget {
     type: dto?.type ?? "",
     name: dto?.name ?? "",
     memberCount: num(dto?.memberCount),
+  };
+}
+
+/** Pin (10 §6) → Pin。reason の既定は "auto"。 */
+export function toPin(dto: Maybe<PinDTO>): Pin {
+  return {
+    uri: dto?.uri ?? "",
+    subject: dto?.subject ?? "",
+    reason: oneOf(dto?.reason, PIN_REASONS, "auto"),
+    pinnedBy: dto?.pinnedBy,
+    createdAt: dto?.createdAt ?? "",
   };
 }
 
@@ -331,6 +558,17 @@ export function toStats(dto: Maybe<StatsDTO>): Stats {
     parties: { total: num(dto?.parties?.total) },
     groups: { member: num(dto?.groups?.member) },
     posts: { month: num(dto?.posts?.month) },
+  };
+}
+
+/** notificationResponse → Notification (12 §1)。未知の種類は "friend.request" に寄せる。 */
+export function toNotification(dto: Maybe<NotificationDTO>): Notification {
+  return {
+    id: dto?.id ?? "",
+    type: oneOf(dto?.type, NOTIFICATION_TYPES, "friend.request"),
+    data: (dto?.data ?? {}) as Record<string, unknown>,
+    createdAt: dto?.createdAt ?? "",
+    readAt: dto?.readAt,
   };
 }
 

@@ -7,9 +7,9 @@
 | 項目（draft） | 出どころ | 編集 | 優先度 |
 | --- | --- | --- | --- |
 | id | DID（内部）。表示は ATProto の handle | CHAIN では変えない（README Q5） | P0 |
-| 名前 | `app.bsky.actor.profile.displayName` | Bluesky 側で編集（P2 で CHAIN から編集） | P0 |
-| アイコン / バナー | `app.bsky.actor.profile.avatar` / `banner`（blob の CID） | 同上 | P0 |
-| 説明 | `app.bsky.actor.profile.description` | 同上 | P0 |
+| 名前 | `app.bsky.actor.profile.displayName` | CHAIN から編集できる（§1.3） | P0（編集は P1） |
+| アイコン / バナー | `app.bsky.actor.profile.avatar` / `banner`（blob の CID） | 同上 | P0（編集は P1） |
+| 説明 | `app.bsky.actor.profile.description` | 同上 | P0（編集は P1） |
 | ステータス | `jp.i32.chain.actor.profile.status`（PDS に公開で保存） | `PUT /api/v1/me/status`。moderation の対象 | P1 |
 
 - 取得: ログイン時に、ユーザーの PDS から `com.atproto.repo.getRecord` で両方の record を読み、`profiles` に入れる。以後は Jetstream で更新する（03 §5）。Jetstream の取りこぼしに備えて、24 時間以上更新されていなければ閲覧時に裏で取り直す
@@ -26,6 +26,25 @@
 - 同じ Space（active / archived）のメンバーだった相手
 
 ATProto 上のプロフィール自体は公開されている。ここで制限しているのは「CHAIN を使っていて、自分と接点がある」という関係の方である。
+
+### 1.3 CHAIN からの編集（P1）
+
+Bluesky のプロフィール（`app.bsky.actor.profile` の `self`）を、ユーザーの PDS に直接書き換える。Bluesky のアプリから見ても同じプロフィールになる。
+
+| API | 内容 |
+| --- | --- |
+| `PATCH /api/v1/me/profile` | `{"displayName": "...", "description": "..."}`。来た項目だけ変える。空文字はその項目を消す |
+| `PUT /api/v1/me/avatar` | multipart の `file`。アイコンを差し替える |
+| `PUT /api/v1/me/banner` | multipart の `file`。バナーを差し替える |
+| `DELETE /api/v1/me/avatar`、`/me/banner` | 画像を消す |
+
+- **既存の record を保つ**: 先に PDS から今の `app.bsky.actor.profile/self` を `getRecord` で読み、変える項目だけを差し替えて `putRecord` する（`pronouns`、`website`、`labels` など、CHAIN が知らない項目を消さないため）。`putRecord` には読んだ時の `cid` を `swapRecord` として渡し、その間に Bluesky のアプリなどで変更されていたら 409 `conflict` を返す（クライアントは読み直してやり直す）。record がまだなければ新しく作る
+- **上限**（Bluesky の lexicon に合わせる）: displayName は 64 grapheme、description は 256 grapheme
+- **moderation**: displayName と description を、書く前に判定する（kind `profile`）。block なら 422
+- **画像**: JPEG / PNG / WebP を受け付け、デコードして再エンコードする（EXIF を落とす、10 §4.4 と同じ）。アイコンは 1000×1000 に収まるよう縮小（正方形にはクロップしない。クロップはクライアントの責務）、バナーは 3000×1000 に収める。JPEG で 1,000,000 バイト以下になるまで品質を下げる（85 から 5 ずつ、下限 50。それでも超えたら縮小を続ける）。`com.atproto.repo.uploadBlob` で上げ、返った blob 参照を record に入れて `putRecord`
+- 書いた後に `profiles` を更新し、`GET /me` に反映する。Jetstream から同じ変更が届いても、そのまま上書きされるだけ
+- **scope**: `repo:app.bsky.actor.profile` の作成・更新と、`blob:image/*` が要る（03 §2.1 の既定の scope に追加）。scope が足りなければ 403 `atproto_reauth_required`（17 §2.4 と同じ）
+- PDS のエラーの扱いは 13 §1.1 のステータスと同じ（失効 401、その他 502）
 
 ## 2. memory
 

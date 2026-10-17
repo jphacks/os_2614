@@ -35,7 +35,12 @@ adb_target shell settings put global transition_animation_scale 0 >/dev/null 2>&
 adb_target shell settings put global animator_duration_scale 0 >/dev/null 2>&1 || true
 
 bash "$SCRIPT_DIR/device.sh" launch >/dev/null
-bash "$SCRIPT_DIR/device.sh" wait-text "ちかく" 60
+if ! bash "$SCRIPT_DIR/device.sh" wait-text "ちかく" 60; then
+  info "「ちかく」が表示されないため、現在の画面を診断用に保存します"
+  bash "$SCRIPT_DIR/device.sh" screenshot "$ARTIFACT_DIR/smoke-failed-${ANDROID_SERIAL}.png" >&2 || true
+  bash "$SCRIPT_DIR/device.sh" ui "$ARTIFACT_DIR/smoke-failed-${ANDROID_SERIAL}.xml" >&2 || true
+  die "smoke 失敗: 「ちかく」が表示されません。端末がサインイン済みか確認してください (welcome 画面ならログインが必要です)"
+fi
 
 shot="$ARTIFACT_DIR/smoke-${ANDROID_SERIAL}.png"
 ui="$ARTIFACT_DIR/smoke-${ANDROID_SERIAL}.xml"

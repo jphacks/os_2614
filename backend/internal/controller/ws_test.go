@@ -96,10 +96,10 @@ func TestWebSocketPostCreated(t *testing.T) {
 	env.Consent(t, "did:plc:bob")
 	bob := env.Login(t, "did:plc:bob")
 
-	space(t, env, "sp1", "jp.i32.chain.space.group", "active", "did:plc:alice")
-	group(t, env, "sp1", true)
-	member(t, env, "sp1", "did:plc:alice", true)
-	member(t, env, "sp1", "did:plc:bob", true)
+	testutil.Space(t, env, "sp1", "jp.i32.chain.space.group", "active", "did:plc:alice")
+	testutil.Group(t, env, "sp1", true)
+	testutil.Member(t, env, "sp1", "did:plc:alice", true)
+	testutil.Member(t, env, "sp1", "did:plc:bob", true)
 
 	addr := startServer(t, app)
 	connAlice := connectAndAuth(t, addr, alice)
@@ -111,7 +111,7 @@ func TestWebSocketPostCreated(t *testing.T) {
 	readUntil(t, connBob, 3*time.Second, func(m map[string]any) bool { return m["type"] == "subscribed" && m["id"] == "b1" })
 
 	// alice が REST で投稿する。
-	status, body := request(t, app, http.MethodPost, "/api/v1/posts", `{"spaceIds":["sp1"],"text":"hello ws"}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPost, "/api/v1/posts", `{"spaceIds":["sp1"],"text":"hello ws"}`, alice)
 	if status != http.StatusCreated {
 		t.Fatalf("post: status = %d, want 201 (body=%s)", status, body)
 	}
@@ -149,11 +149,11 @@ func TestWebSocketForbiddenSubscription(t *testing.T) {
 	env.CreateUser(t, "did:plc:alice", "alice.test")
 	alice := env.Login(t, "did:plc:alice")
 	// alice は sp1 のメンバーだが sp-other のメンバーではない。
-	space(t, env, "sp1", "jp.i32.chain.space.group", "active", "did:plc:alice")
-	group(t, env, "sp1", true)
-	member(t, env, "sp1", "did:plc:alice", true)
-	space(t, env, "sp-other", "jp.i32.chain.space.group", "active", "did:plc:alice")
-	group(t, env, "sp-other", true)
+	testutil.Space(t, env, "sp1", "jp.i32.chain.space.group", "active", "did:plc:alice")
+	testutil.Group(t, env, "sp1", true)
+	testutil.Member(t, env, "sp1", "did:plc:alice", true)
+	testutil.Space(t, env, "sp-other", "jp.i32.chain.space.group", "active", "did:plc:alice")
+	testutil.Group(t, env, "sp-other", true)
 
 	addr := startServer(t, app)
 	conn := connectAndAuth(t, addr, alice)

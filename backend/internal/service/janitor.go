@@ -7,13 +7,16 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/db"
-	"github.com/applemango/chain/internal/model"
+	maintenancemodel "github.com/applemango/chain/internal/model/maintenance"
+	schedulemodel "github.com/applemango/chain/internal/model/schedule"
+	spacemodel "github.com/applemango/chain/internal/model/space"
+	"github.com/applemango/chain/internal/service/core"
 	"github.com/applemango/chain/internal/storage"
 )
 
 // Janitor は期限切れデータの掃除（04 §4、13 §5 の 6）。
 type Janitor struct {
-	Deps
+	core.Deps
 	Storage *storage.Store
 }
 
@@ -48,25 +51,25 @@ func (s *Janitor) Sweep(ctx context.Context) (JanitorResult, error) {
 	now := s.Clock.Now()
 	var res JanitorResult
 
-	n, err := model.DeleteOldBeaconTokens(ctx, s.DB, now.Add(-48*time.Hour).Unix(), JanitorBatch)
+	n, err := maintenancemodel.DeleteOldBeaconTokens(ctx, s.DB, now.Add(-48*time.Hour).Unix(), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
 	res.BeaconTokens = int(n)
 
-	n, err = model.DeleteExpiredFriendInvites(ctx, s.DB, now.Add(-24*time.Hour), JanitorBatch)
+	n, err = maintenancemodel.DeleteExpiredFriendInvites(ctx, s.DB, now.Add(-24*time.Hour), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
 	res.FriendInvites = int(n)
 
-	n, err = model.DeleteOldAppSessions(ctx, s.DB, now.Add(-7*24*time.Hour), JanitorBatch)
+	n, err = maintenancemodel.DeleteOldAppSessions(ctx, s.DB, now.Add(-7*24*time.Hour), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
 	res.AppSessions = int(n)
 
-	unattached, err := model.ListUnattachedMedia(ctx, s.DB, now.Add(-24*time.Hour), JanitorBatch)
+	unattached, err := maintenancemodel.ListUnattachedMedia(ctx, s.DB, now.Add(-24*time.Hour), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
@@ -75,7 +78,7 @@ func (s *Janitor) Sweep(ctx context.Context) (JanitorResult, error) {
 	}
 	res.UnattachedMedia = len(unattached)
 
-	records, err := model.ListSoftDeletedRecords(ctx, s.DB, now.Add(-30*24*time.Hour), JanitorBatch)
+	records, err := maintenancemodel.ListSoftDeletedRecords(ctx, s.DB, now.Add(-30*24*time.Hour), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
@@ -84,13 +87,13 @@ func (s *Janitor) Sweep(ctx context.Context) (JanitorResult, error) {
 		for _, r := range records {
 			uris = append(uris, r.URI)
 		}
-		if _, err := model.DeleteRecordsByURIs(ctx, s.DB, uris); err != nil {
+		if _, err := maintenancemodel.DeleteRecordsByURIs(ctx, s.DB, uris); err != nil {
 			return res, err
 		}
 	}
 	res.Records = len(records)
 
-	softMedia, err := model.ListSoftDeletedMedia(ctx, s.DB, now.Add(-30*24*time.Hour), JanitorBatch)
+	softMedia, err := maintenancemodel.ListSoftDeletedMedia(ctx, s.DB, now.Add(-30*24*time.Hour), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
@@ -99,41 +102,41 @@ func (s *Janitor) Sweep(ctx context.Context) (JanitorResult, error) {
 	}
 	res.DeletedMedia = len(softMedia)
 
-	n, err = model.DeleteOldNotifications(ctx, s.DB, now.Add(-90*24*time.Hour), JanitorBatch)
+	n, err = maintenancemodel.DeleteOldNotifications(ctx, s.DB, now.Add(-90*24*time.Hour), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
 	res.Notifications = int(n)
 
 	// 予定は今日と明日の分だけを持つ（04 §4）。date が昨日以前になったら消す。
-	n, err = model.DeleteScheduleEntriesBefore(ctx, s.DB, jstDateString(now), JanitorBatch)
+	n, err = schedulemodel.DeleteScheduleEntriesBefore(ctx, s.DB, core.JstDateString(now), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
 	res.ScheduleEntries = int(n)
 
-	n, err = model.ExpireGroupInvites(ctx, s.DB, now)
+	n, err = maintenancemodel.ExpireGroupInvites(ctx, s.DB, now)
 	if err != nil {
 		return res, err
 	}
 	res.InvitesExpired = int(n)
 
-	n, err = model.DeleteExpiredGroupInvites(ctx, s.DB, now.Add(-30*24*time.Hour), JanitorBatch)
+	n, err = maintenancemodel.DeleteExpiredGroupInvites(ctx, s.DB, now.Add(-30*24*time.Hour), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
 	res.InvitesDeleted = int(n)
 
-	stale, err := model.ListStaleGeoUsers(ctx, s.Redis, JanitorBatch)
+	stale, err := maintenancemodel.ListStaleGeoUsers(ctx, s.Redis, JanitorBatch)
 	if err != nil {
 		return res, err
 	}
-	if err := model.RemoveGeoUsers(ctx, s.Redis, stale); err != nil {
+	if err := maintenancemodel.RemoveGeoUsers(ctx, s.Redis, stale); err != nil {
 		return res, err
 	}
 	res.GeoUsers = len(stale)
 
-	users, err := model.ListDeletedUsers(ctx, s.DB, now.Add(-30*24*time.Hour), JanitorBatch)
+	users, err := maintenancemodel.ListDeletedUsers(ctx, s.DB, now.Add(-30*24*time.Hour), JanitorBatch)
 	if err != nil {
 		return res, err
 	}
@@ -147,7 +150,7 @@ func (s *Janitor) Sweep(ctx context.Context) (JanitorResult, error) {
 	return res, nil
 }
 
-func (s *Janitor) removeMedia(ctx context.Context, rows []model.Media) error {
+func (s *Janitor) removeMedia(ctx context.Context, rows []spacemodel.Media) error {
 	if len(rows) == 0 {
 		return nil
 	}
@@ -155,14 +158,14 @@ func (s *Janitor) removeMedia(ctx context.Context, rows []model.Media) error {
 	for _, m := range rows {
 		ids = append(ids, m.ID)
 	}
-	if _, err := model.DeleteMediaByIDs(ctx, s.DB, ids); err != nil {
+	if _, err := maintenancemodel.DeleteMediaByIDs(ctx, s.DB, ids); err != nil {
 		return err
 	}
 	s.deleteFiles(ctx, rows)
 	return nil
 }
 
-func (s *Janitor) deleteFiles(ctx context.Context, rows []model.Media) {
+func (s *Janitor) deleteFiles(ctx context.Context, rows []spacemodel.Media) {
 	if s.Storage == nil {
 		return
 	}
@@ -179,32 +182,32 @@ func (s *Janitor) purgeUser(ctx context.Context, did string) error {
 		if err := s.reattachCreatedSpaces(ctx, tx, did); err != nil {
 			return err
 		}
-		if _, err := model.DeleteGroupVotesByCreator(ctx, tx, did); err != nil {
+		if _, err := maintenancemodel.DeleteGroupVotesByCreator(ctx, tx, did); err != nil {
 			return err
 		}
-		return model.DeleteUserRow(ctx, tx, did)
+		return maintenancemodel.DeleteUserRow(ctx, tx, did)
 	})
 }
 
 // reattachCreatedSpaces は created_by が消すユーザーを指す Space を、残るメンバーへ引き継ぐ。
 // 残らなければ消す（spaces.created_by は CASCADE しないため）。
 func (s *Janitor) reattachCreatedSpaces(ctx context.Context, q db.Querier, did string) error {
-	spaces, err := model.ListSpacesCreatedBy(ctx, q, did)
+	spaces, err := maintenancemodel.ListSpacesCreatedBy(ctx, q, did)
 	if err != nil {
 		return err
 	}
 	for _, sp := range spaces {
-		remaining, err := model.ListActiveSpaceMembers(ctx, q, sp.ID)
+		remaining, err := spacemodel.ListActiveSpaceMembers(ctx, q, sp.ID)
 		if err != nil {
 			return err
 		}
 		if len(remaining) == 0 {
-			if err := model.DeleteSpace(ctx, q, sp.ID); err != nil {
+			if err := spacemodel.DeleteSpace(ctx, q, sp.ID); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := model.SetSpaceCreatedBy(ctx, q, sp.ID, remaining[0].DID); err != nil {
+		if err := maintenancemodel.SetSpaceCreatedBy(ctx, q, sp.ID, remaining[0].DID); err != nil {
 			return err
 		}
 	}

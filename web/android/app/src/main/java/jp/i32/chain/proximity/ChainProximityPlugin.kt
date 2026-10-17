@@ -109,7 +109,7 @@ class ChainProximityPlugin : Plugin() {
 
     @PluginMethod
     fun setBeaconTokens(call: PluginCall) {
-        val windowSec = call.getLong("windowSec") ?: return call.reject("windowSec is required")
+        val windowSec = call.number("windowSec")?.toLong() ?: return call.reject("windowSec is required")
         if (windowSec <= 0) return call.reject("windowSec must be positive")
         val items = call.getArray("tokens") ?: return call.reject("tokens is required")
 
@@ -130,7 +130,7 @@ class ChainProximityPlugin : Plugin() {
 
     @PluginMethod
     fun setClockOffset(call: PluginCall) {
-        val offset = call.getDouble("offsetMs") ?: return call.reject("offsetMs is required")
+        val offset = call.number("offsetMs")?.toDouble() ?: return call.reject("offsetMs is required")
         ProximityState.setClockOffset(context, offset.toLong())
         call.resolve()
     }
@@ -176,8 +176,8 @@ class ChainProximityPlugin : Plugin() {
             return call.reject("位置の権限がありません", "denied")
         }
         location.current(
-            timeoutMs = call.getLong("timeoutMs") ?: DEFAULT_LOCATION_TIMEOUT_MS,
-            maxAgeMs = call.getLong("maxAgeMs") ?: DEFAULT_LOCATION_MAX_AGE_MS,
+            timeoutMs = call.number("timeoutMs")?.toLong() ?: DEFAULT_LOCATION_TIMEOUT_MS,
+            maxAgeMs = call.number("maxAgeMs")?.toLong() ?: DEFAULT_LOCATION_MAX_AGE_MS,
             onFix = { call.resolve(LocationController.toJson(it)) },
             onError = { code, message -> call.reject(message, code) },
         )
@@ -188,7 +188,7 @@ class ChainProximityPlugin : Plugin() {
         if (getPermissionState(LOCATION) != PermissionState.GRANTED) {
             return call.reject("位置の権限がありません", "denied")
         }
-        val intervalMs = call.getLong("intervalMs") ?: return call.reject("intervalMs is required")
+        val intervalMs = call.number("intervalMs")?.toLong() ?: return call.reject("intervalMs is required")
         if (intervalMs < 1_000) return call.reject("intervalMs must be at least 1000")
         location.startUpdates(intervalMs) { notifyListeners("location", LocationController.toJson(it)) }
         call.resolve()
@@ -200,3 +200,9 @@ class ChainProximityPlugin : Plugin() {
         call.resolve()
     }
 }
+
+/**
+ * JS の数値。JSON 由来の整数は Integer で届くが、PluginCall.getLong / getDouble は
+ * Long / Double しか受けず、900 のような値を null にしてしまう。Number なら何でも受ける。
+ */
+private fun PluginCall.number(name: String): Number? = data.opt(name) as? Number

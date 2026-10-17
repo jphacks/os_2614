@@ -40,13 +40,13 @@ func TestScheduleTodayAPI(t *testing.T) {
 	token := env.Login(t, "did:plc:sched")
 
 	// 認証なしは 401。
-	status, body := request(t, app, http.MethodGet, "/api/v1/me/schedule-today", "", "")
+	status, body := testutil.Request(t, app, http.MethodGet, "/api/v1/me/schedule-today", "", "")
 	if status != http.StatusUnauthorized {
 		t.Fatalf("no token: status = %d, want 401 (body=%s)", status, body)
 	}
 
 	// calendar を保存。
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
 		`{"date":"2026-10-17","source":"calendar","entries":[{"title":"線形代数 II","start":"10:40","end":"12:10"}]}`, token)
 	if status != http.StatusOK {
 		t.Fatalf("PUT calendar: status = %d, want 200 (body=%s)", status, body)
@@ -60,7 +60,7 @@ func TestScheduleTodayAPI(t *testing.T) {
 	}
 
 	// manual を足すと両方返る。
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
 		`{"date":"2026-10-17","source":"manual","entries":[{"title":"ランチ","start":"12:30","end":"13:00"}]}`, token)
 	if status != http.StatusOK {
 		t.Fatalf("PUT manual: status = %d, want 200 (body=%s)", status, body)
@@ -70,7 +70,7 @@ func TestScheduleTodayAPI(t *testing.T) {
 	}
 
 	// calendar だけを置き換えても manual は残る。
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
 		`{"date":"2026-10-17","source":"calendar","entries":[{"title":"線形代数学 II","start":"13:00","end":"14:30"}]}`, token)
 	if status != http.StatusOK {
 		t.Fatalf("PUT calendar again: status = %d (body=%s)", status, body)
@@ -80,7 +80,7 @@ func TestScheduleTodayAPI(t *testing.T) {
 	}
 
 	// GET は date を省くと今日。
-	status, body = request(t, app, http.MethodGet, "/api/v1/me/schedule-today", "", token)
+	status, body = testutil.Request(t, app, http.MethodGet, "/api/v1/me/schedule-today", "", token)
 	if status != http.StatusOK {
 		t.Fatalf("GET today: status = %d (body=%s)", status, body)
 	}
@@ -90,7 +90,7 @@ func TestScheduleTodayAPI(t *testing.T) {
 	}
 
 	// 空の entries で calendar だけ消える。
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
 		`{"date":"2026-10-17","source":"calendar","entries":[]}`, token)
 	if status != http.StatusOK {
 		t.Fatalf("PUT empty calendar: status = %d (body=%s)", status, body)
@@ -101,11 +101,11 @@ func TestScheduleTodayAPI(t *testing.T) {
 	}
 
 	// DELETE で manual を消す。
-	status, body = request(t, app, http.MethodDelete, "/api/v1/me/schedule-today?date=2026-10-17&source=manual", "", token)
+	status, body = testutil.Request(t, app, http.MethodDelete, "/api/v1/me/schedule-today?date=2026-10-17&source=manual", "", token)
 	if status != http.StatusNoContent {
 		t.Fatalf("DELETE manual: status = %d, want 204 (body=%s)", status, body)
 	}
-	status, body = request(t, app, http.MethodGet, "/api/v1/me/schedule-today?date=2026-10-17", "", token)
+	status, body = testutil.Request(t, app, http.MethodGet, "/api/v1/me/schedule-today?date=2026-10-17", "", token)
 	if status != http.StatusOK {
 		t.Fatalf("GET after delete: status = %d (body=%s)", status, body)
 	}
@@ -114,7 +114,7 @@ func TestScheduleTodayAPI(t *testing.T) {
 	}
 
 	// 明日も指定できる。
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/schedule-today",
 		`{"date":"2026-10-18","source":"calendar","entries":[{"title":"明日の予定","start":"09:00","end":"10:00"}]}`, token)
 	if status != http.StatusOK {
 		t.Fatalf("PUT tomorrow: status = %d (body=%s)", status, body)
@@ -145,11 +145,11 @@ func TestScheduleTodayValidation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			status, body := request(t, app, http.MethodPut, "/api/v1/me/schedule-today", tc.body, token)
+			status, body := testutil.Request(t, app, http.MethodPut, "/api/v1/me/schedule-today", tc.body, token)
 			if status != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400 (body=%s)", status, body)
 			}
-			e := decodeError(t, body)
+			e := testutil.DecodeError(t, body)
 			if e.Error.Details.Fields[tc.field] == "" {
 				t.Fatalf("fields[%q] is empty (body=%s)", tc.field, body)
 			}
@@ -162,11 +162,11 @@ func TestScheduleTodayValidation(t *testing.T) {
 		entries[i] = `{"title":"x","start":"09:00","end":"10:00"}`
 	}
 	body := `{"date":"2026-10-17","source":"calendar","entries":[` + joinStrings(entries) + `]}`
-	status, respBody := request(t, app, http.MethodPut, "/api/v1/me/schedule-today", body, token)
+	status, respBody := testutil.Request(t, app, http.MethodPut, "/api/v1/me/schedule-today", body, token)
 	if status != http.StatusBadRequest {
 		t.Fatalf("21 entries: status = %d, want 400 (body=%s)", status, respBody)
 	}
-	if e := decodeError(t, respBody); e.Error.Details.Fields["entries"] == "" {
+	if e := testutil.DecodeError(t, respBody); e.Error.Details.Fields["entries"] == "" {
 		t.Fatalf("fields[entries] is empty (body=%s)", respBody)
 	}
 }

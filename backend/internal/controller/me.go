@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"io"
 	"time"
 	"unicode/utf8"
 
@@ -10,11 +11,13 @@ import (
 	"github.com/applemango/chain/internal/external/atproto"
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	mesvc "github.com/applemango/chain/internal/service/me"
+	"github.com/applemango/chain/internal/utils"
 )
 
 type MeController struct {
-	Me *service.MeService
+	Me *mesvc.MeService
 }
 
 func (h *MeController) Register(r fiber.Router) {
@@ -22,6 +25,11 @@ func (h *MeController) Register(r fiber.Router) {
 	r.Patch("/me/settings", h.updateSettings)
 	r.Put("/me/consents", h.updateConsent)
 	r.Put("/me/status", h.updateStatus)
+	r.Patch("/me/profile", h.updateProfile)
+	r.Put("/me/avatar", h.updateAvatar)
+	r.Delete("/me/avatar", h.deleteAvatar)
+	r.Put("/me/banner", h.updateBanner)
+	r.Delete("/me/banner", h.deleteBanner)
 }
 
 type meResponse struct {
@@ -79,17 +87,14 @@ func settingsResponse(st model.UserSettings) (meSettingsResponse, error) {
 	}, nil
 }
 
-func (h *MeController) get(c fiber.Ctx) error {
-	me, err := h.Me.Get(c.Context(), httpx.DID(c))
-	if err != nil {
-		return err
-	}
-	did := me.User.DID
+// meResponse は GET /me と同じ形を組み立てる。プロフィール編集の API もこれで返す（13 §1.3）。
+func (h *MeController) meResponse(me *mesvc.Me) (meResponse, error) {
 	st, err := settingsResponse(me.Settings)
 	if err != nil {
-		return err
+		return meResponse{}, err
 	}
-	return c.JSON(meResponse{
+	did := me.User.DID
+	return meResponse{
 		DID:         did,
 		Handle:      me.User.Handle,
 		DisplayName: me.Profile.DisplayName,
@@ -98,7 +103,19 @@ func (h *MeController) get(c fiber.Ctx) error {
 		BannerURL:   atproto.BannerURL(did, me.Profile.BannerCID),
 		Status:      me.Profile.Status,
 		Settings:    st,
-	})
+	}, nil
+}
+
+func (h *MeController) get(c fiber.Ctx) error {
+	me, err := h.Me.Get(c.Context(), httpx.DID(c))
+	if err != nil {
+		return err
+	}
+	resp, err := h.meResponse(me)
+	if err != nil {
+		return err
+	}
+	return c.JSON(resp)
 }
 
 type settingsPatchRequest struct {
@@ -163,7 +180,7 @@ func (h *MeController) updateSettings(c fiber.Ctx) error {
 	if err := httpx.Bind(c, &req); err != nil {
 		return err
 	}
-	st, err := h.Me.UpdateSettings(c.Context(), httpx.DID(c), service.SettingsUpdate{
+	st, err := h.Me.UpdateSettings(c.Context(), httpx.DID(c), mesvc.SettingsUpdate{
 		EncounterMode:     req.EncounterMode,
 		EncounterDelaySec: req.EncounterDelaySec,
 		FriendBeaconShare: req.FriendBeaconShare,
@@ -190,7 +207,7 @@ func (r *consentRequest) Validate() map[string]string {
 	if r.ContentScan == nil {
 		return map[string]string{"contentScan": "必須です"}
 	}
-	if *r.ContentScan != 0 && *r.ContentScan != service.ContentScanConsentVersion {
+	if *r.ContentScan != 0 && *r.ContentScan != core.ContentScanConsentVersion {
 		return map[string]string{"contentScan": "0 か 1 を指定してください"}
 	}
 	return nil
@@ -238,4 +255,102 @@ func (h *MeController) updateStatus(c fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(statusResponse{Status: p.Status})
+}
+
+type profilePatchRequest struct {
+	DisplayName *string `json:"displayName"`
+	Description *string `json:"description"`
+}
+
+func (r *profilePatchRequest) Validate() map[string]string {
+	f := map[string]string{}
+	if r.DisplayName != nil && utils.GraphemeCount(*r.DisplayName) > mesvc.MaxDisplayNameGraphemes {
+		f["displayName"] = "64 文字までです"
+	}
+	if r.Description != nil && utils.GraphemeCount(*r.Description) > mesvc.MaxProfileDescriptionGraphemes {
+		f["description"] = "256 文字までです"
+	}
+	if len(f) == 0 {
+		return nil
+	}
+	return f
+}
+
+func (h *MeController) updateProfile(c fiber.Ctx) error {
+	var req profilePatchRequest
+	if err := httpx.Bind(c, &req); err != nil {
+		return err
+	}
+	me, err := h.Me.UpdateProfile(c.Context(), httpx.DID(c), httpx.SessionID(c), mesvc.ProfileUpdate{
+		DisplayName: req.DisplayName,
+		Description: req.Description,
+	})
+	if err != nil {
+		return err
+	}
+	return h.respondMe(c, me)
+}
+
+func (h *MeController) updateAvatar(c fiber.Ctx) error {
+	return h.updateProfileImage(c, true)
+}
+
+func (h *MeController) updateBanner(c fiber.Ctx) error {
+	return h.updateProfileImage(c, false)
+}
+
+func (h *MeController) updateProfileImage(c fiber.Ctx, avatar bool) error {
+	file, size, err := profileImageFile(c)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	did, sid := httpx.DID(c), httpx.SessionID(c)
+	var me *mesvc.Me
+	if avatar {
+		me, err = h.Me.UpdateAvatar(c.Context(), did, sid, file, size)
+	} else {
+		me, err = h.Me.UpdateBanner(c.Context(), did, sid, file, size)
+	}
+	if err != nil {
+		return err
+	}
+	return h.respondMe(c, me)
+}
+
+func (h *MeController) deleteAvatar(c fiber.Ctx) error {
+	me, err := h.Me.DeleteAvatar(c.Context(), httpx.DID(c), httpx.SessionID(c))
+	if err != nil {
+		return err
+	}
+	return h.respondMe(c, me)
+}
+
+func (h *MeController) deleteBanner(c fiber.Ctx) error {
+	me, err := h.Me.DeleteBanner(c.Context(), httpx.DID(c), httpx.SessionID(c))
+	if err != nil {
+		return err
+	}
+	return h.respondMe(c, me)
+}
+
+func (h *MeController) respondMe(c fiber.Ctx, me *mesvc.Me) error {
+	resp, err := h.meResponse(me)
+	if err != nil {
+		return err
+	}
+	return c.JSON(resp)
+}
+
+func profileImageFile(c fiber.Ctx) (io.ReadCloser, int64, error) {
+	header, err := c.FormFile("file")
+	if err != nil {
+		return nil, 0, httpx.ErrInvalidRequest.With("fields", map[string]string{"file": "file が必要です"})
+	}
+	f, err := header.Open()
+	if err != nil {
+		return nil, 0, httpx.ErrInvalidRequest.With("fields", map[string]string{"file": "file を開けません"})
+	}
+	return f, header.Size, nil
 }

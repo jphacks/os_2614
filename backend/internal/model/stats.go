@@ -8,11 +8,7 @@ import (
 	"github.com/applemango/chain/internal/db"
 )
 
-const (
-	spaceTypeGroup = "jp.i32.chain.space.group"
-	spaceTypeParty = "jp.i32.chain.space.party"
-	collectionPost = "jp.i32.chain.instance.post"
-)
+const collectionPost = "jp.i32.chain.instance.post"
 
 // CountPartiesForUser は did がメンバーだった Party の数を返す（13 §3）。
 // 破棄された仮 party は物理削除されているので数に入らない。ended の party は archived として残るので入る。
@@ -22,7 +18,7 @@ func CountPartiesForUser(ctx context.Context, q db.Querier, did string) (int, er
 		SELECT count(*) FROM space_members m
 		JOIN spaces s ON s.id = m.space_id
 		WHERE m.did = ? AND s.type = ? AND s.state != 'deleted'`,
-		did, spaceTypeParty).Scan(&n)
+		did, SpaceTypeParty).Scan(&n)
 	return n, err
 }
 
@@ -33,7 +29,7 @@ func CountActiveGroupsForUser(ctx context.Context, q db.Querier, did string) (in
 		SELECT count(*) FROM space_members m
 		JOIN spaces s ON s.id = m.space_id
 		WHERE m.did = ? AND m.left_at IS NULL AND s.type = ? AND s.state = 'active'`,
-		did, spaceTypeGroup).Scan(&n)
+		did, SpaceTypeGroup).Scan(&n)
 	return n, err
 }
 

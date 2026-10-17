@@ -41,37 +41,62 @@
 
 ## 3. ディレクトリ構成
 
-層ごとにパッケージを分ける（controller / service / model）。機能はパッケージの中のファイルで分ける（`encounter.go` など）。
+層ごとにパッケージを分け（controller / service / model）、各層の中を機能ごとのフォルダーに分ける。
+Go ではフォルダー＝パッケージなので、**フォルダー同士が循環しないように、import できる向きを決めてある**。
+機能ごとのファイルとパスの一覧は 18（`make codemap` で生成）。
 
 ```
 backend/
   main.go                  設定読込、依存の組み立て、ルーティング、起動と停止
-  cmd/dbreset/             DB の作り直しと seed（04 §5）
-  lexicons/                lexicon JSON（03 §6）
-  scripts/tunnel.sh        Cloudflare Tunnel の起動（§6）
-  Makefile、compose.yaml、.env.example
+  cmd/dbreset/  cmd/keygen/
+  lexicons/  scripts/  Makefile  compose.yaml  .env.example
   internal/
-    controller/            Fiber のハンドラ。リクエスト / レスポンスの型
-    service/               業務ロジック。トランザクション境界
-    model/                 データの型と、SQLite / Redis への読み書き
-    worker/                常駐ワーカー（§2）。Tick を service に委ねる
-    realtime/              WebSocket の hub と Broker（10 §7）
-    storage/               メディアのファイル保存と署名付き URL（10 §4.4）
-    external/
-      atproto/             OAuth、PDS 書込、Jetstream、プロフィール取得（03）
-      nanogpt/             Decisions API（11 §5）
-      fcm/                 プッシュ送信（12）
-    httpx/                 エラー型と ErrorHandler、認証ミドルウェア、Bind、Page
-    auth/                  アクセス JWT、乱数・ハッシュ、AES-GCM
-    db/                    SQLite の接続と汎用ヘルパー、schema.sql、seed.sql
-    kv/                    Redis の接続とキー名
-    config/                環境変数の読込と検証
-    clock/                 Clock interface と Fake（15 §2）
-    idgen/                 ID・乱数の Generator と Seq（15 §2）
-    utils/                 既存 array.go
+    controller/            Fiber のハンドラ
+      routes.go helpers.go   ルートの登録と、複数の機能が使う共通のもの（PageLimit など）
+      health.go user.go block.go me.go notification.go device.go schedule.go stats.go ws.go   1 ファイルの機能
+      auth/  encounter/  friend/  content/  group/  party/
+    service/               業務ロジック
+      health.go user.go block.go janitor.go   1 ファイルの機能
+      core/                共通部分（Deps、params、geohash、画像の処理、複数の機能が使う型と定数）
+      proximity/  moderation/  schedule/  notify/      レベル 1
+      access/                                          レベル 2
+      content/                                         レベル 3（instance・Pin・メディア・フィード・公開投稿・Jetstream・WebSocket・再判定）
+      encounter/  auth/  friend/                       レベル 4
+      me/  group/  party/                              レベル 5
+      natural/                                         レベル 6（自動グループ）
+    model/                 データの型と SQLite / Redis への読み書き
+      helpers.go             共通の小さな関数と定数
+      audit.go beacon.go ... user_handle.go   1 ファイルの機能（20 個）
+      encounter/  friend/  space/  group/  schedule/   機能フォルダー
+      maintenance/         アカウント削除と掃除（多くの表をまたぐ）
+    worker/                常駐ワーカー（すべて 1 ファイルなので分けない）
+    realtime/  storage/  external/{atproto,embed,fcm,nanogpt}/
+    httpx/  auth/  db/  kv/  config/  clock/  idgen/  utils/  testutil/
 ```
 
-依存の向きは次のとおりにし、逆向きの import をしない。
+### 3.1 フォルダーの分け方の規則
+
+| 規則 | 内容 |
+| --- | --- |
+| 機能フォルダー | 複数のファイルを持つ機能は、機能ごとのフォルダーに分ける。ファイル名からは機能の接頭辞を落とす（`group_invite.go` → `group/invite.go`） |
+| 層の直下 | 共通部分と、ほかの機能のフォルダーを使わない 1 ファイルの機能だけを置く。直下のパッケージは機能フォルダーを import しない |
+| import の向き | service はレベルの小さい方にしか import しない（`core` ← レベル 1 ← … ← レベル 6）。model は直下 ← 機能フォルダー ← `maintenance`。controller の機能フォルダーは直下を import してよい |
+| 公開する名前 | フォルダーをまたいで使う名前は公開する（先頭を大文字） |
+| テスト | コードと同じフォルダーに置く。外部テストのパッケージ名は `<機能>_test`。複数の機能のテストが共有するヘルパーは `internal/testutil/` |
+
+### 3.2 import の別名
+
+層をまたぐと同じ名前のパッケージがある（`service/group` と `model/group` など）ので、別名を決めてある。
+
+| 使う側 → 使われる側 | 別名 | 例 |
+| --- | --- | --- |
+| 同じ層の機能フォルダー | 付けない | `group` |
+| service → model の機能フォルダー | `<名前>model` | `groupmodel "…/internal/model/group"` |
+| controller・testutil → service の機能フォルダー | `<名前>svc` | `groupsvc "…/internal/service/group"` |
+| main.go・testutil → controller の機能フォルダー | `<名前>ctrl` | `groupctrl "…/internal/controller/group"` |
+| service の共通部分 | `core` | `"…/internal/service/core"` |
+
+依存の向き（層の間）は次のとおりで、逆向きの import をしない。
 
 ```
 controller ──▶ service ──▶ model ──▶ db / kv

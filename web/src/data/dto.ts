@@ -144,6 +144,8 @@ export type InstancePost = {
   author?: User;
   text?: string;
   format?: PostFormat;
+  /** 返信の参照（service.ReplyRef、10 §3）。返信でなければ無い。 */
+  reply?: FeedReplyRef;
   media?: Media[];
   moderation?: ModerationInfo;
   hidden?: string;
@@ -168,9 +170,20 @@ export type CreatedPost = {
   spaceId: string;
 };
 
+/** POST /posts と同時に作る公開投稿の結果（service.PublicPostOutcome、10 §4.1）。 */
+export type PublicPostOutcome = {
+  uri?: string;
+  cid?: string;
+  bskyUri?: string;
+  /** PDS への公開投稿に失敗したときの API コード。instance 投稿は成功している。 */
+  error?: string;
+};
+
 /** POST /posts の応答（service.CreatePostResult、10 §4.1）。 */
 export type CreatePostResult = {
   items: CreatedPost[];
+  /** alsoPublic:true のときだけ入る。失敗しても items は成功している。 */
+  public?: PublicPostOutcome;
 };
 
 /** POST /media の応答（service.MediaUpload、10 §4.4）。 */
@@ -184,6 +197,25 @@ export type MediaUpload = {
 export type Friend = User & {
   since: RFC3339;
   precision: LocationPrecision;
+};
+
+/**
+ * GET /friends/locations の 1 件（controller.friendLocationResponse、07 §4.2）。
+ * precision ごとに含まれる項目が変わる。stale のときは位置を返さない。
+ */
+export type FriendLocation = {
+  did: DID;
+  precision: LocationPrecision;
+  stale?: boolean;
+  updatedAt?: RFC3339;
+  lat?: number;
+  lon?: number;
+  accuracyM?: number;
+  area?: { label: string } | null;
+  outside?: boolean;
+  direction?: string;
+  distanceBucket?: string;
+  viewerStale?: boolean;
 };
 
 /** フレンド申請の 1 件（service.FriendRequestItem、07 §2.2）。 */
@@ -320,6 +352,48 @@ export type GroupNearby = {
   near: GroupNearbyNear[];
 };
 
+/** GET /groups/{id}/invites の 1 件（service.InviteItem、09 §6）。 */
+export type GroupInvite = {
+  id: string;
+  targetDid: DID;
+  createdBy: DID;
+  status: string;
+  approvedCount: number;
+  requiredCount: number;
+  createdAt: RFC3339;
+  expiresAt: RFC3339;
+};
+
+/** GET /group-invites の 1 件（service.InviteInboxItem、09 §6）。 */
+export type GroupInviteInboxItem = {
+  id: string;
+  spaceId: string;
+  groupName: string;
+  inviter?: User;
+  expiresAt: RFC3339;
+};
+
+/** グループの投票 1 件（service.VoteItem、09 §8.6）。myBallot は未投票なら null。 */
+export type GroupVote = {
+  id: string;
+  /** "make_closed" | "make_persistent"。 */
+  kind: string;
+  /** "open" | "passed" | "failed"。 */
+  status: string;
+  createdBy: DID;
+  yesCount: number;
+  noCount: number;
+  /** 可決に必要な賛成数（その時点のメンバー数の過半数）。 */
+  requiredCount: number;
+  createdAt: RFC3339;
+  closesAt: RFC3339;
+  /** 自分の票。true=賛成 / false=反対 / null=未投票。 */
+  myBallot: boolean | null;
+};
+
+/** GET /groups/{id}/votes の応答（service.VoteList、09 §8.6）。 */
+export type GroupVoteList = { items: GroupVote[] };
+
 /** memory の表紙（service.MemoryCover、13 §2）。 */
 export type MemoryCover = { thumbUrl: string };
 
@@ -408,7 +482,7 @@ export type Stats = {
   posts: { month: number };
 };
 
-/** GET /groups/graph（09 §7）。未実装（spec-only）。中心座標は返さない。 */
+/** GET /groups/graph（09 §7）。中心座標は返さない。 */
 export type GroupGraphNode = {
   id: string;
   name: string;
@@ -416,13 +490,11 @@ export type GroupGraphNode = {
   memberCount: number;
   isMember: boolean;
   inside: boolean;
+  origin?: GroupOrigin;
 };
 
-/** 辺の種類（09 §7）。共通メンバーの値は backend の表記に合わせる。 */
-export type GroupGraphEdgeKind =
-  | "contains"
-  | "overlaps"
-  | `shared${"_"}members`;
+/** 辺の種類（09 §7）。shared_members の weight は共通メンバーの人数。 */
+export type GroupGraphEdgeKind = "contains" | "overlaps" | "shared_members";
 
 export type GroupGraphEdge = {
   from: string;

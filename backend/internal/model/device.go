@@ -43,7 +43,7 @@ func UpsertDevice(ctx context.Context, q db.Querier, d Device) error {
 		  session_id = excluded.session_id,
 		  platform = excluded.platform,
 		  updated_at = excluded.updated_at`,
-		d.ID, d.DID, nullable(d.SessionID), d.FCMToken, d.Platform, clock.UnixMilli(d.UpdatedAt))
+		d.ID, d.DID, Nullable(d.SessionID), d.FCMToken, d.Platform, clock.UnixMilli(d.UpdatedAt))
 	return err
 }
 

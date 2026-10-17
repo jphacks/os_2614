@@ -87,7 +87,7 @@ func UpsertPublicPost(ctx context.Context, q db.Querier, p PublicPost) (bool, er
 		  indexed_at = excluded.indexed_at, deleted_at = NULL,
 		  mod_label = excluded.mod_label, mod_state = excluded.mod_state
 		WHERE public_posts.cid != excluded.cid OR public_posts.deleted_at IS NOT NULL`,
-		p.URI, p.CID, p.AuthorDID, p.Text, langs, nullable(p.BskyURI), nullable(p.BskyCID),
+		p.URI, p.CID, p.AuthorDID, p.Text, langs, Nullable(p.BskyURI), Nullable(p.BskyCID),
 		clock.UnixMilli(p.CreatedAt), clock.UnixMilli(p.IndexedAt), p.ModLabel, p.ModState)
 	if err != nil {
 		return false, err

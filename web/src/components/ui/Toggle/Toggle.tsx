@@ -1,6 +1,7 @@
 "use client";
 
 import styles from "./Toggle.module.css";
+import { Pressable } from "../Pressable";
 
 export type ToggleProps = {
   checked: boolean;
@@ -29,7 +30,7 @@ export function Toggle({
     .join(" ");
 
   return (
-    <button
+    <Pressable
       type="button"
       role="switch"
       aria-checked={checked}
@@ -40,6 +41,6 @@ export function Toggle({
       onClick={() => onChange(!checked)}
     >
       <span className={styles.thumb} />
-    </button>
+    </Pressable>
   );
 }

@@ -21,6 +21,7 @@ import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 import { Notice } from "@/components/ui/Notice";
 import { Toggle } from "@/components/ui/Toggle";
 import styles from "./ComposeScreen.module.css";
+import { Pressable } from "@/components/ui/Pressable";
 
 /** 文字数の目安。サーバ上限ではない (backend は 2000 ルーン、10 §3)。 */
 const HINT_LENGTH = 140;
@@ -32,7 +33,9 @@ export type ComposeSubmitError =
   | { kind: "consent" }
   | { kind: "unavailable" }
   | { kind: "invalid"; message: string }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  /** instance 投稿は成功したが、同時作成した公開投稿だけ失敗した (10 §4.1)。 */
+  | { kind: "public"; message: string };
 
 export type ComposeScreenProps = {
   /** GET /me の著者 (アバター用)。取得できないときは省略。 */
@@ -56,6 +59,8 @@ export type ComposeScreenProps = {
   onRemoveAttachment?: (key: string) => void;
   /** 403 consent_required のときの同意導線 (todo 35)。 */
   onConsent?: () => void;
+  /** 内容チェックへの同意がまだ済んでいない (PUT /me/consents)。true の間は投稿させない。 */
+  consentRequired?: boolean;
   /** 送信先の再取得。 */
   targetsRetry?: () => void;
   onCancel?: () => void;
@@ -90,6 +95,7 @@ export function ComposeScreen({
   onPickAttachment,
   onRemoveAttachment,
   onConsent,
+  consentRequired = false,
   targetsRetry,
   onCancel,
 }: ComposeScreenProps) {
@@ -157,7 +163,8 @@ export function ComposeScreen({
     !validation.ok &&
     (body.length > 0 || attachments.length > 0 || selectedIds.length === 0);
 
-  const canPost = validation.ok && targets.length > 0 && !submitting && !uploading;
+  const canPost =
+    validation.ok && targets.length > 0 && !submitting && !uploading && !consentRequired;
 
   const submit = () => {
     if (!canPost) {
@@ -188,17 +195,17 @@ export function ComposeScreen({
   return (
     <div className={styles.screen}>
       <header className={styles.header}>
-        <button type="button" className={styles.cancel} onClick={cancel}>
+        <Pressable type="button" className={styles.cancel} onClick={cancel}>
           キャンセル
-        </button>
-        <button
+        </Pressable>
+        <Pressable
           type="button"
           className={styles.submit}
           onClick={submit}
           disabled={!canPost}
         >
           {submitting ? "送信中…" : "投稿する"}
-        </button>
+        </Pressable>
       </header>
 
       <div className={styles.body}>
@@ -250,7 +257,7 @@ export function ComposeScreen({
                 {menuOpen && (
                   <div className={styles.menu} role="menu">
                     {targets.map((item) => (
-                      <button
+                      <Pressable
                         key={item.spaceId}
                         type="button"
                         role="menuitemcheckbox"
@@ -263,7 +270,7 @@ export function ComposeScreen({
                         {selectedIds.includes(item.spaceId) && (
                           <Icon name="check" size={18} />
                         )}
-                      </button>
+                      </Pressable>
                     ))}
                   </div>
                 )}
@@ -287,14 +294,14 @@ export function ComposeScreen({
                   src={attachment.previewUrl}
                   alt={attachment.alt ?? ""}
                 />
-                <button
+                <Pressable
                   type="button"
                   className={styles.remove}
                   aria-label="画像を削除"
                   onClick={() => onRemoveAttachment?.(attachment.key)}
                 >
                   <Icon name="close" size={16} />
-                </button>
+                </Pressable>
               </div>
             ))}
 
@@ -335,6 +342,19 @@ export function ComposeScreen({
               />
             </div>
 
+            {consentRequired && (
+              <div className={styles.errorBlock}>
+                <Notice tone="warning" icon="verified_user">
+                  投稿には内容チェックへの同意が必要です
+                </Notice>
+                {onConsent && (
+                  <Button variant="secondary" onClick={onConsent}>
+                    同意する
+                  </Button>
+                )}
+              </div>
+            )}
+
             {showReason && !validation.ok && (
               <p className={styles.reason}>{validation.message}</p>
             )}
@@ -355,6 +375,10 @@ export function ComposeScreen({
                 ) : error.kind === "unavailable" ? (
                   <Notice tone="warning" icon="cloud_off">
                     Space への投稿はまだ利用できません
+                  </Notice>
+                ) : error.kind === "public" ? (
+                  <Notice tone="info" icon="public">
+                    {error.message}
                   </Notice>
                 ) : (
                   <Notice tone="warning" icon="error">

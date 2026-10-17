@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	partysvc "github.com/applemango/chain/internal/service/party"
 )
 
 // PartyEngine は party エンジンを 5 秒ごとに回す（08 §4.1）。業務ロジックは service にある。
 type PartyEngine struct {
-	service.Deps
-	Parties *service.PartyService
+	core.Deps
+	Parties *partysvc.PartyService
 }
 
 const (

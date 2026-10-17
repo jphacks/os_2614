@@ -46,6 +46,42 @@ export type Friend = User & {
   precision: LocationPrecision;
 };
 
+/** フレンド申請の 1 件 (service.FriendRequestItem、07 §2.2)。 */
+export type FriendRequest = {
+  id: ID;
+  peer: User;
+  /** "encounter" | "space" | "invite" など、成立の根拠。 */
+  via: string;
+  viaRef?: string;
+  /** "pending" | "accepted" | "declined" | "canceled" など。 */
+  status: string;
+  createdAt: Timestamp;
+};
+
+/**
+ * フレンドの現在位置 (GET /friends/locations、07 §4.2)。相手が自分に見せる精度で
+ * 毎回計算された値。stale のときは位置を含まない (30 分以上更新なし)。
+ */
+export type FriendLocation = {
+  did: DID;
+  precision: LocationPrecision;
+  stale: boolean;
+  updatedAt?: Timestamp;
+  lat?: number;
+  lon?: number;
+  accuracyM?: number;
+  /** area 精度のときの、相手が今いるエリアの label。 */
+  areaLabel?: string;
+  /** area 精度で、どの登録エリアにもいない。 */
+  outside: boolean;
+  /** direction 精度の 8 方位 (N/NE/...)。 */
+  direction?: string;
+  /** direction 精度の距離帯 (<100m/<500m/<2km/<10km/far)。 */
+  distanceBucket?: string;
+  /** direction 精度で、見る側 (自分) の位置が古い / 無い。 */
+  viewerStale: boolean;
+};
+
 /** 相手との関係 (06 §6)。 */
 export type EncounterRelation = "none" | "requested" | "incoming" | "friend";
 
@@ -65,12 +101,31 @@ export type Group = {
   id: ID;
   name: string;
   iconUrl?: string;
+  /** 説明文 (service.GroupDetail.description、09 §4)。 */
+  description: string;
   visibility: GroupVisibility;
   memberCount: number;
   /** 例: "GPSエリア" */
   areaLabel: string;
-  /** エリア内にいるときだけ投稿できる */
+  /** エリア内にいるときだけ投稿できる (= backend の isMember) */
   insideArea: boolean;
+  /** 閲覧者の役割 (owner / member)。メンバーでなければ undefined (09 §4)。 */
+  role?: string;
+  /** 招待制のときに必要な承認人数 (09 §4)。 */
+  inviteQuorum?: number;
+};
+
+/** グループのメンバー (service.MemberItem、09 §4)。プロフィールの要約だけを持つ。 */
+export type GroupMember = {
+  did: DID;
+  handle: string;
+  /** 表示名。displayName || handle から導出する */
+  name: string;
+  avatarUrl?: string;
+  tone: AvatarTone;
+  /** "owner" | "member"。 */
+  role: string;
+  joinedAt: Timestamp;
 };
 
 /** メディア (service.MediaItem、10 §4.4)。url / thumbUrl は署名付き URL。 */
@@ -83,10 +138,27 @@ export type Media = {
   height: number;
 };
 
+/** 投稿本文の形式 (10 §3)。 */
+export type PostFormat = "plain" | "markdown";
+
+/** moderation の判定 (11 §1)。 */
+export type ModerationLabel = "ok" | "warn" | "block";
+
+/** moderation の表示指示 (11 §4)。backend が label と閲覧者の warnDisplay から決める。 */
+export type ModerationDisplay = "show" | "blur" | "hide";
+
+/** 一覧 API の要素に付く moderation の表示指示 (11 §4)。 */
+export type PostModeration = {
+  label: ModerationLabel;
+  display: ModerationDisplay;
+  categories: string[];
+};
+
 export type Post = {
   id: ID;
   author: User;
   body: string;
+  format: PostFormat;
   createdAt: Timestamp;
   attachments: Media[];
   replyCount: number;
@@ -94,6 +166,8 @@ export type Post = {
   likedByMe: boolean;
   /** 自動ピン (moderation 側で判定) */
   pinned: boolean;
+  /** 表示指示。block は hidden で除外され、通常はここに来ない。 */
+  moderation?: PostModeration;
 };
 
 export type Reply = {
@@ -249,7 +323,55 @@ export type GroupNearby = {
   near: GroupNearbyNear[];
 };
 
-/** グループグラフのノード (09 §7、spec-only)。 */
+/** closed グループの招待 1 件 (service.InviteItem、09 §6)。承認数が要件に達すると offered になる。 */
+export type GroupInvite = {
+  id: ID;
+  targetDid: DID;
+  createdBy: DID;
+  /** "collecting" | "offered" | "accepted" | "declined" | "expired"。 */
+  status: string;
+  /** 承認したメンバー数 (招待者の 1 を含む)。 */
+  approvedCount: number;
+  /** 必要な承認数 min(inviteQuorum, その時点のメンバー数)。 */
+  requiredCount: number;
+  createdAt: Timestamp;
+  expiresAt: Timestamp;
+};
+
+/** 自分宛ての offered な招待 1 件 (GET /group-invites、09 §6)。 */
+export type GroupInviteInboxItem = {
+  id: ID;
+  spaceId: string;
+  groupName: string;
+  inviter?: User;
+  expiresAt: Timestamp;
+};
+
+/** 投票の種類 (09 §8.6)。closed にする (make_closed) / 常設にする (make_persistent)。 */
+export type GroupVoteKind = "make_closed" | "make_persistent";
+
+/** 投票の状態 (backend service.group_vote.go)。open の間だけ投票できる。 */
+export type GroupVoteStatus = "open" | "passed" | "failed";
+
+/** グループの投票 1 件 (service.VoteItem、09 §8.6)。 */
+export type GroupVote = {
+  id: ID;
+  kind: GroupVoteKind;
+  status: GroupVoteStatus;
+  createdBy: DID;
+  /** 賛成票の数。 */
+  yesCount: number;
+  /** 反対票の数。 */
+  noCount: number;
+  /** 可決に必要な賛成数 (その時点のメンバー数の過半数)。 */
+  requiredCount: number;
+  createdAt: Timestamp;
+  closesAt: Timestamp;
+  /** 自分の票。true=賛成 / false=反対 / undefined=未投票。 */
+  myBallot?: boolean;
+};
+
+/** グループグラフのノード (09 §7)。中心座標は持たない。 */
 export type GroupGraphNode = {
   id: ID;
   name: string;
@@ -257,13 +379,11 @@ export type GroupGraphNode = {
   memberCount: number;
   isMember: boolean;
   inside: boolean;
+  origin?: string;
 };
 
-/** 辺の種類 (09 §7)。共通メンバーの値は backend の表記に合わせる。 */
-export type GroupGraphEdgeKind =
-  | "contains"
-  | "overlaps"
-  | `shared${"_"}members`;
+/** 辺の種類 (09 §7)。shared_members の weight は共通メンバーの人数。 */
+export type GroupGraphEdgeKind = "contains" | "overlaps" | "shared_members";
 
 export type GroupGraphEdge = {
   from: string;

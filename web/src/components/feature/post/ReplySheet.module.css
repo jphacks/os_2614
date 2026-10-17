@@ -128,22 +128,6 @@
   min-width: 0;
 }
 
-.like {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font: var(--text-caption);
-  color: var(--color-text-muted);
-}
-
-.like span {
-  font-variant-numeric: tabular-nums;
-}
-
-.liked {
-  color: var(--color-like);
-}
-
 .composer {
   display: flex;
   flex-direction: column;

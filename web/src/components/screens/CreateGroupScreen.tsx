@@ -13,6 +13,7 @@ import { Notice } from "@/components/ui/Notice";
 import { Slider } from "@/components/ui/Slider";
 import { Toggle } from "@/components/ui/Toggle";
 import styles from "./CreateGroupScreen.module.css";
+import { Pressable } from "@/components/ui/Pressable";
 
 const MAX_NAME = 40;
 const MAX_DESCRIPTION = 500;
@@ -157,22 +158,22 @@ export function CreateGroupScreen({
   return (
     <div className={styles.screen}>
       <header className={styles.header}>
-        <button type="button" className={styles.cancel} onClick={cancel}>
+        <Pressable type="button" className={styles.cancel} onClick={cancel}>
           キャンセル
-        </button>
+        </Pressable>
         <span className={styles.heading}>グループを作る</span>
-        <button
+        <Pressable
           type="button"
           className={styles.submit}
           onClick={() => void submit(false)}
           disabled={!canSubmit}
         >
           {submitting ? "作成中…" : "作成"}
-        </button>
+        </Pressable>
       </header>
 
       <div className={styles.nameSection}>
-        <button
+        <Pressable
           type="button"
           className={styles.iconPicker}
           aria-label={
@@ -181,7 +182,7 @@ export function CreateGroupScreen({
           onClick={pickIcon}
         >
           <Icon name={iconState === "ready" ? "check" : "add_a_photo"} size={28} />
-        </button>
+        </Pressable>
         <input
           ref={iconInput}
           type="file"

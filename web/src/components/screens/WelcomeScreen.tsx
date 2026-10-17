@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/auth";
 import { Icon } from "@/components/ui/Icon";
 import { Notice } from "@/components/ui/Notice";
+import { Pressable } from "@/components/ui/Pressable";
 import styles from "./WelcomeScreen.module.css";
 
 export type WelcomeScreenProps = {
@@ -59,8 +60,7 @@ export function WelcomeScreen({ onBluesky, onEmail }: WelcomeScreenProps) {
       </div>
 
       <div className={styles.actions}>
-        <button
-          type="button"
+        <Pressable
           className={`${styles.button} ${styles.bluesky}`}
           onClick={handleBluesky}
           disabled={loggingIn}
@@ -75,9 +75,8 @@ export function WelcomeScreen({ onBluesky, onEmail }: WelcomeScreenProps) {
             </svg>
           </span>
           <span className={styles.buttonLabel}>Blueskyで続ける</span>
-        </button>
-        <button
-          type="button"
+        </Pressable>
+        <Pressable
           className={`${styles.button} ${styles.email}`}
           onClick={() => onEmail?.()}
         >
@@ -85,7 +84,7 @@ export function WelcomeScreen({ onBluesky, onEmail }: WelcomeScreenProps) {
             <Icon name="mail" size={20} />
           </span>
           <span className={styles.buttonLabel}>メールアドレス</span>
-        </button>
+        </Pressable>
       </div>
     </div>
   );

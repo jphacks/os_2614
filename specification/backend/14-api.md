@@ -12,6 +12,7 @@
 | GET | `/.well-known/did.json` | — | authority の DID ドキュメント（did:web） | P2 | 03 §7 |
 | GET | `/auth/login?handle=` | — | OAuth 開始。認可画面へ 302 | P0 | 03 §2 |
 | GET | `/auth/callback` | — | OAuth コールバック。アプリの deep link へ 302 | P0 | 03 §2 |
+| GET | `/auth/dev/complete` | — | 開発用の完了画面。トークンを JSON で表示する（`CHAIN_ENV=dev` のときだけ） | P0 | 03 §2.1.2 |
 | POST | `/api/v1/auth/exchange` | — | one-time code → アプリトークン | P0 | 03 §2 |
 | POST | `/api/v1/auth/refresh` | — | トークンのローテーション | P0 | 03 §3 |
 | POST | `/api/v1/auth/logout` | ✓ | セッション失効 | P0 | 03 §3 |
@@ -24,6 +25,8 @@
 | PATCH | `/api/v1/me/settings` | すれ違い公開設定、party、warn 表示、通知 | P0 | 06 §5, 08 §2, 11 §1, 12 §3 |
 | PUT | `/api/v1/me/consents` | 投稿内容の自動判定への同意 `{"contentScan": 1}`（版番号）。`0` で撤回 | P0 | 02 §8 |
 | PUT | `/api/v1/me/status` | ステータス | P1 | 13 §1 |
+| PATCH | `/api/v1/me/profile` | 名前・説明の編集（Bluesky のプロフィール） | P1 | 13 §1.3 |
+| PUT / DELETE | `/api/v1/me/avatar`、`/api/v1/me/banner` | アイコン・バナーの差し替え / 削除 | P1 | 13 §1.3 |
 | PUT | `/api/v1/me/location` | 位置の送信 | P0 | 05 §4 |
 | PUT | `/api/v1/me/location-sharing` | 位置共有の一時停止 | P1 | 07 §4 |
 | GET / POST | `/api/v1/me/areas` | エリア一覧 / 作成 | P1 | 07 §4.3 |
@@ -94,9 +97,11 @@
 | POST | `/api/v1/groups/{id}/invites` | 招待の作成 | P1 | 09 §6 |
 | POST | `/api/v1/groups/{id}/invites/{inviteId}/approve` | 招待の承認 | P1 | 09 §6 |
 | GET | `/api/v1/groups/{id}/invites` | 承認待ちの招待（メンバー） | P1 | 09 §6 |
+| DELETE | `/api/v1/groups/{id}/invites/{inviteId}` | 招待の取り消し（招待者、`collecting` の間だけ） | P1 | 09 §6 |
 | GET | `/api/v1/group-invites` | 自分宛ての招待 | P1 | 09 §6 |
 | POST | `/api/v1/group-invites/{inviteId}/accept`、`/decline` | 招待への応答（対象者） | P1 | 09 §6 |
-| POST | `/api/v1/groups/{id}/votes` | 投票の発議 | P2 | 09 §8 |
+| GET | `/api/v1/groups/{id}/votes` | 投票の一覧（開いているものと、7 日以内に締まったもの） | P2 | 09 §8.6 |
+| POST | `/api/v1/groups/{id}/votes` | 投票の発議 | P2 | 09 §8.6 |
 | POST | `/api/v1/groups/{id}/votes/{voteId}/ballot` | 投票 | P2 | 09 §8 |
 
 ## instance・メディア

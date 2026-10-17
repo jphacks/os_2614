@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	"github.com/applemango/chain/internal/service/notify"
 )
 
 // Digest は 1 分ごとにすれ違いのダイジェストを積む（12 §5）。
 type Digest struct {
-	service.Deps
-	Digest *service.Digest
+	core.Deps
+	Digest *notify.Digest
 }
 
 const (

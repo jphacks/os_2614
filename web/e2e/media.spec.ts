@@ -40,6 +40,7 @@ const ME = {
     partyAuto: true,
     locationPaused: false,
     warnDisplay: "blur",
+    contentScanConsentVersion: 1,
     notify: {},
   },
 };

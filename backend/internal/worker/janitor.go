@@ -7,11 +7,12 @@ import (
 
 	"github.com/applemango/chain/internal/model"
 	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
 )
 
 // Janitor は期限切れデータの掃除を 10 分ごとに回す（04 §4）。業務ロジックは service にある。
 type Janitor struct {
-	service.Deps
+	core.Deps
 	Janitor *service.Janitor
 }
 

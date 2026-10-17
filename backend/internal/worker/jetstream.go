@@ -7,16 +7,17 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/external/atproto"
-	"github.com/applemango/chain/internal/service"
+	"github.com/applemango/chain/internal/service/content"
+	core "github.com/applemango/chain/internal/service/core"
 )
 
 // Jetstream は Jetstream に常時接続し、イベントを service に渡す（03 §5）。
 // 接続と再接続は atproto.Jetstream が担い、ここではカーソルの定期的な保存だけを行う。
 type Jetstream struct {
-	service.Deps
-	Service *service.JetstreamService
+	core.Deps
+	Service *content.JetstreamService
 	Client  *atproto.Jetstream
-	// SaveInterval はカーソルを保存する間隔。0 なら service.JetstreamCursorInterval。
+	// SaveInterval はカーソルを保存する間隔。0 なら content.JetstreamCursorInterval。
 	SaveInterval time.Duration
 }
 
@@ -53,7 +54,7 @@ func (w *Jetstream) saveInterval() time.Duration {
 	if w.SaveInterval > 0 {
 		return w.SaveInterval
 	}
-	return service.JetstreamCursorInterval
+	return content.JetstreamCursorInterval
 }
 
 // saveCursor は最後に処理した time_us を保存する（03 §5）。まだイベントが無ければ何もしない。

@@ -1,0 +1,143 @@
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--page-gutter) var(--space-4);
+}
+
+.composerInput {
+  width: 100%;
+  min-height: 72px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: var(--text-body);
+  resize: vertical;
+}
+
+.composerActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--page-gutter);
+  margin-bottom: var(--space-5);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.headText {
+  display: flex;
+  flex-direction: column;
+}
+
+.name {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+}
+
+.time {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.body {
+  margin: 0;
+  font: var(--text-body);
+  color: var(--color-text);
+  white-space: pre-wrap;
+}
+
+.media {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-1);
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 320px;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+}
+
+.stateIcon {
+  color: var(--color-text-muted);
+}
+
+.stateTitle {
+  margin: 0;
+  font: var(--text-heading);
+  color: var(--color-text);
+}
+
+.stateDescription {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--page-gutter);
+}
+
+.skeletonRow {
+  height: 96px;
+  border-radius: var(--radius-lg);
+  background: var(--color-placeholder);
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonRow {
+    animation: none;
+  }
+}

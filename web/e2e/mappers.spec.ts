@@ -9,6 +9,7 @@ import {
   toMedia,
   toMemory,
   toParty,
+  toPin,
   toPost,
   toProfile,
   toReply,
@@ -207,10 +208,13 @@ test.describe("toGroup", () => {
     ).toEqual({
       id: "g1",
       name: "情報工学科 3年",
+      description: "",
       visibility: "open",
       memberCount: 8,
       areaLabel: "GPSエリア",
       insideArea: true,
+      role: undefined,
+      inviteQuorum: undefined,
     });
   });
 
@@ -231,10 +235,13 @@ test.describe("toGroup", () => {
     expect(toGroup(null)).toEqual({
       id: "",
       name: "",
+      description: "",
       visibility: "open",
       memberCount: 0,
       areaLabel: "",
       insideArea: false,
+      role: undefined,
+      inviteQuorum: undefined,
     });
   });
 });
@@ -309,6 +316,7 @@ test.describe("toPost", () => {
         tone: avatarToneFor("did:plc:kenta"),
       },
       body: "明日の集合は10時、正門前で！",
+      format: "plain",
       createdAt: "2026-10-17T02:30:00Z",
       attachments: [
         {
@@ -327,7 +335,7 @@ test.describe("toPost", () => {
     });
   });
 
-  test("treats a moderation-labelled post as pinned", () => {
+  test("does not treat a moderation-labelled post as pinned", () => {
     expect(
       toPost({
         kind: "post",
@@ -337,7 +345,27 @@ test.describe("toPost", () => {
         createdAt: "2026-10-17T02:30:00Z",
         moderation: { label: "warn", display: "blur" },
       }).pinned,
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  test("keeps the moderation display directive (11 §4)", () => {
+    const post = toPost({
+      kind: "post",
+      uri: "at://x/warn",
+      spaceId: "g1",
+      text: "flagged",
+      createdAt: "2026-10-17T02:30:00Z",
+      moderation: { label: "warn", display: "blur", categories: ["harassment"] },
+    });
+    expect(post.moderation).toEqual({
+      label: "warn",
+      display: "blur",
+      categories: ["harassment"],
+    });
+  });
+
+  test("omits moderation when the API did not send it", () => {
+    expect("moderation" in toPost(null)).toBe(false);
   });
 
   test("uses an empty author when author is missing (hidden post)", () => {
@@ -363,6 +391,7 @@ test.describe("toPost", () => {
       id: "",
       author: { did: "", handle: "", name: "", tone: "peach" },
       body: "",
+      format: "plain",
       createdAt: "",
       attachments: [],
       replyCount: 0,
@@ -659,5 +688,32 @@ test.describe("fromSettings", () => {
 
   test("returns an empty body for no changes", () => {
     expect(fromSettings({})).toEqual({});
+  });
+});
+
+test.describe("toPin", () => {
+  test("maps a pin and defaults an unknown reason to auto", () => {
+    expect(
+      toPin({
+        uri: "at://did:plc:auth/jp.i32.chain.instance.pin/abc",
+        subject: "at://did:plc:kenta/jp.i32.chain.instance.post/1",
+        reason: "manual",
+        pinnedBy: "did:plc:kenta",
+        createdAt: "2026-10-17T02:30:00.000Z",
+      }),
+    ).toEqual({
+      uri: "at://did:plc:auth/jp.i32.chain.instance.pin/abc",
+      subject: "at://did:plc:kenta/jp.i32.chain.instance.post/1",
+      reason: "manual",
+      pinnedBy: "did:plc:kenta",
+      createdAt: "2026-10-17T02:30:00.000Z",
+    });
+    expect(toPin(null)).toEqual({
+      uri: "",
+      subject: "",
+      reason: "auto",
+      pinnedBy: undefined,
+      createdAt: "",
+    });
   });
 });

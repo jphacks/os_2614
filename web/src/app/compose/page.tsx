@@ -34,8 +34,8 @@ import {
   type ComposeSubmitInput,
 } from "@/components/feature/compose";
 
-/** 同意フロー (todo 35) の導線。画面ができたらそこへ差し替える。 */
-const CONSENT_PATH = "/settings/";
+/** 同意フロー (todo 35) の導線。 */
+const CONSENT_PATH = "/consent/?next=compose";
 
 /** 作成された投稿の Space に応じた戻り先。 */
 function destinationFor(spaceId: string, targets: PostTarget[]): string {
@@ -105,11 +105,14 @@ function ComposeForm() {
 
   const { state: targetsState, reload: reloadTargets } = useResource<{
     items: InstanceDTO[];
-  }>((signal) => getJson<{ items: InstanceDTO[] }>("/instances", { signal }), []);
+  }>((signal) => getJson<{ items: InstanceDTO[] }>("/instances", { signal }), [], {
+    cacheKey: "/instances",
+  });
 
   const { state: meState } = useResource<MeDTO>(
     (signal) => getJson<MeDTO>("/me", { signal }),
     [],
+    { cacheKey: "/me" },
   );
 
   // archived Space (13 §2 の memory) へは投稿できないので送信先から外す。
@@ -227,6 +230,14 @@ function ComposeForm() {
         "/posts",
         buildCreatePostBody(input),
       );
+      if (result.public?.error) {
+        setError({
+          kind: "public",
+          message:
+            "公開投稿は作成できませんでした。Space への投稿は完了しています。",
+        });
+        return;
+      }
       const created = result.items[0];
       router.push(destinationFor(created?.spaceId ?? input.spaceIds[0], targetList));
     } catch (e) {
@@ -255,6 +266,10 @@ function ComposeForm() {
         submitting={submitting}
         uploading={uploading}
         error={error}
+        consentRequired={
+          meState.status === "ok" &&
+          meState.data.settings.contentScanConsentVersion !== 1
+        }
         onSubmit={submit}
         onPickAttachment={pickAttachment}
         onRemoveAttachment={removeAttachment}

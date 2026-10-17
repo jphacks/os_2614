@@ -14,8 +14,8 @@ export type GroupReplyScreenProps = {
   /** GET /instances/{spaceId}/posts の取得状態。 */
   postsState?: ResourceState<Post[]>;
   /**
-   * 返信一覧。backend の PostItem には reply フィールドが無いため、
-   * 独立したスレッド構造は持たない (API が返した一覧をそのまま描画する)。
+   * 返信一覧。backend の PostItem は reply:{root,parent} (10 §3) を返すので、
+   * 呼び出し側が同じスレッドの返信だけを選んで渡す。
    */
   replies: Reply[];
   me: User;
@@ -23,6 +23,11 @@ export type GroupReplyScreenProps = {
   groupRetry?: () => void;
   /** 投稿一覧の再実行 (usePagedResource.reload)。 */
   postsRetry?: () => void;
+  /**
+   * 返信の送信。POST /posts の reply:{root,parent} を呼ぶ。
+   * 未指定なら ReplySheet が「準備中」を出す。
+   */
+  onReply?: (post: Post, text: string) => Promise<void>;
 };
 
 export function GroupReplyScreen({
@@ -33,6 +38,7 @@ export function GroupReplyScreen({
   me,
   groupRetry,
   postsRetry,
+  onReply,
 }: GroupReplyScreenProps) {
   const router = useRouter();
   const params = useSearchParams();
@@ -50,7 +56,13 @@ export function GroupReplyScreen({
       postsRetry={postsRetry}
       overlay={
         post ? (
-          <ReplySheet post={post} replies={replies} me={me} onClose={close} />
+          <ReplySheet
+            post={post}
+            replies={replies}
+            me={me}
+            onClose={close}
+            onSubmit={onReply ? (text) => onReply(post, text) : undefined}
+          />
         ) : undefined
       }
     />

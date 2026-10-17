@@ -70,6 +70,32 @@ export function describeProximityError(error: ProximityError | null): string | n
   return error === null ? null : PROXIMITY_ERROR_MESSAGES[error];
 }
 
+/** 手持ち token の残りが threshold 未満になったら再取得する (05 §2.2)。 */
+export const TOKEN_REFRESH_THRESHOLD_MS = 6 * 60 * 60 * 1000;
+/** token の再取得に失敗しても、この間隔より短くは再試行しない。 */
+export const TOKEN_REFRESH_RETRY_MS = 60_000;
+/** 権限が揃うまで、許可状態を読み直す間隔。 */
+export const PERMISSION_RECHECK_MS = 3_000;
+
+/**
+ * native の tokensValidUntil と lastError から、token を取り直すべきか。
+ * 走行中に残りが減っても、前面復帰を待たずここで補充する。
+ */
+export function shouldRefreshTokens(input: {
+  tokensValidUntil: string | null;
+  lastError: ProximityError | null;
+  nowMs: number;
+}): boolean {
+  if (input.lastError === "tokens_exhausted" || input.tokensValidUntil === null) {
+    return true;
+  }
+  const validUntilMs = Date.parse(input.tokensValidUntil);
+  if (!Number.isFinite(validUntilMs)) {
+    return true;
+  }
+  return validUntilMs - input.nowMs < TOKEN_REFRESH_THRESHOLD_MS;
+}
+
 /** 前面復帰 (hidden → visible) の瞬間か。visibilitychange の連続値から判定する。 */
 export function isForegroundResume(previousHidden: boolean, hidden: boolean): boolean {
   return previousHidden && !hidden;

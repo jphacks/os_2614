@@ -20,6 +20,12 @@ import (
 	"github.com/applemango/chain/internal/testutil"
 )
 
+// 直下の service のテストが共有する DID。
+const (
+	alice = "did:plc:alice"
+	bob   = "did:plc:bob"
+)
+
 // Janitor（04 §4、13 §5 の 6）の掃除を、保持期間の前後で確認する。
 // 基準時刻は testutil.Epoch。時計は env.Clock.Advance で進める。
 

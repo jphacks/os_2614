@@ -39,19 +39,19 @@ type Limit struct {
 // Limits はバケットごとの上限。欠けたバケットは DefaultLimits で補う。
 type Limits map[Bucket]Limit
 
-// DefaultLimits は 02 §5 の表。
+// DefaultLimits は 02 §5 の表を緩めたもの。全バケットを 10 秒 30 回にしている。
 var DefaultLimits = Limits{
-	BucketSightings: {Max: 6, Window: time.Minute},
-	BucketPresence:  {Max: 12, Window: time.Minute},
-	BucketLocation:  {Max: 6, Window: time.Minute},
-	BucketPost:      {Max: 30, Window: time.Minute},
-	BucketMedia:     {Max: 20, Window: time.Minute},
-	BucketFriendReq: {Max: 30, Window: time.Hour},
-	BucketDefault:   {Max: 300, Window: time.Minute},
+	BucketSightings: {Max: 30, Window: 10 * time.Second},
+	BucketPresence:  {Max: 30, Window: 10 * time.Second},
+	BucketLocation:  {Max: 30, Window: 10 * time.Second},
+	BucketPost:      {Max: 30, Window: 10 * time.Second},
+	BucketMedia:     {Max: 30, Window: 10 * time.Second},
+	BucketFriendReq: {Max: 30, Window: 10 * time.Second},
+	BucketDefault:   {Max: 30, Window: 10 * time.Second},
 }
 
 // AuthLimit は /auth/* の IP 単位の上限（02 §5）。
-var AuthLimit = Limit{Max: 30, Window: time.Minute}
+var AuthLimit = Limit{Max: 30, Window: 10 * time.Second}
 
 // RateLimitConfig は RateLimit ミドルウェアの設定。
 type RateLimitConfig struct {
@@ -72,6 +72,8 @@ var routeBuckets = []struct {
 	{fiber.MethodPost, "/api/v1/posts", BucketPost},
 	{fiber.MethodPost, "/api/v1/feed/posts", BucketPost},
 	{fiber.MethodPost, "/api/v1/media", BucketMedia},
+	{fiber.MethodPut, "/api/v1/me/avatar", BucketMedia},
+	{fiber.MethodPut, "/api/v1/me/banner", BucketMedia},
 	{fiber.MethodPost, "/api/v1/friends/requests", BucketFriendReq},
 }
 

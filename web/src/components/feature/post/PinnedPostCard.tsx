@@ -1,6 +1,8 @@
 import type { Post } from "@/domain/types";
 import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
+import { Notice } from "@/components/ui/Notice";
+import { MarkdownBody } from "./MarkdownBody";
 import styles from "./PinnedPostCard.module.css";
 
 export type PinnedPostCardProps = {
@@ -14,7 +16,16 @@ export function PinnedPostCard({ post }: PinnedPostCardProps) {
         <Icon name="push_pin" size={16} />
         <span>自動ピン・{post.author.name}</span>
       </div>
-      <p className={styles.body}>{post.body}</p>
+      {post.moderation?.label === "warn" && (
+        <Notice tone="warning" icon="report">
+          モデレーションにより警告が付いています
+        </Notice>
+      )}
+      {post.format === "markdown" ? (
+        <MarkdownBody source={post.body} />
+      ) : (
+        <p className={styles.body}>{post.body}</p>
+      )}
     </Card>
   );
 }

@@ -17,6 +17,12 @@ import (
 	"github.com/applemango/chain/internal/clock"
 	"github.com/applemango/chain/internal/config"
 	"github.com/applemango/chain/internal/controller"
+	authctrl "github.com/applemango/chain/internal/controller/auth"
+	contentctrl "github.com/applemango/chain/internal/controller/content"
+	encounterctrl "github.com/applemango/chain/internal/controller/encounter"
+	friendctrl "github.com/applemango/chain/internal/controller/friend"
+	groupctrl "github.com/applemango/chain/internal/controller/group"
+	partyctrl "github.com/applemango/chain/internal/controller/party"
 	"github.com/applemango/chain/internal/db"
 	"github.com/applemango/chain/internal/external/atproto"
 	"github.com/applemango/chain/internal/external/embed"
@@ -25,9 +31,22 @@ import (
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/idgen"
 	"github.com/applemango/chain/internal/kv"
-	"github.com/applemango/chain/internal/model"
+	spacemodel "github.com/applemango/chain/internal/model/space"
 	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service"
+	"github.com/applemango/chain/internal/service/access"
+	authsvc "github.com/applemango/chain/internal/service/auth"
+	"github.com/applemango/chain/internal/service/content"
+	core "github.com/applemango/chain/internal/service/core"
+	encountersvc "github.com/applemango/chain/internal/service/encounter"
+	friendsvc "github.com/applemango/chain/internal/service/friend"
+	groupsvc "github.com/applemango/chain/internal/service/group"
+	mesvc "github.com/applemango/chain/internal/service/me"
+	"github.com/applemango/chain/internal/service/moderation"
+	naturalsvc "github.com/applemango/chain/internal/service/natural"
+	"github.com/applemango/chain/internal/service/notify"
+	partysvc "github.com/applemango/chain/internal/service/party"
+	"github.com/applemango/chain/internal/service/proximity"
 	"github.com/applemango/chain/internal/storage"
 	"github.com/applemango/chain/internal/worker"
 )
@@ -64,7 +83,7 @@ func run() error {
 	}
 	defer rdb.Close()
 
-	deps := service.Deps{Config: cfg, DB: conn, Redis: rdb, Clock: clock.Real{}, IDs: idgen.Real{}}
+	deps := core.Deps{Config: cfg, DB: conn, Redis: rdb, Clock: clock.Real{}, IDs: idgen.Real{}}
 	hub := realtime.NewHub()
 
 	moderator, assessor := moderationClients(cfg)
@@ -82,42 +101,44 @@ func run() error {
 	}
 	pdsWriter := atproto.NewWriter(oauthApp)
 
-	sessions := &service.SessionService{Deps: deps}
+	sessions := &authsvc.SessionService{Deps: deps}
 	health := &service.HealthService{Deps: deps}
-	jetstreamSvc := &service.JetstreamService{Deps: deps, Posts: atproto.NewFirstLoadFetcher()}
-	authSvc := &service.AuthService{Deps: deps, OAuth: oauthApp, Dir: oauthApp.Dir, Profiles: atproto.NewProfileFetcher(), FirstLoad: jetstreamSvc}
-	me := &service.MeService{Deps: deps, Moderator: moderator, Writer: pdsWriter}
-	schedule := &service.ScheduleService{Deps: deps, Embedder: embedderFor(cfg)}
+	jetstreamSvc := &content.JetstreamService{Deps: deps, Posts: atproto.NewFirstLoadFetcher()}
+	authSvc := &authsvc.AuthService{Deps: deps, OAuth: oauthApp, Dir: oauthApp.Dir, Profiles: atproto.NewProfileFetcher(), FirstLoad: jetstreamSvc}
+	me := &mesvc.MeService{Deps: deps, Moderator: moderator, Writer: pdsWriter}
+	schedule := &naturalsvc.ScheduleService{Deps: deps, Embedder: embedderFor(cfg)}
 	user := &service.UserService{Deps: deps}
-	beacon := &service.BeaconService{Deps: deps}
-	location := &service.LocationService{Deps: deps, Hooks: service.NoopLocationHooks{}}
-	locationShares := &service.LocationShareService{Deps: deps}
-	encounters := &service.EncounterService{Deps: deps, Proximity: &service.BLEPeerProximity{Deps: deps}, Broker: hub}
-	stats := &service.StatsService{Deps: deps, Encounters: encounters}
-	digest := &service.Digest{Deps: deps}
+	beacon := &proximity.BeaconService{Deps: deps}
+	location := &proximity.LocationService{Deps: deps, Hooks: &groupsvc.GroupEntryService{Deps: deps, Broker: hub}}
+	locationShares := &friendsvc.LocationShareService{Deps: deps}
+	encounters := &encountersvc.EncounterService{Deps: deps, Proximity: &proximity.BLEPeerProximity{Deps: deps}, Broker: hub}
+	stats := &encountersvc.StatsService{Deps: deps, Encounters: encounters}
+	digest := &notify.Digest{Deps: deps}
 	blocks := &service.BlockService{Deps: deps}
-	friends := &service.FriendService{Deps: deps, Broker: hub}
-	notifications := &service.NotificationService{Deps: deps}
+	friends := &friendsvc.FriendService{Deps: deps, Broker: hub}
+	notifications := &notify.NotificationService{Deps: deps}
 	revealer := &worker.EncounterRevealer{Deps: deps, Encounters: encounters}
 
-	store := model.NewSQLiteStore(conn, deps.Clock, idgen.NewTIDGenerator(deps.Clock, tidClockID(deps.IDs)))
+	store := spacemodel.NewSQLiteStore(conn, deps.Clock, idgen.NewTIDGenerator(deps.Clock, tidClockID(deps.IDs)))
 	mediaStore := storage.NewStore(cfg.MediaDir)
 	signer := storage.NewSigner(cfg.JWTKey)
-	account := &service.AccountService{Deps: deps, OAuth: oauthApp, Storage: mediaStore}
+	account := &authsvc.AccountService{Deps: deps, OAuth: oauthApp, Storage: mediaStore}
 	janitorSvc := &service.Janitor{Deps: deps, Storage: mediaStore}
 	// 位置判定は S3 が作る。ここでは常に location_stale を返す仮実装を差す。
-	access := &service.AccessService{Deps: deps, Zones: &service.GPSZonePresence{Deps: deps}}
-	realtimeSvc := &service.RealtimeService{Deps: deps, Access: access, Sessions: sessions}
-	mediaSvc := &service.MediaService{Deps: deps, Store: store, Access: access, Broker: hub, Storage: mediaStore, Signer: signer}
-	pins := &service.PinService{Deps: deps, Store: store, Access: access, Broker: hub}
-	publicPosts := &service.PublicPostService{Deps: deps, Writer: pdsWriter, Moderator: moderator}
-	instances := &service.InstanceService{Deps: deps, Store: store, Access: access, Assessor: assessor, Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
-	feed := &service.FeedService{Deps: deps, Access: access, Signer: signer}
-	groups := &service.GroupService{Deps: deps, Zones: &service.GPSZonePresence{Deps: deps}, Access: access, Moderator: moderator, Broker: hub}
-	naturalGroups := &service.NaturalGroupService{Deps: deps, Moderator: moderator, Broker: hub}
-	groupVotes := &service.GroupVoteService{Deps: deps, Access: access, Broker: hub}
-	parties := &service.PartyService{
-		Deps: deps, Proximity: &service.BLEPeerProximity{Deps: deps}, Access: access,
+	access := &access.AccessService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}}
+	realtimeSvc := &content.RealtimeService{Deps: deps, Access: access, Sessions: sessions}
+	mediaSvc := &content.MediaService{Deps: deps, Store: store, Access: access, Broker: hub, Storage: mediaStore, Signer: signer}
+	pins := &content.PinService{Deps: deps, Store: store, Access: access, Broker: hub}
+	publicPosts := &content.PublicPostService{Deps: deps, Writer: pdsWriter, Moderator: moderator}
+	instances := &content.InstanceService{Deps: deps, Store: store, Access: access, Assessor: assessor, Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
+	feed := &content.FeedService{Deps: deps, Access: access, Signer: signer}
+	groups := &groupsvc.GroupService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}, Access: access, Moderator: moderator, Broker: hub}
+	naturalGroups := &naturalsvc.NaturalGroupService{Deps: deps, Moderator: moderator, Broker: hub}
+	groupVotes := &groupsvc.GroupVoteService{Deps: deps, Access: access, Broker: hub}
+	groupInvites := &groupsvc.GroupInviteService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}, Access: access, Broker: hub}
+	groups.Invites = groupInvites
+	parties := &partysvc.PartyService{
+		Deps: deps, Proximity: &proximity.BLEPeerProximity{Deps: deps}, Access: access,
 		Moderator: moderator, Broker: hub, Signer: signer, Beacon: beacon, Store: store,
 	}
 	if err := parties.RebuildIndex(ctx); err != nil {
@@ -125,9 +146,9 @@ func run() error {
 	}
 	partyEngine := &worker.PartyEngine{Deps: deps, Parties: parties}
 
-	devices := &service.DeviceService{Deps: deps}
-	notifier := &service.NotifySender{Deps: deps, Sender: sender}
-	modQueue := &service.ModerationQueueService{Deps: deps, Assessor: assessor, Broker: hub, Pins: pins}
+	devices := &notify.DeviceService{Deps: deps}
+	notifier := &notify.NotifySender{Deps: deps, Sender: sender}
+	modQueue := &content.ModerationQueueService{Deps: deps, Assessor: assessor, Broker: hub, Pins: pins}
 	notifyWorker := &worker.NotifySender{Deps: deps, Notifier: notifier}
 	requeueWorker := &worker.ModerationRequeue{Deps: deps, Queue: modQueue}
 	janitorWorker := &worker.Janitor{Deps: deps, Janitor: janitorSvc}
@@ -153,39 +174,40 @@ func run() error {
 	controller.Mount(app, httpx.RequireAuth(cfg.JWTKey, deps.Clock, sessions), httpx.RateLimit(httpx.RateLimitConfig{Redis: rdb, Clock: deps.Clock}), controller.Routes{
 		Root: []controller.Registrar{
 			&controller.HealthController{Health: health},
-			&controller.OAuthController{Config: cfg, App: oauthApp, Auth: authSvc},
-			&controller.MediaDeliveryController{Media: mediaSvc},
+			&authctrl.OAuthController{Config: cfg, App: oauthApp, Auth: authSvc},
+			&contentctrl.MediaDeliveryController{Media: mediaSvc},
 		},
 		Public: []controller.Registrar{
-			&controller.AuthController{Auth: authSvc},
+			&authctrl.AuthController{Auth: authSvc},
 			&controller.WSController{
 				Realtime: realtimeSvc, Hub: hub, Timers: clock.Real{},
 				Config: controller.DefaultRealtimeConfig(),
 			},
 		},
 		Private: []controller.Registrar{
-			&controller.LogoutController{Auth: authSvc},
+			&authctrl.LogoutController{Auth: authSvc},
 			&controller.MeController{Me: me},
 			&controller.ScheduleController{Schedule: schedule},
 			&controller.StatsController{Stats: stats},
 			&controller.UserController{User: user},
 			&controller.DeviceController{Devices: devices},
-			&controller.BeaconController{Beacon: beacon},
-			&controller.LocationController{Location: location},
-			&controller.LocationShareController{Shares: locationShares},
-			&controller.EncounterController{Encounters: encounters},
+			&encounterctrl.BeaconController{Beacon: beacon},
+			&encounterctrl.LocationController{Location: location},
+			&friendctrl.LocationShareController{Shares: locationShares},
+			&encounterctrl.EncounterController{Encounters: encounters},
 			&controller.BlockController{Blocks: blocks},
-			&controller.FriendController{Friends: friends},
+			&friendctrl.FriendController{Friends: friends},
 			&controller.NotificationController{Notifications: notifications},
-			&controller.InstanceController{Instances: instances, Pins: pins, Feed: feed},
-			&controller.FeedPostController{Posts: publicPosts},
-			&controller.FeedController{Feed: feed},
-			&controller.MediaController{Media: mediaSvc},
-			&controller.GroupController{Groups: groups},
-			&controller.GroupVoteController{Votes: groupVotes},
-			&controller.PartyController{Parties: parties},
-			&controller.MemoryController{Parties: parties},
-			&controller.AccountController{Account: account},
+			&contentctrl.InstanceController{Instances: instances, Pins: pins, Feed: feed},
+			&contentctrl.FeedPostController{Posts: publicPosts},
+			&contentctrl.FeedController{Feed: feed},
+			&contentctrl.MediaController{Media: mediaSvc},
+			&groupctrl.GroupController{Groups: groups},
+			&groupctrl.GroupVoteController{Votes: groupVotes},
+			&groupctrl.GroupInviteController{Invites: groupInvites},
+			&partyctrl.PartyController{Parties: parties},
+			&partyctrl.MemoryController{Parties: parties},
+			&authctrl.AccountController{Account: account},
 		},
 	})
 
@@ -239,7 +261,7 @@ func runEvery(ctx context.Context, d time.Duration, tick func(context.Context) e
 }
 
 // runJetstream は Jetstream の購読を常時動かす（03 §5）。context が終わるまで戻らない。
-func runJetstream(ctx context.Context, deps service.Deps, svc *service.JetstreamService, url string) {
+func runJetstream(ctx context.Context, deps core.Deps, svc *content.JetstreamService, url string) {
 	client := atproto.NewJetstream(atproto.JetstreamOptions{URL: url, Cursor: svc.Cursor})
 	w := &worker.Jetstream{Deps: deps, Service: svc, Client: client}
 	if err := w.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -253,17 +275,17 @@ func tidClockID(ids idgen.Generator) uint {
 }
 
 // moderationClients は CHAIN_NANOGPT_KEY の有無で Jev か Noop を選ぶ（11 §5.5）。
-func moderationClients(cfg *config.Config) (service.Moderator, service.PostAssessor) {
+func moderationClients(cfg *config.Config) (moderation.Moderator, moderation.PostAssessor) {
 	if cfg.NanoGPTKey == "" {
-		noop := service.ModerationNoop{}
+		noop := moderation.ModerationNoop{}
 		return noop, noop
 	}
-	jev := &service.Jev{Client: nanogpt.NewClient(cfg.NanoGPTURL, cfg.NanoGPTKey, cfg.JevModel)}
+	jev := &moderation.Jev{Client: nanogpt.NewClient(cfg.NanoGPTURL, cfg.NanoGPTKey, cfg.JevModel)}
 	return jev, jev
 }
 
 // embedderFor は CHAIN_EMBED_URL の有無で Embedder を選ぶ（09 §8.3）。未設定なら nil にし、計算をしない。
-func embedderFor(cfg *config.Config) service.Embedder {
+func embedderFor(cfg *config.Config) naturalsvc.Embedder {
 	if cfg.EmbedURL == "" {
 		return nil
 	}

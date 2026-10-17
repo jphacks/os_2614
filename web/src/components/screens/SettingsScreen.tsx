@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
+import { List, ListItem } from "@/components/ui/List";
 import { Notice } from "@/components/ui/Notice";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Toggle } from "@/components/ui/Toggle";
@@ -125,6 +126,20 @@ export function SettingsScreen({
         )}
 
         {areas && <AreaManager {...areas} />}
+
+        <section className={styles.section}>
+          <Card padding="md">
+            <List>
+              <ListItem
+                leading={<Icon name="block" size={20} />}
+                title="ブロックした人"
+                subtitle="ブロックの一覧と解除"
+                trailing={<Icon name="chevron_right" size={20} />}
+                href="/blocks/"
+              />
+            </List>
+          </Card>
+        </section>
 
         <AccountSection onDeleteAccount={onDeleteAccount} />
       </div>

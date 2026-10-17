@@ -15,6 +15,7 @@ export default function StatsPage() {
   const { state, reload } = useResource<StatsDTO>(
     (signal) => getJson<StatsDTO>("/me/stats", { signal }),
     [],
+    { cacheKey: "/me/stats" },
   );
 
   // ok のときだけ DTO をドメイン Stats に写す。それ以外は状態をそのまま渡す。

@@ -17,7 +17,7 @@ type User struct {
 	DeletedAt *time.Time
 }
 
-func scanUser(scan db.Scan, u *User) error {
+func ScanUser(scan db.Scan, u *User) error {
 	var created int64
 	var deleted sql.NullInt64
 	if err := scan(&u.DID, &u.Handle, &u.PDSURL, &created, &deleted); err != nil {
@@ -34,7 +34,7 @@ func scanUser(scan db.Scan, u *User) error {
 func GetUser(ctx context.Context, q db.Querier, did string) (*User, error) {
 	return db.GetItem(ctx, q,
 		"SELECT did, handle, pds_url, created_at, deleted_at FROM users WHERE did = ?",
-		[]any{did}, scanUser)
+		[]any{did}, ScanUser)
 }
 
 // UpsertUser はログインのたびに handle と PDS を最新にする。

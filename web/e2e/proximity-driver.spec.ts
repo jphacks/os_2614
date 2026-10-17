@@ -13,6 +13,7 @@ import {
   missingPermissions,
   pipelineAction,
   proximityPermissionsReady,
+  shouldRefreshTokens,
 } from "../src/device/proximity/pipeline";
 
 // 近接パイプラインの起動/停止 (AppShell の ProximityDriver) を検証する。
@@ -175,6 +176,31 @@ test.describe("describeProximityError", () => {
     for (const code of codes) {
       expect(describeProximityError(code)).toBeTruthy();
     }
+  });
+});
+
+test.describe("shouldRefreshTokens", () => {
+  const nowMs = Date.parse("2026-10-17T00:00:00Z");
+  const hoursLater = (h: number) => new Date(nowMs + h * 3_600_000).toISOString();
+
+  test("true when native has no tokens or reports tokens_exhausted", () => {
+    expect(shouldRefreshTokens({ tokensValidUntil: null, lastError: null, nowMs })).toBe(true);
+    expect(
+      shouldRefreshTokens({
+        tokensValidUntil: hoursLater(20),
+        lastError: "tokens_exhausted",
+        nowMs,
+      }),
+    ).toBe(true);
+  });
+
+  test("true under 6h remaining, false above", () => {
+    expect(shouldRefreshTokens({ tokensValidUntil: hoursLater(5), lastError: null, nowMs })).toBe(
+      true,
+    );
+    expect(shouldRefreshTokens({ tokensValidUntil: hoursLater(7), lastError: null, nowMs })).toBe(
+      false,
+    );
   });
 });
 

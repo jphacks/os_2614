@@ -5,6 +5,19 @@
   padding: 0 var(--page-gutter) var(--space-3);
 }
 
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.headerLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+}
+
 .gutter {
   padding: 0 var(--page-gutter);
   margin-bottom: var(--space-4);
@@ -33,4 +46,106 @@
 .more {
   display: flex;
   justify-content: center;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.link {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: var(--text-caption);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: var(--color-scrim);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: 86vh;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--color-surface);
+}
+
+.dialogHeader {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  padding: 0 var(--page-gutter);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.dialogTitle {
+  font: var(--text-heading);
+  color: var(--color-text);
+}
+
+.dialogClose {
+  position: absolute;
+  right: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--color-text);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  padding: var(--space-4) var(--page-gutter);
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+}
+
+.fieldLabel {
+  margin-top: var(--space-2);
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: var(--text-body);
+}
+
+.textarea {
+  resize: vertical;
+}
+
+.fieldError {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--color-like);
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }

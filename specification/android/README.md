@@ -15,6 +15,8 @@ backend 側の対応する仕様は `specification/backend/` の 03・05・06・
 | sighting の集約と送信 | native | FGS の中で動く |
 | フレンドの近接検出と Party 報告 | native | 15 秒間隔の報告をバックグラウンドで続けるため |
 | 位置の取得と送信 | native | `isMock` は native でしか取れない（backend 05 §4） |
+| 端末のカレンダーの読み取りと送信 | native | 自動グループの予定（backend 09 §8.2）。WebView が閉じていても、FGS の中で同期を続けるため（§11） |
+| 予定の手入力 | WebView | 画面から `PUT /me/schedule-today`（`source: "manual"`）を直接呼ぶ |
 | Foreground Service | native | |
 | プッシュ通知の受信 | Capacitor Push Notifications プラグイン | 既製品で足りる |
 
@@ -31,7 +33,7 @@ export interface ChainProximityPlugin {
 
   // ---- 権限（§4） ----
   checkPermissions(): Promise<PermissionStatus>;
-  requestPermissions(opts: { permissions: Array<'bluetooth' | 'location' | 'notifications'> }): Promise<PermissionStatus>;
+  requestPermissions(opts: { permissions: Array<'bluetooth' | 'location' | 'notifications' | 'calendar'> }): Promise<PermissionStatus>;
 
   // ---- すれ違いモード（§5〜§8） ----
   start(): Promise<void>;            // FGS を起動し advertise と scan を始める。前面からのみ呼べる
@@ -44,6 +46,11 @@ export interface ChainProximityPlugin {
   setForegroundLocation(opts: { enabled: boolean }): Promise<void>;
   updateLocationNow(): Promise<{ sent: boolean; reason?: 'denied' | 'mock' | 'inaccurate' | 'unavailable' }>;
 
+  // ---- カレンダー（§11） ----
+  listCalendars(): Promise<{ calendars: Array<{ id: string; name: string; account: string; color: string; selected: boolean }> }>;
+  setSelectedCalendars(opts: { ids: string[] }): Promise<void>;   // 空配列で取り込みを止め、送った予定も消す
+  syncCalendar(): Promise<{ sent: boolean; count: number; reason?: 'denied' | 'none_selected' | 'offline' }>;
+
   addListener(event: 'statusChange', cb: (s: ProximityStatus) => void): Promise<PluginListenerHandle>;
   addListener(event: 'friendNearby', cb: (e: { did: string; lastSeenAt: string; rssi: number }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'sessionExpired', cb: () => void): Promise<PluginListenerHandle>;
@@ -53,6 +60,7 @@ export interface PermissionStatus {
   bluetooth: PermissionState;      // BLUETOOTH_SCAN と BLUETOOTH_ADVERTISE の両方
   location: PermissionState;       // ACCESS_FINE_LOCATION
   notifications: PermissionState;  // POST_NOTIFICATIONS（Android 13+）
+  calendar: PermissionState;       // READ_CALENDAR
 }
 
 export interface ProximityStatus {
@@ -65,6 +73,7 @@ export interface ProximityStatus {
   lastUploadAt: string | null;
   friendBeaconsValidUntil: string | null;
   clockOffsetMs: number;           // §10
+  calendarSyncedAt: string | null; // §11
   lastError: null | 'permission_revoked' | 'bluetooth_off' | 'advertise_failed' | 'scan_failed' | 'tokens_exhausted' | 'session_expired';
 }
 ```
@@ -99,6 +108,7 @@ backend 03 §3 のトークンは **native だけが保持する**。WebView は
 | `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_CONNECTED_DEVICE` | install | FGS（type `connectedDevice`） | P0 |
 | `FOREGROUND_SERVICE_LOCATION` | install | FGS 内での位置取得（type `location`） | P1 |
 | `ACCESS_BACKGROUND_LOCATION` | runtime | バックグラウンドでの位置共有・入場通知 | 後回し（backend README L2） |
+| `READ_CALENDAR` | runtime | 自動グループのための今日・明日の予定の読み取り（§11） | P2（自動グループと同時） |
 
 - `BLUETOOTH_SCAN` には **`neverForLocation` を付けない**。付けると一部の beacon 型の advertise が scan 結果から除かれ得る（research E2）。位置権限はグループのために結局取るので、付けない方を選ぶ
 - `BLUETOOTH_CONNECT` は使わない（GATT 接続をしない）
@@ -168,7 +178,46 @@ beacon の窓の選択と、sighting の時刻は backend の時計を基準に�
 - 窓の切替時刻と、送信するすべての時刻に `clockOffsetMs` を足す
 - ずれが 60 秒を超えたらログに残す（端末の時計設定がおかしい可能性があるため）
 
-## 11. 未検証点（実機で確かめる）
+## 11. カレンダーの取り込み
+
+自動グループ（backend 09 §8）の「同じ予定の人」を判定するために、端末のカレンダーから今日と明日の予定を読んで送る。
+Google Calendar API は使わない（Google の審査が重い権限になるため）。端末に同期済みの Google カレンダーなども、端末のカレンダーとして読める。
+
+### 11.1 始め方
+
+1. ユーザーが設定画面で「自動グループ」をオンにしたときに、理由の説明画面を挟んでから `READ_CALENDAR` を要求する
+2. `listCalendars()` で端末のカレンダー（`CalendarContract.Calendars`）を一覧にし、**読むカレンダーをユーザーに選ばせる**。既定ではどれも選ばない（仕事用など、送りたくないカレンダーを除けるように）
+3. `setSelectedCalendars({ids})` で保存する（暗号化した端末内ストレージ）。保存したらすぐに 1 回同期する
+
+### 11.2 読み方
+
+- `CalendarContract.Instances` で、選んだカレンダーの今日と明日（Asia/Tokyo）の予定を読む。繰り返しの予定も個別の回として取れる
+- 読む列は**タイトル・開始・終了だけ**。説明・場所・参加者は読まない
+- 次のものは送らない
+  - 終日の予定（`ALL_DAY = 1`）
+  - 自分が「不参加」にした予定（`SELF_ATTENDEE_STATUS = DECLINED`）
+  - 10 分未満、または 12 時間を超える予定
+  - タイトルが空の予定
+- 日をまたぐ予定は、その日の 0:00〜24:00 に切り詰める。時刻は §10 の補正をかけた Asia/Tokyo の `HH:MM` にする
+- タイトルは 100 文字、1 日 20 件に切り詰める（開始の早い順）（backend 09 §8.2 の上限）
+
+### 11.3 送り方
+
+- `PUT /api/v1/me/schedule-today` を今日と明日の 2 回、`source: "calendar"` で送る。同じ source の予定だけが置き換わるので、手入力の予定（`source: "manual"`）は消えない
+- 前回送った内容と同じなら送らない（タイトル・時刻のハッシュを端末に持つ）
+
+| 契機 | 同期 |
+| --- | --- |
+| アプリが前面に来た（WebView が `syncCalendar()` を呼ぶ） | する |
+| FGS の稼働中、3 時間ごと | する |
+| 日付が変わった直後（0:05 JST） | する（明日だった分が今日になる） |
+| カレンダーの変更（`ContentObserver` で `CalendarContract.Events` を見張る） | 5 分まとめてから同期する |
+| `setSelectedCalendars({ids: []})`、権限の取り消し、ログアウト | 今日と明日の `source: "calendar"` を空の `entries` で送り、送った予定を消す |
+
+- オフラインや 5xx は、次の契機まで待つ（再送の待ち行列は持たない。予定は次の同期で必ず最新になるため）
+- 予定のタイトルを平文で送ることは、backend README L8 の課題として残っている
+
+## 12. 未検証点（実機で確かめる）
 
 | # | 内容 | 関連 |
 | --- | --- | --- |
@@ -177,3 +226,4 @@ beacon の窓の選択と、sighting の時刻は backend の時計を基準に�
 | V3 | `INTERVAL_MEDIUM` と `SCAN_MODE_BALANCED` での発見までの時間、届く距離、1 時間あたりの電池消費 | research U4 |
 | V4 | 画面オフ時に、manufacturer data のフィルタ付き scan で結果が届き続けるか | §7 |
 | V5 | 再起動後の FGS 再開が Android 15 以降で許されるか | §5 |
+| V6 | 各社のカレンダーアプリ（Samsung カレンダーなど）の予定が `CalendarContract` から同じように読めるか。カレンダーの変更の `ContentObserver` が FGS の中で届くか | §11 |

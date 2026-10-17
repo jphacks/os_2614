@@ -39,6 +39,12 @@
   word-break: break-word;
 }
 
+/* warn かつ warnDisplay=blur の本文を伏せる (11 §4)。「タップして表示」で戻す。 */
+.blurred {
+  filter: blur(6px);
+  user-select: none;
+}
+
 .media {
   display: flex;
   flex-direction: column;
@@ -64,6 +70,3 @@
   font-variant-numeric: tabular-nums;
 }
 
-.liked {
-  color: var(--color-like);
-}

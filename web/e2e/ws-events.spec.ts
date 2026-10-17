@@ -9,6 +9,7 @@ import {
   type RealtimeTransport,
 } from "../src/realtime/events";
 import { parseFrame, type EventFrame, type RealtimeEvents, type RealtimeState } from "../src/realtime/ws";
+import { RealtimeStore, attachRealtimeStore } from "../src/realtime/store";
 
 // イベント振り分け (src/realtime/events.ts) のテスト。ブラウザも実サーバも使わない。
 // ws.ts のトランスポートは軽いスタブで置き換え、ルーターが
@@ -280,5 +281,146 @@ test.describe("RealtimeEventRouter resync seam", () => {
     router.notifyReconnected();
     router.notifyReconnected();
     expect(calls).toBe(2);
+  });
+});
+
+// レビュー F4 の指摘 (todo 28 の受入: 各イベントを注入し該当キャッシュが更新される)。
+// handler が呼ばれたことではなく、キャッシュ (snapshot) の中身が変わったことを検証する。
+test.describe("RealtimeStore cache reflection", () => {
+  function wired(): { router: RealtimeEventRouter; store: RealtimeStore } {
+    const router = new RealtimeEventRouter(new StubTransport());
+    const store = new RealtimeStore();
+    attachRealtimeStore(router, store);
+    return { router, store };
+  }
+
+  test("every known event advances the cache revision", () => {
+    for (const name of REALTIME_EVENT_NAMES) {
+      const { router, store } = wired();
+      const before = store.getSnapshot();
+      expect(router.dispatch(eventFrame(name, SAMPLE[name]))).toBe(true);
+      const after = store.getSnapshot();
+      expect(after).not.toBe(before);
+      expect(after.revision).toBe(before.revision + 1);
+    }
+  });
+
+  test("space events land in that space's cache", () => {
+    const { router, store } = wired();
+    expect(router.dispatch(eventFrame("post.created", SAMPLE["post.created"]))).toBe(true);
+    router.dispatch(eventFrame("media.created", SAMPLE["media.created"]));
+    router.dispatch(eventFrame("pin.created", SAMPLE["pin.created"]));
+    router.dispatch(eventFrame("member.joined", SAMPLE["member.joined"]));
+
+    const space = store.getSnapshot().spaces["space-1"];
+    expect(space.posts).toEqual([SAMPLE["post.created"]]);
+    expect(space.media).toEqual([SAMPLE["media.created"]]);
+    expect(space.pins).toEqual([SAMPLE["pin.created"]]);
+    expect(space.joined).toEqual(["did:plc:peer"]);
+    expect(space.archived).toBe(false);
+  });
+
+  test("post.deleted removes the post and records the uri", () => {
+    const { router, store } = wired();
+    router.dispatch(eventFrame("post.created", SAMPLE["post.created"]));
+    router.dispatch(eventFrame("post.deleted", SAMPLE["post.deleted"]));
+
+    const space = store.getSnapshot().spaces["space-1"];
+    expect(space.posts).toEqual([]);
+    expect(space.deletedPosts).toEqual([SAMPLE["post.deleted"].uri]);
+  });
+
+  test("pin.deleted removes the pin and records the uri", () => {
+    const { router, store } = wired();
+    router.dispatch(eventFrame("pin.created", SAMPLE["pin.created"]));
+    router.dispatch(eventFrame("pin.deleted", SAMPLE["pin.deleted"]));
+
+    const space = store.getSnapshot().spaces["space-1"];
+    expect(space.pins).toEqual([]);
+    expect(space.deletedPins).toEqual([SAMPLE["pin.deleted"].uri]);
+  });
+
+  test("member.left flips the member from joined to left", () => {
+    const { router, store } = wired();
+    router.dispatch(eventFrame("member.joined", { did: "did:plc:peer" }));
+    router.dispatch(eventFrame("member.left", { did: "did:plc:peer" }));
+
+    const space = store.getSnapshot().spaces["space-1"];
+    expect(space.joined).toEqual([]);
+    expect(space.left).toEqual(["did:plc:peer"]);
+  });
+
+  test("space.archived marks the space", () => {
+    const { router, store } = wired();
+    expect(router.dispatch(eventFrame("space.archived", undefined))).toBe(true);
+    expect(store.getSnapshot().spaces["space-1"].archived).toBe(true);
+  });
+
+  test("party.updated replaces the cached party", () => {
+    const { router, store } = wired();
+    router.dispatch(eventFrame("party.updated", SAMPLE["party.updated"]));
+    expect(store.getSnapshot().party).toEqual(SAMPLE["party.updated"]);
+  });
+
+  test("encounter.revealed is prepended and deduped by id", () => {
+    const { router, store } = wired();
+    router.dispatch(eventFrame("encounter.revealed", SAMPLE["encounter.revealed"]));
+    router.dispatch(eventFrame("encounter.revealed", SAMPLE["encounter.revealed"]));
+    expect(store.getSnapshot().encounters).toEqual([SAMPLE["encounter.revealed"]]);
+  });
+
+  test("friend events are cached with their kind", () => {
+    const { router, store } = wired();
+    router.dispatch(eventFrame("friend.request", SAMPLE["friend.request"]));
+    router.dispatch(eventFrame("friend.accepted", SAMPLE["friend.accepted"]));
+    router.dispatch(eventFrame("friend.changed", SAMPLE["friend.changed"]));
+
+    expect(store.getSnapshot().friendEvents).toEqual([
+      { kind: "changed", user: SAMPLE["friend.changed"] },
+      { kind: "accepted", user: SAMPLE["friend.accepted"] },
+      { kind: "request", user: SAMPLE["friend.request"] },
+    ]);
+  });
+
+  test("notification is cached newest-first and deduped by id", () => {
+    const { router, store } = wired();
+    router.dispatch(eventFrame("notification", SAMPLE["notification"]));
+    router.dispatch(eventFrame("notification", SAMPLE["notification"]));
+    expect(store.getSnapshot().notifications).toEqual([SAMPLE["notification"]]);
+  });
+
+  test("unknown events are ignored safely without touching the cache", () => {
+    const { router, store } = wired();
+    const before = store.getSnapshot();
+    const unknown: EventFrame = {
+      type: "event",
+      event: "mystery.event",
+      space: "space-1",
+      data: { anything: true },
+    };
+    expect(router.dispatch(unknown)).toBe(false);
+    expect(store.getSnapshot()).toBe(before);
+    expect(store.apply("mystery.event", { anything: true })).toBe(false);
+  });
+
+  test("subscribers are notified on change, and reset clears the cache", () => {
+    const { router, store } = wired();
+    let notifications = 0;
+    const off = store.subscribe(() => {
+      notifications += 1;
+    });
+
+    router.dispatch(eventFrame("notification", SAMPLE["notification"]));
+    expect(notifications).toBe(1);
+    expect(store.getSnapshot().notifications).toHaveLength(1);
+
+    store.reset();
+    expect(notifications).toBe(2);
+    expect(store.getSnapshot().notifications).toEqual([]);
+    expect(store.getSnapshot().revision).toBe(0);
+
+    off();
+    router.dispatch(eventFrame("notification", SAMPLE["notification"]));
+    expect(notifications).toBe(2);
   });
 });

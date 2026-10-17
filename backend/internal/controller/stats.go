@@ -4,12 +4,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/applemango/chain/internal/httpx"
-	"github.com/applemango/chain/internal/service"
+	encountersvc "github.com/applemango/chain/internal/service/encounter"
 )
 
 // StatsController は個人の統計（13 §3、14「自分」）。
 type StatsController struct {
-	Stats *service.StatsService
+	Stats *encountersvc.StatsService
 }
 
 func (h *StatsController) Register(r fiber.Router) {

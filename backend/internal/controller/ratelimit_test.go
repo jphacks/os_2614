@@ -75,13 +75,13 @@ func TestRateLimitPerBucket(t *testing.T) {
 		limit  int
 		window time.Duration
 	}{
-		{"sightings", http.MethodPost, "/api/v1/encounters/sightings", `{"items":[]}`, 6, time.Minute},
-		{"presence", http.MethodPost, "/api/v1/party/presence", `{}`, 12, time.Minute},
-		{"location", http.MethodPut, "/api/v1/me/location", `{}`, 6, time.Minute},
-		{"post", http.MethodPost, "/api/v1/posts", `{}`, 30, time.Minute},
-		{"media", http.MethodPost, "/api/v1/media", `{}`, 20, time.Minute},
-		{"friend_req", http.MethodPost, "/api/v1/friends/requests", `{}`, 30, time.Hour},
-		{"default", http.MethodGet, "/api/v1/me", "", 300, time.Minute},
+		{"sightings", http.MethodPost, "/api/v1/encounters/sightings", `{"items":[]}`, 30, 10 * time.Second},
+		{"presence", http.MethodPost, "/api/v1/party/presence", `{}`, 30, 10 * time.Second},
+		{"location", http.MethodPut, "/api/v1/me/location", `{}`, 30, 10 * time.Second},
+		{"post", http.MethodPost, "/api/v1/posts", `{}`, 30, 10 * time.Second},
+		{"media", http.MethodPost, "/api/v1/media", `{}`, 30, 10 * time.Second},
+		{"friend_req", http.MethodPost, "/api/v1/friends/requests", `{}`, 30, 10 * time.Second},
+		{"default", http.MethodGet, "/api/v1/me", "", 30, 10 * time.Second},
 	}
 
 	for _, tc := range cases {
@@ -102,7 +102,7 @@ func TestRateLimitPerBucket(t *testing.T) {
 			if status != http.StatusTooManyRequests {
 				t.Fatalf("request %d: status = %d, want 429 (body=%s)", tc.limit+1, status, body)
 			}
-			wantErrorCode(t, body, "rate_limited")
+			testutil.WantErrorCode(t, body, "rate_limited")
 			assertRetryAfter(t, hdr, tc.window)
 
 			env.Clock.Advance(tc.window)
@@ -124,7 +124,7 @@ func TestRateLimitDedicatedAlsoCountsDefault(t *testing.T) {
 	}
 	app := testutil.NewApp(env)
 
-	// sightings の専用上限は 6/分なので、default を 2 に絞ると 3 回目は default 超過で 429 になる。
+	// sightings の専用上限は 10 秒 30 回なので、default を 2 に絞ると 3 回目は default 超過で 429 になる。
 	for i := 0; i < 2; i++ {
 		if status, body, _ := requestFull(t, app, http.MethodPost, "/api/v1/encounters/sightings", `{"items":[]}`, token); status == http.StatusTooManyRequests {
 			t.Fatalf("sighting %d: unexpected 429 (body=%s)", i+1, body)
@@ -156,20 +156,20 @@ func TestRateLimitPerUser(t *testing.T) {
 		return status
 	}
 
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 30; i++ {
 		if s := sight(tokenA); s == http.StatusTooManyRequests {
 			t.Fatalf("A request %d: unexpected 429", i+1)
 		}
 	}
 	if s := sight(tokenA); s != http.StatusTooManyRequests {
-		t.Fatalf("A 7th request: status = %d, want 429", s)
+		t.Fatalf("A 31st request: status = %d, want 429", s)
 	}
 	if s := sight(tokenB); s == http.StatusTooManyRequests {
 		t.Fatalf("B request: got 429, but B should be independent of A")
 	}
 }
 
-// TestRateLimitAuthByIP は /auth/* が IP 単位で 30/分に制限されることを確かめる。
+// TestRateLimitAuthByIP は /auth/* が IP 単位で 10 秒 30 回に制限されることを確かめる。
 func TestRateLimitAuthByIP(t *testing.T) {
 	env := testutil.NewEnv(t)
 	app := testutil.NewApp(env)
@@ -186,15 +186,15 @@ func TestRateLimitAuthByIP(t *testing.T) {
 	if status != http.StatusTooManyRequests {
 		t.Fatalf("31st auth request: status = %d, want 429 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "rate_limited")
-	assertRetryAfter(t, hdr, time.Minute)
+	testutil.WantErrorCode(t, body, "rate_limited")
+	assertRetryAfter(t, hdr, 10*time.Second)
 
 	// 別の /auth/* も同じ IP バケットを共有する。
 	if s, _, _ := requestFull(t, app, http.MethodGet, "/auth/dev/complete?code=x", "", ""); s != http.StatusTooManyRequests {
 		t.Fatalf("/auth/dev/complete: status = %d, want 429 (shared IP bucket)", s)
 	}
 
-	env.Clock.Advance(time.Minute)
+	env.Clock.Advance(10 * time.Second)
 	if s, b, _ := requestFull(t, app, http.MethodPost, "/api/v1/auth/exchange", exchange, ""); s == http.StatusTooManyRequests {
 		t.Fatalf("after the window: still 429 (body=%s)", b)
 	}

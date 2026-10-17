@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	encountersvc "github.com/applemango/chain/internal/service/encounter"
 )
 
 // EncounterRevealer は公開時刻に達したすれ違いを公開する（06 §5.4、01 §2）。
 type EncounterRevealer struct {
-	service.Deps
-	Encounters *service.EncounterService
+	core.Deps
+	Encounters *encountersvc.EncounterService
 }
 
 const (

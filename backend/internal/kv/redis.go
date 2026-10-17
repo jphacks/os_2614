@@ -50,6 +50,9 @@ func GeoUsersKey() string           { return "geo:users" }
 // 09 §5: active なグループの中心（GEOSEARCH の対象）。
 func GeoGroupsKey() string { return "geo:groups" }
 
+// 09 §6.1: グループ入場通知の送信済み印（TTL 24 時間）。
+func GroupNotifiedKey(did, space string) string { return "gn:" + did + ":" + space }
+
 // 05 §3: 観測バケットと直近に観測した相手。
 func SightingKey(observer, observed string, bucket int64) string {
 	return "sgt:" + observer + ":" + observed + ":" + strconv.FormatInt(bucket, 10)

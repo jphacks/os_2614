@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+
+	"github.com/applemango/chain/internal/service/core"
 )
 
 type HealthService struct {
-	Deps
+	core.Deps
 }
 
 type HealthStatus struct {

@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
 import styles from "./List.module.css";
+import { Pressable, PressableLink } from "../Pressable";
 
 export type ListItemProps = {
   leading?: ReactNode;
@@ -44,9 +44,9 @@ export function ListItem({
   if (href) {
     return (
       <li className={rowClass}>
-        <Link className={linkClass} href={href}>
+        <PressableLink className={linkClass} href={href}>
           {inner}
-        </Link>
+        </PressableLink>
       </li>
     );
   }
@@ -54,9 +54,9 @@ export function ListItem({
   if (onClick) {
     return (
       <li className={rowClass}>
-        <button type="button" className={linkClass} onClick={onClick}>
+        <Pressable type="button" className={linkClass} onClick={onClick}>
           {inner}
-        </button>
+        </Pressable>
       </li>
     );
   }

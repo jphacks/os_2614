@@ -5,14 +5,15 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	naturalsvc "github.com/applemango/chain/internal/service/natural"
 )
 
 // EmbedBackfill は embedding の無い（または古い）予定を 1 分ごとに計算し直す（09 §8.3）。
 // 業務ロジックは service にある。
 type EmbedBackfill struct {
-	service.Deps
-	Schedule *service.ScheduleService
+	core.Deps
+	Schedule *naturalsvc.ScheduleService
 }
 
 const (

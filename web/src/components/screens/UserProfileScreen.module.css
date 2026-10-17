@@ -1,0 +1,209 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--page-gutter) var(--space-6);
+}
+
+.bannerWrap {
+  position: relative;
+  margin-bottom: 48px;
+}
+
+.banner {
+  position: relative;
+  height: 150px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--tone-blue);
+}
+
+.bannerImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cloud {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--color-surface);
+  opacity: 0.6;
+}
+
+.cloudA {
+  top: 18px;
+  left: 24px;
+  width: 46px;
+  height: 46px;
+  box-shadow: 34px 10px 0 6px var(--color-surface);
+}
+
+.cloudB {
+  top: 70px;
+  right: 30px;
+  width: 60px;
+  height: 60px;
+  box-shadow: -40px 16px 0 4px var(--color-surface);
+}
+
+.cloudC {
+  bottom: -20px;
+  left: 90px;
+  width: 40px;
+  height: 40px;
+  opacity: 0.4;
+}
+
+.avatar {
+  position: absolute;
+  left: 0;
+  bottom: -40px;
+  display: inline-flex;
+  border: 4px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--color-surface);
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.name {
+  font: var(--text-title);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.handle {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.bio {
+  margin: 0;
+  font: var(--text-body);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 320px;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+}
+
+.stateIcon {
+  color: var(--color-text-muted);
+}
+
+.stateTitle {
+  margin: 0;
+  font: var(--text-heading);
+  color: var(--color-text);
+}
+
+.stateDescription {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.skeletonBanner {
+  height: 150px;
+  border-radius: var(--radius-lg);
+  background: var(--color-placeholder);
+}
+
+.skeletonIdentity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.skeletonAvatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--color-placeholder-strong);
+}
+
+.skeletonLines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.skeletonLineShort,
+.skeletonLineLong {
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-placeholder);
+}
+
+.skeletonLineShort {
+  width: 40%;
+}
+
+.skeletonLineLong {
+  width: 70%;
+}
+
+.skeletonBlock {
+  height: 72px;
+  border-radius: var(--radius-md);
+  background: var(--color-placeholder);
+}
+
+.skeletonBanner,
+.skeletonAvatar,
+.skeletonLineShort,
+.skeletonLineLong,
+.skeletonBlock {
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonBanner,
+  .skeletonAvatar,
+  .skeletonLineShort,
+  .skeletonLineLong,
+  .skeletonBlock {
+    animation: none;
+  }
+}
