@@ -1,130 +1,426 @@
-// backend (Go/Fiber) の JSON レスポンスを想定した仮 DTO。
-// 命名は snake_case、時刻は ISO 8601 文字列、任意項目は `?:`。
-// backend が確定したらこのファイルと mappers.ts だけを直す。
+// backend (Go/Fiber) の JSON レスポンスの型契約。
+// キーはすべて camelCase、時刻は RFC 3339（UTC・ミリ秒まで）。
+// 出典は backend の各 controller / service の json タグ。仕様は specification/backend/。
+// 任意項目はタグの omitempty に対応して `?` にする。
 
-export type ID = string;
-export type ISODateString = string;
+/** DID（did:plc:... / did:web:...）。API は handle ではなく DID でユーザーを指す。 */
+export type DID = string;
 
-export type UserDTO = {
-  id: ID;
-  name: string;
-  avatar_url?: string;
+/** RFC 3339 の UTC 時刻（例: 2026-10-17T03:12:45.123Z）。 */
+export type RFC3339 = string;
+
+/** 通知の種類（12 §3）。 */
+export type NotificationType =
+  | "friend.request"
+  | "friend.accepted"
+  | "party.confirmed"
+  | "group.nearby"
+  | "group.invited"
+  | "group.suggested"
+  | "encounter.daily"
+  | "encounter.weekly"
+  | "encounter.monthly"
+  | "moderation.hidden";
+
+/** 通知の ON/OFF。既定から変えた種類だけを持つ（12 §3）。 */
+export type NotifySettings = Partial<Record<NotificationType, boolean>>;
+
+/** 位置の見せ方（07 §4.1）。 */
+export type LocationPrecision =
+  | "exact"
+  | "approx"
+  | "area"
+  | "direction"
+  | "off";
+
+/** すれ違いの公開モード（06 §5.1）。 */
+export type EncounterMode = "immediate" | "delayed" | "private";
+
+/** 相手との関係（06 §6）。 */
+export type EncounterRelation = "none" | "requested" | "incoming" | "friend";
+
+/** グループの公開範囲（09 §1）。 */
+export type GroupVisibility = "open" | "closed";
+
+/** グループの成り立ち（09 §1）。 */
+export type GroupOrigin = "explicit" | "natural";
+
+/** party の段階（08 §4.2）。 */
+export type PartyPhase = "tentative" | "confirmed";
+
+/** 投稿本文の形式（10 §3）。 */
+export type PostFormat = "plain" | "markdown";
+
+/** moderation 警告の表示方法（11 §1）。 */
+export type WarnDisplay = "show" | "blur" | "hide";
+
+/** 共通のページ封筒（02 §4）。次ページがなければ cursor を省略する。 */
+export type Page<T> = { items: T[]; cursor?: string };
+
+/** 共通のエラー本文（02 §3）。details はコードごとの補足。 */
+export type ApiErrorBody = {
+  error: { code: string; message: string; details?: Record<string, unknown> };
 };
 
-export type ProfileDTO = UserDTO & {
-  bio?: string;
+/** ユーザーの要約（service.UserSummary / AuthorSummary）。 */
+export type User = {
+  did: DID;
+  handle: string;
+  displayName?: string;
+  avatarUrl?: string;
+};
+
+/** GET /users/{did} のプロフィール（13 §1）。 */
+export type Profile = User & {
+  description?: string;
+  bannerUrl?: string;
   status?: string;
-  banner_url?: string;
-  counts?: {
-    encounters?: number;
-    friends?: number;
-    parties?: number;
-  };
 };
 
-export type LocationVisibilityDTO = "area" | "direction" | "hidden";
-
-export type FriendDTO = UserDTO & {
-  together?: boolean;
-  location_label?: string;
-  location_visibility?: LocationVisibilityDTO;
-  last_seen_at?: ISODateString;
+/** GET /me の設定（controller.meSettingsResponse、06 §5.1 / 07 §4 / 12 §3）。 */
+export type Settings = {
+  encounterMode: EncounterMode;
+  encounterDelaySec: number;
+  friendBeaconShare: boolean;
+  partyAuto: boolean;
+  locationPaused: boolean;
+  warnDisplay: WarnDisplay;
+  contentScanConsentVersion?: number;
+  notify: Record<string, boolean>;
 };
 
-export type GroupVisibilityDTO = "open" | "closed";
-
-export type GroupDTO = {
-  id: ID;
-  name: string;
-  icon_url?: string;
-  visibility?: GroupVisibilityDTO;
-  member_count?: number;
-  area_label?: string;
-  inside_area?: boolean;
+/** GET /me（controller.meResponse）。プロフィールと設定を平らに並べる。 */
+export type Me = Profile & {
+  settings: Settings;
 };
 
-export type AttachmentDTO = {
-  id: ID;
-  kind: "image";
+/** GET /encounters/summary の集計（06 §6）。 */
+export type EncounterSummary = {
+  today: number;
+  week: number;
+  month: number;
+  total: number;
+  uniquePeople: number;
+};
+
+/** GET /encounters の 1 件（service.EncounterItem）。 */
+export type Encounter = {
+  id: string;
+  peer: User;
+  seenFrom: RFC3339;
+  seenUntil: RFC3339;
+  timesWithPeer: number;
+  relation: EncounterRelation;
+};
+
+/** POST /encounters/sightings の結果。誰とは返らない。 */
+export type SightingResult = {
+  accepted: number;
+  dropped: number;
+};
+
+/** メディア（service.MediaItem、10 §4.4）。url / thumbUrl は署名付き URL。 */
+export type Media = {
+  id: string;
+  alt: string;
   url: string;
-  by?: UserDTO;
+  thumbUrl: string;
+  width: number;
+  height: number;
 };
 
-export type PostDTO = {
-  id: ID;
-  author: UserDTO;
-  body?: string;
-  created_at: ISODateString;
-  attachments?: AttachmentDTO[];
-  reply_count?: number;
-  like_count?: number;
-  liked_by_me?: boolean;
-  pinned?: boolean;
+/** moderation の表示指示（service.ModerationInfo、11 §4）。 */
+export type ModerationInfo = {
+  label: string;
+  display: string;
+  categories?: string[];
 };
 
-export type ReplyDTO = {
-  id: ID;
-  author: UserDTO;
-  body?: string;
-  created_at: ISODateString;
-  like_count?: number;
-  liked_by_me?: boolean;
+/** instance の投稿・写真（service.PostItem、10 §3 / §4.1 / §4.2）。 */
+export type InstancePost = {
+  kind: string;
+  uri: string;
+  spaceId: string;
+  author?: User;
+  text?: string;
+  format?: PostFormat;
+  media?: Media[];
+  moderation?: ModerationInfo;
+  hidden?: string;
+  takenAt?: RFC3339;
+  createdAt: RFC3339;
 };
 
-export type PartyStageDTO = "provisional" | "active";
-
-export type PartyMemberDTO = UserDTO & {
-  via_friend?: boolean;
+/** GET /instances の 1 件（controller.instanceItem、13 §2）。 */
+export type Instance = {
+  spaceId: string;
+  type: string;
+  name: string;
+  state: string;
+  memberCount: number;
+  lastPostAt?: RFC3339;
+  archivedAt?: RFC3339;
 };
 
-export type PartyDTO = {
-  id: ID;
-  area_label?: string;
-  stage?: PartyStageDTO;
-  started_at: ISODateString;
-  fixed?: boolean;
-  members?: PartyMemberDTO[];
-  photos?: AttachmentDTO[];
-  photo_count?: number;
+/** POST /posts の 1 件（service.CreatedPost）。 */
+export type CreatedPost = {
+  uri: string;
+  spaceId: string;
 };
 
-export type MemoryDTO = {
-  id: ID;
-  title?: string;
-  started_at: ISODateString;
-  ended_at: ISODateString;
-  member_count?: number;
-  members?: UserDTO[];
-  photos?: AttachmentDTO[];
-  photo_count?: number;
+/** POST /posts の応答（service.CreatePostResult、10 §4.1）。 */
+export type CreatePostResult = {
+  items: CreatedPost[];
 };
 
-export type StatsRangeDTO = "week" | "month" | "year" | "all";
-
-export type StatsDTO = {
-  range?: StatsRangeDTO;
-  encounters?: {
-    total?: number;
-    delta?: number;
-    series?: { label: string; value: number }[];
-  };
-  friends?: { total?: number; delta?: number };
-  parties?: { total?: number; total_hours?: number };
-  peak_hour_label?: string;
-  peak_hour_note?: string;
-  top_area?: { label?: string; ratio?: number };
-  activity?: number[][];
-  messages_this_month?: number;
+/** POST /media の応答（service.MediaUpload、10 §4.4）。 */
+export type MediaUpload = {
+  id: string;
+  width: number;
+  height: number;
 };
 
-export type SettingsDTO = {
-  reveal_delay_hours?: number | null;
-  allow_friend_requests?: boolean;
-  location_visibility?: LocationVisibilityDTO;
-  restrict_to_areas?: boolean;
-  shared_areas?: string[];
+/** GET /friends の 1 件（service.FriendItem、07 §2.3）。 */
+export type Friend = User & {
+  since: RFC3339;
+  precision: LocationPrecision;
 };
 
-export type PostTargetDTO =
-  | { kind: "group"; id: ID; name: string; member_count?: number }
-  | { kind: "party"; id: ID; name: string };
+/** フレンド申請の 1 件（service.FriendRequestItem、07 §2.2）。 */
+export type FriendRequest = {
+  id: string;
+  peer: User;
+  via: string;
+  viaRef?: string;
+  status: string;
+  createdAt: RFC3339;
+};
+
+/** POST /friends/invites の応答（07 §2.1）。 */
+export type Invite = {
+  code: string;
+  url: string;
+  expiresAt: RFC3339;
+};
+
+/** beacon token の 1 窓（controller.beaconTokenResponse、05 §2.2）。 */
+export type BeaconToken = {
+  windowStart: RFC3339;
+  token: string;
+};
+
+/** GET /beacon/tokens の応答（controller.beaconTokensResponse）。 */
+export type BeaconTokens = {
+  windowSec: number;
+  tokens: BeaconToken[];
+};
+
+/** フレンドの beacon token（controller.friendBeaconResponse、08 §2）。 */
+export type FriendBeacon = {
+  did: DID;
+  tokens: BeaconToken[];
+};
+
+/** GET /party/friend-beacons の応答（controller.friendBeaconsResponse、08 §2）。 */
+export type FriendBeacons = {
+  validUntil: RFC3339;
+  friends: FriendBeacon[];
+};
+
+/** party のメンバー（service.PartyMemberItem、08 §6）。 */
+export type PartyMember = {
+  did: DID;
+  handle?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  present: boolean;
+  left: boolean;
+};
+
+/** GET /party/current の応答（service.PartyDetail、08 §6）。 */
+export type Party = {
+  id: string;
+  name: string;
+  phase: PartyPhase;
+  locked: boolean;
+  tentativeAt: RFC3339;
+  confirmedAt?: RFC3339;
+  members: PartyMember[];
+};
+
+/** グループの有効時間帯（service.GroupSchedule、09 §3）。weekday は 1=月〜7=日。 */
+export type GroupScheduleSlot = { weekday: number; start: string; end: string };
+export type GroupSchedule = { tz: string; slots: GroupScheduleSlot[] };
+
+/** POST /groups の geofence（controller.geofenceRequest、09 §2）。 */
+export type Geofence = { lat: number; lon: number; radiusM: number };
+
+/** POST /groups の入力（controller.createGroupRequest、09 §2）。 */
+export type GroupCreateRequest = {
+  name: string;
+  description: string;
+  visibility: GroupVisibility;
+  persistent: boolean;
+  geofence: Geofence;
+  schedule?: GroupSchedule;
+  inviteQuorum: number;
+  force: boolean;
+};
+
+/** GET /groups/{id}（service.GroupDetail、09 §4）。中心座標はメンバーのときだけ入る。 */
+export type Group = {
+  id: string;
+  name: string;
+  description: string;
+  visibility: GroupVisibility;
+  memberCount: number;
+  isMember: boolean;
+  state?: string;
+  createdAt?: RFC3339;
+  role?: string;
+  origin?: GroupOrigin;
+  persistent?: boolean;
+  radiusM?: number;
+  centerLat?: number;
+  centerLon?: number;
+  schedule?: GroupSchedule;
+  inviteQuorum?: number;
+  parentSpaceId?: string;
+};
+
+/** GET /groups/{id}/members の 1 件（service.MemberItem、09 §4）。 */
+export type GroupMember = {
+  did: DID;
+  handle: string;
+  displayName?: string;
+  avatarUrl?: string;
+  role: string;
+  joinedAt: RFC3339;
+};
+
+/** GET /groups/nearby（service.NearbyResult、09 §5）。 */
+export type GroupNearbyInside = {
+  id: string;
+  name: string;
+  memberCount: number;
+  isMember: boolean;
+  persistent: boolean;
+  radiusM: number;
+};
+
+export type GroupNearbyNear = {
+  id: string;
+  name: string;
+  memberCount: number;
+  distanceBucket: string;
+};
+
+export type GroupNearby = {
+  inside: GroupNearbyInside[];
+  near: GroupNearbyNear[];
+};
+
+/** memory の表紙（service.MemoryCover、13 §2）。 */
+export type MemoryCover = { thumbUrl: string };
+
+/** GET /memories の 1 件（service.MemoryItem、13 §2）。 */
+export type Memory = {
+  spaceId: string;
+  type: string;
+  name: string;
+  from: RFC3339;
+  until: RFC3339;
+  memberCount: number;
+  mediaCount: number;
+  cover?: MemoryCover;
+};
+
+/** GET /notifications の 1 件（controller.notificationResponse、12 §1）。 */
+export type Notification = {
+  id: string;
+  type: NotificationType;
+  data: Record<string, unknown>;
+  createdAt: RFC3339;
+  readAt?: RFC3339;
+};
+
+/** GET /blocks の 1 件（controller.blockedUserResponse、13 §4）。 */
+export type Block = User;
+
+/** PUT /me/consents の応答（controller.consentResponse、02 §8）。 */
+export type Consent = {
+  contentScan: number;
+  consentedAt: string | null;
+};
+
+// --- ここから下は backend 未実装（spec-only）の形。実装されたら json タグに合わせて直す。 ---
+
+/** GET /me/stats（13 §3）。未実装（spec-only）。 */
+export type Stats = {
+  encounters: EncounterSummary;
+  friends: number;
+  parties: { total: number };
+  groups: { member: number };
+  posts: { month: number };
+};
+
+/** GET / POST /me/areas（07 §4.3）。未実装（spec-only）。 */
+export type Area = {
+  id: string;
+  label: string;
+  lat: number;
+  lon: number;
+  radiusM: number;
+};
+
+/** GET /groups/graph（09 §7）。未実装（spec-only）。中心座標は返さない。 */
+export type GroupGraphNode = {
+  id: string;
+  name: string;
+  radiusM: number;
+  memberCount: number;
+  isMember: boolean;
+  inside: boolean;
+};
+
+/** 辺の種類（09 §7）。共通メンバーの値は backend の表記に合わせる。 */
+export type GroupGraphEdgeKind =
+  | "contains"
+  | "overlaps"
+  | `shared${"_"}members`;
+
+export type GroupGraphEdge = {
+  from: string;
+  to: string;
+  kind: GroupGraphEdgeKind;
+  weight?: number;
+};
+
+export type GroupGraph = {
+  nodes: GroupGraphNode[];
+  edges: GroupGraphEdge[];
+};
+
+/** instance の Pin（10 §6、lexicon jp.i32.chain.instance.pin）。未実装（spec-only）。 */
+export type Pin = {
+  uri: string;
+  subject: string;
+  reason: "auto" | "manual";
+  pinnedBy?: DID;
+  createdAt: RFC3339;
+};
+
+/** 公開投稿（03 §4 / §5）。未実装（spec-only）。 */
+export type FeedPost = {
+  uri: string;
+  author: User;
+  text: string;
+  langs?: string[];
+  createdAt: RFC3339;
+};
+
+/** POST /reports の入力（11 §6）。未実装（spec-only）。 */
+export type ReportRequest = {
+  uri: string;
+  reason: string;
+};
