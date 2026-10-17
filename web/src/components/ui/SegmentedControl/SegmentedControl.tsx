@@ -1,6 +1,7 @@
 "use client";
 
 import styles from "./SegmentedControl.module.css";
+import { Pressable } from "../Pressable";
 
 export type SegmentedOption<T extends string> = {
   value: T;
@@ -36,7 +37,7 @@ export function SegmentedControl<T extends string>({
       {options.map((option) => {
         const selected = option.value === value;
         return (
-          <button
+          <Pressable
             key={option.value}
             type="button"
             role="radio"
@@ -47,7 +48,7 @@ export function SegmentedControl<T extends string>({
             onClick={() => onChange(option.value)}
           >
             {option.label}
-          </button>
+          </Pressable>
         );
       })}
     </div>

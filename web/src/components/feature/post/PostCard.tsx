@@ -11,6 +11,7 @@ import { Notice } from "@/components/ui/Notice";
 import { clockTime } from "@/data/format";
 import { MarkdownBody } from "./MarkdownBody";
 import styles from "./PostCard.module.css";
+import { Pressable } from "@/components/ui/Pressable";
 
 export type PostCardProps = {
   post: Post;
@@ -85,7 +86,7 @@ export function PostCard({ post, onReply }: PostCardProps) {
           {/* いいね / リアクションは backend が P2 で未対応 (specification/backend/README.md:71)。
               ローカル状態で「保存された」ように見せないため、UI 自体を置かない。 */}
           <div className={styles.actions}>
-            <button
+            <Pressable
               type="button"
               className={styles.action}
               aria-label="返信"
@@ -93,7 +94,7 @@ export function PostCard({ post, onReply }: PostCardProps) {
             >
               <Icon name="chat_bubble" size={18} />
               <span>{post.replyCount}</span>
-            </button>
+            </Pressable>
           </div>
         </div>
       </div>

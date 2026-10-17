@@ -1,9 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
 import styles from "./ScreenHeader.module.css";
+import { Pressable, PressableLink } from "@/components/ui/Pressable";
 
 export type ScreenHeaderProps = {
   title: string;
@@ -25,20 +25,20 @@ export function ScreenHeader({
   let backElement: ReactNode = null;
   if (typeof back === "string") {
     backElement = (
-      <Link className={styles.back} href={back} aria-label="戻る">
+      <PressableLink className={styles.back} href={back} aria-label="戻る">
         <Icon name="arrow_back_ios_new" size={20} />
-      </Link>
+      </PressableLink>
     );
   } else if (back) {
     backElement = (
-      <button
+      <Pressable
         type="button"
         className={styles.back}
         aria-label="戻る"
         onClick={() => window.history.back()}
       >
         <Icon name="arrow_back_ios_new" size={20} />
-      </button>
+      </Pressable>
     );
   }
 

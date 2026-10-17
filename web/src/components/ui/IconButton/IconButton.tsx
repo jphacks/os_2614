@@ -2,6 +2,7 @@
 
 import { Icon } from "../Icon";
 import styles from "./IconButton.module.css";
+import { Pressable } from "../Pressable";
 
 export type IconButtonProps = {
   icon: string;
@@ -25,7 +26,7 @@ export function IconButton({
     .join(" ");
 
   return (
-    <button
+    <Pressable
       type="button"
       className={classes}
       aria-label={label}
@@ -33,6 +34,6 @@ export function IconButton({
       disabled={disabled}
     >
       <Icon name={icon} size={20} filled={variant === "filled"} />
-    </button>
+    </Pressable>
   );
 }

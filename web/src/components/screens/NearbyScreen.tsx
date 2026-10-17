@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
-import Link from "next/link";
 import type { GroupNearby } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import type { ProximityStatus } from "@/device/proximity/definitions";
@@ -15,6 +14,7 @@ import { Notice } from "@/components/ui/Notice";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Tag } from "@/components/ui/Tag";
 import styles from "./NearbyScreen.module.css";
+import { PressableLink } from "@/components/ui/Pressable";
 
 export type NearbyScreenProps = {
   /** GET /groups/nearby (09 §5) の取得状態。ok のときだけ data を描画する。 */
@@ -78,22 +78,22 @@ export function NearbyScreen({
         subtitle="近くのグループ"
         trailing={
           <span className={styles.headerActions}>
-            <Link className={styles.headerLink} href="/home/" aria-label="ホーム">
+            <PressableLink className={styles.headerLink} href="/home/" aria-label="ホーム">
               <Icon name="public" size={22} />
-            </Link>
-            <Link className={styles.headerLink} href="/notifications/" aria-label="通知">
+            </PressableLink>
+            <PressableLink className={styles.headerLink} href="/notifications/" aria-label="通知">
               <Icon name="notifications" size={22} />
-            </Link>
-            <Link className={styles.headerLink} href="/encounters/" aria-label="すれ違い">
+            </PressableLink>
+            <PressableLink className={styles.headerLink} href="/encounters/" aria-label="すれ違い">
               <Icon name="near_me" size={22} />
-            </Link>
-            <Link
+            </PressableLink>
+            <PressableLink
               className={styles.headerLink}
               href="/group/graph/"
               aria-label="グループの関係"
             >
               <Icon name="account_tree" size={22} />
-            </Link>
+            </PressableLink>
           </span>
         }
       />

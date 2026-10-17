@@ -2,6 +2,7 @@
 
 import { Icon } from "../Icon";
 import styles from "./Chip.module.css";
+import { Pressable } from "../Pressable";
 
 export type ChipProps = {
   label: string;
@@ -31,7 +32,7 @@ export function Chip({
     .join(" ");
 
   return (
-    <button
+    <Pressable
       type="button"
       className={classes}
       onClick={onClick}
@@ -39,6 +40,6 @@ export function Chip({
     >
       {icon && <Icon name={icon} size={16} />}
       <span className={styles.label}>{label}</span>
-    </button>
+    </Pressable>
   );
 }

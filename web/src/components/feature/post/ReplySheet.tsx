@@ -8,6 +8,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Notice } from "@/components/ui/Notice";
 import { clockTime } from "@/data/format";
 import styles from "./ReplySheet.module.css";
+import { Pressable } from "@/components/ui/Pressable";
 
 function ReplyRow({ reply }: { reply: Reply }) {
   return (
@@ -93,14 +94,14 @@ export function ReplySheet({
         <span className={styles.grabber} aria-hidden />
         <header className={styles.header}>
           <span className={styles.title}>返信</span>
-          <button
+          <Pressable
             type="button"
             className={styles.close}
             aria-label="閉じる"
             onClick={onClose}
           >
             <Icon name="close" size={22} />
-          </button>
+          </Pressable>
         </header>
 
         <div className={styles.scroll}>
@@ -136,14 +137,14 @@ export function ReplySheet({
               disabled={!writable || sending}
               maxLength={2000}
             />
-            <button
+            <Pressable
               type="submit"
               className={styles.send}
               aria-label="返信を送信"
               disabled={!canSend}
             >
               <Icon name="arrow_upward" size={20} />
-            </button>
+            </Pressable>
           </div>
           {error !== null && (
             <Notice tone="warning" icon="error">

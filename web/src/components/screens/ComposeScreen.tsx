@@ -21,6 +21,7 @@ import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 import { Notice } from "@/components/ui/Notice";
 import { Toggle } from "@/components/ui/Toggle";
 import styles from "./ComposeScreen.module.css";
+import { Pressable } from "@/components/ui/Pressable";
 
 /** 文字数の目安。サーバ上限ではない (backend は 2000 ルーン、10 §3)。 */
 const HINT_LENGTH = 140;
@@ -194,17 +195,17 @@ export function ComposeScreen({
   return (
     <div className={styles.screen}>
       <header className={styles.header}>
-        <button type="button" className={styles.cancel} onClick={cancel}>
+        <Pressable type="button" className={styles.cancel} onClick={cancel}>
           キャンセル
-        </button>
-        <button
+        </Pressable>
+        <Pressable
           type="button"
           className={styles.submit}
           onClick={submit}
           disabled={!canPost}
         >
           {submitting ? "送信中…" : "投稿する"}
-        </button>
+        </Pressable>
       </header>
 
       <div className={styles.body}>
@@ -256,7 +257,7 @@ export function ComposeScreen({
                 {menuOpen && (
                   <div className={styles.menu} role="menu">
                     {targets.map((item) => (
-                      <button
+                      <Pressable
                         key={item.spaceId}
                         type="button"
                         role="menuitemcheckbox"
@@ -269,7 +270,7 @@ export function ComposeScreen({
                         {selectedIds.includes(item.spaceId) && (
                           <Icon name="check" size={18} />
                         )}
-                      </button>
+                      </Pressable>
                     ))}
                   </div>
                 )}
@@ -293,14 +294,14 @@ export function ComposeScreen({
                   src={attachment.previewUrl}
                   alt={attachment.alt ?? ""}
                 />
-                <button
+                <Pressable
                   type="button"
                   className={styles.remove}
                   aria-label="画像を削除"
                   onClick={() => onRemoveAttachment?.(attachment.key)}
                 >
                   <Icon name="close" size={16} />
-                </button>
+                </Pressable>
               </div>
             ))}
 

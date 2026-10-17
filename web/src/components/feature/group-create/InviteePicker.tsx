@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { User } from "@/domain/types";
 import { Avatar } from "@/components/ui/Avatar";
 import styles from "./InviteePicker.module.css";
+import { Pressable } from "@/components/ui/Pressable";
 
 function Invitee({
   name,
@@ -18,14 +19,14 @@ function Invitee({
 }) {
   return (
     <li className={styles.member}>
-      <button
+      <Pressable
         type="button"
         className={styles.button}
         aria-pressed={selected}
         onClick={onSelect}
       >
         {children}
-      </button>
+      </Pressable>
       <span className={styles.name}>{name}</span>
     </li>
   );

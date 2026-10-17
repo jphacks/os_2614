@@ -4,6 +4,7 @@ import type { EncounterMode, Settings } from "@/domain/types";
 import { Notice } from "@/components/ui/Notice";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import styles from "./RevealDelaySetting.module.css";
+import { Pressable } from "@/components/ui/Pressable";
 
 /**
  * backend 06 §5.1 の遅延プリセット (秒)。UI はここに無い中間値 (3h/12h など)
@@ -93,7 +94,7 @@ export function RevealDelaySetting({
         {MODES.map((mode) => {
           const selected = mode.value === encounterMode;
           return (
-            <button
+            <Pressable
               key={mode.value}
               type="button"
               role="switch"
@@ -104,7 +105,7 @@ export function RevealDelaySetting({
               onClick={() => selectMode(mode.value)}
             >
               {mode.label}
-            </button>
+            </Pressable>
           );
         })}
       </div>

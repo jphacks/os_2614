@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import styles from "./TabBar.module.css";
+import { PressableLink } from "@/components/ui/Pressable";
 
 export type TabKey = "nearby" | "party" | "friends" | "profile";
 
@@ -41,7 +41,7 @@ export function TabBar({ current }: TabBarProps) {
       {TABS.map((tab) => {
         const selected = tab.key === active;
         return (
-          <Link
+          <PressableLink
             key={tab.key}
             href={tab.href}
             className={[styles.tab, selected && styles.selected]
@@ -51,7 +51,7 @@ export function TabBar({ current }: TabBarProps) {
           >
             <Icon name={tab.icon} size={26} filled={selected} />
             <span className={styles.label}>{tab.label}</span>
-          </Link>
+          </PressableLink>
         );
       })}
     </nav>

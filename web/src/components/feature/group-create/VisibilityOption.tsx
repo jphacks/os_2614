@@ -2,6 +2,7 @@
 
 import { Icon } from "@/components/ui/Icon";
 import styles from "./VisibilityOption.module.css";
+import { Pressable } from "@/components/ui/Pressable";
 
 export type VisibilityOptionProps = {
   icon: string;
@@ -21,7 +22,7 @@ export function VisibilityOption({
   onSelect,
 }: VisibilityOptionProps) {
   return (
-    <button
+    <Pressable
       type="button"
       role="radio"
       aria-checked={selected}
@@ -38,6 +39,6 @@ export function VisibilityOption({
       <span className={[styles.radio, selected && styles.radioOn].join(" ")}>
         {selected && <span className={styles.dot} />}
       </span>
-    </button>
+    </Pressable>
   );
 }

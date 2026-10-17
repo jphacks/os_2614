@@ -12,7 +12,6 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
-import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +21,7 @@ import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 import { Notice } from "@/components/ui/Notice";
 import { ACCEPTED_MEDIA_TYPES, validateMediaFile } from "@/components/feature/compose";
 import styles from "./SpacePhotoShareScreen.module.css";
+import { Pressable, PressableLink } from "@/components/ui/Pressable";
 
 /** 共有操作の結果。unavailable はエンドポイント未対応 (404・405・501)。 */
 export type SpacePhotoShareResult =
@@ -132,9 +132,9 @@ export function SpacePhotoShareScreen({
         {success && (
           <Notice tone="info" icon="check_circle" className={styles.success}>
             写真を共有しました。
-            <Link className={styles.link} href={`/group/?id=${spaceId}`}>
+            <PressableLink className={styles.link} href={`/group/?id=${spaceId}`}>
               グループを見る
-            </Link>
+            </PressableLink>
           </Notice>
         )}
 
@@ -157,20 +157,20 @@ export function SpacePhotoShareScreen({
           {previewUrl ? (
             <div className={styles.preview}>
               <ImagePlaceholder ratio="1/1" src={previewUrl} alt="" />
-              <button
+              <Pressable
                 type="button"
                 className={styles.remove}
                 aria-label="写真を削除"
                 onClick={clearSelection}
               >
                 <Icon name="close" size={16} />
-              </button>
+              </Pressable>
             </div>
           ) : (
-            <button type="button" className={styles.picker} onClick={pick}>
+            <Pressable type="button" className={styles.picker} onClick={pick}>
               <Icon name="add_a_photo" size={32} />
               <span>写真を選ぶ</span>
-            </button>
+            </Pressable>
           )}
         </Card>
 

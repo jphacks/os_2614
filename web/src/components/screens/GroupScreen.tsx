@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
   Group,
@@ -27,6 +26,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Tag } from "@/components/ui/Tag";
 import styles from "./GroupScreen.module.css";
+import { Pressable, PressableLink } from "@/components/ui/Pressable";
 
 type GroupTab = "timeline" | "pin" | "media" | "members";
 
@@ -249,13 +249,13 @@ export function GroupScreen({
               />
             )}
             {group.visibility === "closed" && (
-              <Link
+              <PressableLink
                 className={styles.headerLink}
                 href={`/group/invites/?id=${group.id}`}
                 aria-label="グループの招待"
               >
                 <Icon name="group_add" size={22} />
-              </Link>
+              </PressableLink>
             )}
             <IconButton icon="more_horiz" label="グループのメニュー" />
           </span>
@@ -271,15 +271,15 @@ export function GroupScreen({
       {isMember && (
         <div className={styles.gutter}>
           <nav className={styles.links} aria-label="グループのリンク">
-            <Link className={styles.link} href={`/group/invites/?id=${group.id}`}>
+            <PressableLink className={styles.link} href={`/group/invites/?id=${group.id}`}>
               招待
-            </Link>
-            <Link className={styles.link} href={`/group/votes/?id=${group.id}`}>
+            </PressableLink>
+            <PressableLink className={styles.link} href={`/group/votes/?id=${group.id}`}>
               投票
-            </Link>
-            <Link className={styles.link} href={`/group/photo/?id=${group.id}`}>
+            </PressableLink>
+            <PressableLink className={styles.link} href={`/group/photo/?id=${group.id}`}>
               写真を共有
-            </Link>
+            </PressableLink>
           </nav>
         </div>
       )}
@@ -505,14 +505,14 @@ function GroupEditDialog({ group, onSave, onSaved, onClose }: GroupEditDialogPro
       >
         <header className={styles.dialogHeader}>
           <span className={styles.dialogTitle}>グループを編集</span>
-          <button
+          <Pressable
             type="button"
             className={styles.dialogClose}
             aria-label="閉じる"
             onClick={onClose}
           >
             <Icon name="close" size={22} />
-          </button>
+          </Pressable>
         </header>
 
         <form className={styles.form} onSubmit={submit}>

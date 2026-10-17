@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import styles from "./SectionHeader.module.css";
+import { Pressable, PressableLink } from "../Pressable";
 
 export type SectionHeaderAction = {
   label: string;
@@ -25,13 +25,13 @@ export function SectionHeader({
       <h2 className={styles.title}>{title}</h2>
       {action &&
         (action.href ? (
-          <Link className={styles.action} href={action.href}>
+          <PressableLink className={styles.action} href={action.href}>
             {action.label}
-          </Link>
+          </PressableLink>
         ) : (
-          <button type="button" className={styles.action} onClick={action.onClick}>
+          <Pressable type="button" className={styles.action} onClick={action.onClick}>
             {action.label}
-          </button>
+          </Pressable>
         ))}
     </div>
   );
