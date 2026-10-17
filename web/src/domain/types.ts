@@ -328,6 +328,30 @@ export type GroupInviteInboxItem = {
   expiresAt: Timestamp;
 };
 
+/** 投票の種類 (09 §8.6)。closed にする (make_closed) / 常設にする (make_persistent)。 */
+export type GroupVoteKind = "make_closed" | "make_persistent";
+
+/** 投票の状態 (backend service.group_vote.go)。open の間だけ投票できる。 */
+export type GroupVoteStatus = "open" | "passed" | "failed";
+
+/** グループの投票 1 件 (service.VoteItem、09 §8.6)。 */
+export type GroupVote = {
+  id: ID;
+  kind: GroupVoteKind;
+  status: GroupVoteStatus;
+  createdBy: DID;
+  /** 賛成票の数。 */
+  yesCount: number;
+  /** 反対票の数。 */
+  noCount: number;
+  /** 可決に必要な賛成数 (その時点のメンバー数の過半数)。 */
+  requiredCount: number;
+  createdAt: Timestamp;
+  closesAt: Timestamp;
+  /** 自分の票。true=賛成 / false=反対 / undefined=未投票。 */
+  myBallot?: boolean;
+};
+
 /** グループグラフのノード (09 §7)。中心座標は持たない。 */
 export type GroupGraphNode = {
   id: ID;
