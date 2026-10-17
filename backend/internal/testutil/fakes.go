@@ -2,7 +2,9 @@ package testutil
 
 import (
 	"context"
+	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"github.com/applemango/chain/internal/external/atproto"
+	"github.com/applemango/chain/internal/external/fcm"
 	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service"
 )
@@ -27,6 +30,8 @@ var (
 type fakeOAuth struct {
 	store   *atproto.Store
 	session *oauth.ClientSessionData
+	mu      sync.Mutex
+	logouts []string
 }
 
 func (f *fakeOAuth) StartAuthFlow(ctx context.Context, identifier string) (string, error) {
@@ -40,7 +45,20 @@ func (f *fakeOAuth) ProcessCallback(ctx context.Context, params url.Values) (*oa
 	return f.session, nil
 }
 
-func (f *fakeOAuth) Logout(ctx context.Context, did syntax.DID, sessionID string) error { return nil }
+func (f *fakeOAuth) Logout(ctx context.Context, did syntax.DID, sessionID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logouts = append(f.logouts, sessionID)
+	return nil
+}
+
+func (f *fakeOAuth) logoutCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, len(f.logouts))
+	copy(out, f.logouts)
+	return out
+}
 
 type fakeDir struct{}
 
@@ -53,6 +71,13 @@ type fakeProfiles struct{}
 func (*fakeProfiles) FetchProfile(ctx context.Context, pdsURL, did string) (*atproto.Profile, error) {
 	return &atproto.Profile{}, nil
 }
+
+// fakeFirstLoad は初回の読み込みで何もしない（17 §2.5）。NewApp の既定。
+type fakeFirstLoad struct{}
+
+var _ service.PublicPostBackfiller = fakeFirstLoad{}
+
+func (fakeFirstLoad) BackfillPublicPosts(context.Context, string, string) error { return nil }
 
 // FakeZonePresence はグループの位置判定をテストから制御する（09 §4）。
 // 既定では「位置が古い」（stale）を返し、Set した DID だけ inside / outside を返す。
@@ -142,6 +167,133 @@ func (f *FakeBroker) Reset() {
 	f.events = nil
 }
 
+// FakeRecordWriter は service.RecordWriter の fake。呼び出しの引数を記録し、結果を差し替えられる（03 §4）。
+type FakeRecordWriter struct {
+	mu          sync.Mutex
+	calls       []PutRecordCall
+	createCalls []CreateRecordCall
+	deleteCalls []DeleteRecordCall
+	URI         string
+	CID         string
+	Err         error
+	CreateErrs  map[string]error
+	DeleteErrs  map[string]error
+	seq         int
+}
+
+// PutRecordCall は PutRecord の引数の記録。
+type PutRecordCall struct {
+	DID        string
+	SessionID  string
+	Collection string
+	RKey       string
+	Record     any
+}
+
+// CreateRecordCall は CreateRecord の引数の記録。
+type CreateRecordCall struct {
+	DID        string
+	SessionID  string
+	Collection string
+	Record     any
+}
+
+// DeleteRecordCall は DeleteRecord の引数の記録。
+type DeleteRecordCall struct {
+	DID        string
+	SessionID  string
+	Collection string
+	RKey       string
+}
+
+func NewFakeRecordWriter() *FakeRecordWriter {
+	return &FakeRecordWriter{
+		URI:        "at://did:plc:fake/jp.i32.chain.actor.profile/self",
+		CID:        "bafyfake",
+		CreateErrs: map[string]error{},
+		DeleteErrs: map[string]error{},
+	}
+}
+
+var _ service.RecordWriter = (*FakeRecordWriter)(nil)
+
+func (f *FakeRecordWriter) PutRecord(_ context.Context, did, sessionID, collection, rkey string, record any) (string, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, PutRecordCall{DID: did, SessionID: sessionID, Collection: collection, RKey: rkey, Record: record})
+	if f.Err != nil {
+		return "", "", f.Err
+	}
+	return f.URI, f.CID, nil
+}
+
+func (f *FakeRecordWriter) CreateRecord(_ context.Context, did, sessionID, collection string, record any) (string, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.createCalls = append(f.createCalls, CreateRecordCall{DID: did, SessionID: sessionID, Collection: collection, Record: record})
+	if err := f.CreateErrs[collection]; err != nil {
+		return "", "", err
+	}
+	f.seq++
+	n := strconv.Itoa(f.seq)
+	return "at://" + did + "/" + collection + "/fake" + n, "cid-fake" + n, nil
+}
+
+func (f *FakeRecordWriter) DeleteRecord(_ context.Context, did, sessionID, collection, rkey string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleteCalls = append(f.deleteCalls, DeleteRecordCall{DID: did, SessionID: sessionID, Collection: collection, RKey: rkey})
+	return f.DeleteErrs[collection]
+}
+
+// Calls は記録した PutRecord の呼び出しのコピーを返す。
+func (f *FakeRecordWriter) Calls() []PutRecordCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]PutRecordCall, len(f.calls))
+	copy(out, f.calls)
+	return out
+}
+
+// CreateCalls は記録した CreateRecord の呼び出しのコピーを返す。
+func (f *FakeRecordWriter) CreateCalls() []CreateRecordCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]CreateRecordCall, len(f.createCalls))
+	copy(out, f.createCalls)
+	return out
+}
+
+// DeleteCalls は記録した DeleteRecord の呼び出しのコピーを返す。
+func (f *FakeRecordWriter) DeleteCalls() []DeleteRecordCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]DeleteRecordCall, len(f.deleteCalls))
+	copy(out, f.deleteCalls)
+	return out
+}
+
+// SetError は次の PutRecord が返すエラーを設定する。
+func (f *FakeRecordWriter) SetError(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Err = err
+}
+
+// SetCreateError は指定した collection の CreateRecord が返すエラーを設定する。
+func (f *FakeRecordWriter) SetCreateError(collection string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.CreateErrs[collection] = err
+}
+
+// SetDeleteError は指定した collection の DeleteRecord が返すエラーを設定する。
+func (f *FakeRecordWriter) SetDeleteError(collection string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.DeleteErrs[collection] = err
+}
+
 // BlockingModerator は指定した語を含む本文を block にする（11 §3 のテスト用）。
 type BlockingModerator struct{ Words []string }
 
@@ -154,4 +306,92 @@ func (m *BlockingModerator) Judge(_ context.Context, c service.Content) (service
 		}
 	}
 	return service.Verdict{Label: service.LabelOK}, nil
+}
+
+// FakeAssessor は投稿・グループ名の判定をテストから制御する（11 §3）。Moderator と
+// PostAssessor の両方を満たす。含まれる語で block / warn / pending（エラー）を切り替える。
+type FakeAssessor struct {
+	BlockWords []string
+	WarnWords  []string
+	FailWords  []string
+	Pin        bool
+}
+
+var (
+	_ service.Moderator    = (*FakeAssessor)(nil)
+	_ service.PostAssessor = (*FakeAssessor)(nil)
+)
+
+func (m *FakeAssessor) Judge(_ context.Context, c service.Content) (service.Verdict, error) {
+	v, _, err := m.judge(c.Text)
+	return v, err
+}
+
+func (m *FakeAssessor) Assess(_ context.Context, c service.Content) (service.Verdict, bool, error) {
+	v, pin, err := m.judge(c.Text)
+	return v, pin, err
+}
+
+func (m *FakeAssessor) judge(text string) (service.Verdict, bool, error) {
+	for _, w := range m.FailWords {
+		if w != "" && strings.Contains(text, w) {
+			return service.Verdict{}, false, errors.New("fake moderation failure")
+		}
+	}
+	for _, w := range m.BlockWords {
+		if w != "" && strings.Contains(text, w) {
+			return service.Verdict{Label: service.LabelBlock, Categories: []string{"harassment"}, Score: 0.9}, false, nil
+		}
+	}
+	for _, w := range m.WarnWords {
+		if w != "" && strings.Contains(text, w) {
+			return service.Verdict{Label: service.LabelWarn, Categories: []string{"spam"}, Score: 0.65}, m.Pin, nil
+		}
+	}
+	return service.Verdict{Label: service.LabelOK}, m.Pin, nil
+}
+
+// FakeFCM は fcm.Sender の fake。送ったメッセージを記録し、トークンごとに結果を差し替える（12 §4）。
+type FakeFCM struct {
+	mu      sync.Mutex
+	sent    []fcm.Message
+	errs    map[string]error
+	failAll error
+}
+
+func NewFakeFCM() *FakeFCM { return &FakeFCM{errs: map[string]error{}} }
+
+var _ fcm.Sender = (*FakeFCM)(nil)
+
+func (f *FakeFCM) Send(_ context.Context, msg fcm.Message) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = append(f.sent, msg)
+	if err, ok := f.errs[msg.Token]; ok {
+		return err
+	}
+	return f.failAll
+}
+
+// FailToken は特定のトークンへの送信を失敗させる。
+func (f *FakeFCM) FailToken(token string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.errs[token] = err
+}
+
+// FailAll はすべての送信を失敗させる。
+func (f *FakeFCM) FailAll(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failAll = err
+}
+
+// Sent は送ったメッセージのコピーを返す。
+func (f *FakeFCM) Sent() []fcm.Message {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]fcm.Message, len(f.sent))
+	copy(out, f.sent)
+	return out
 }

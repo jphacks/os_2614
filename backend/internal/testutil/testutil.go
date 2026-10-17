@@ -43,6 +43,66 @@ type Env struct {
 	Zones *FakeZonePresence
 	// Moderator は group の name / description の判定に使う。nil なら Noop。
 	Moderator service.Moderator
+	// Assessor は instance の投稿の判定に使う。nil なら Moderator が PostAssessor を満たせばそれ、でなければ Noop。
+	Assessor service.PostAssessor
+	// Writer は PDS への record 書き込み（/me/status）に使う。nil なら空の FakeRecordWriter。
+	Writer *FakeRecordWriter
+	// Embedder は自動グループの embedding（09 §8.3）。nil なら計算しない（テストの既定）。
+	Embedder service.Embedder
+	// RateLimit は NewApp が使うレート制限の設定。nil なら e.Redis と DefaultLimits を使う。
+	// 壊れた Redis や緩めた上限を試すときに差し替える。
+	RateLimit *httpx.RateLimitConfig
+	// oauth は NewApp の AuthService と AccountService が共有する fake。
+	oauth *fakeOAuth
+}
+
+// OAuthLogoutCalls は fake の OAuthClient.Logout が受け取った ATProto セッション ID を返す。
+func (e *Env) OAuthLogoutCalls() []string { return e.oauth.logoutCalls() }
+
+// Storage は config の MediaDir を指すメディアのストア。
+func (e *Env) Storage() *storage.Store { return storage.NewStore(e.Config.MediaDir) }
+
+// Account は main.go と同じ配線のアカウント削除サービス。
+func (e *Env) Account() *service.AccountService {
+	return &service.AccountService{Deps: e.Deps, OAuth: e.oauth, Storage: e.Storage()}
+}
+
+// Janitor は main.go と同じ配線の掃除サービス。
+func (e *Env) Janitor() *service.Janitor {
+	return &service.Janitor{Deps: e.Deps, Storage: e.Storage()}
+}
+
+// Stats は main.go と同じ配線の統計サービス（13 §3）。
+func (e *Env) Stats() *service.StatsService {
+	return &service.StatsService{Deps: e.Deps, Encounters: &service.EncounterService{Deps: e.Deps}}
+}
+
+// Digest は main.go と同じ配線のダイジェスト（12 §5）。
+func (e *Env) Digest() *service.Digest { return &service.Digest{Deps: e.Deps} }
+
+// Schedule は main.go と同じ配線の予定サービス（09 §8.2）。
+func (e *Env) Schedule() *service.ScheduleService {
+	return &service.ScheduleService{Deps: e.Deps, Embedder: e.Embedder}
+}
+
+// NaturalGroups は main.go と同じ配線の自動グループ（09 §8）。Broker は呼び出し側で差し込める。
+func (e *Env) NaturalGroups() *service.NaturalGroupService {
+	return &service.NaturalGroupService{Deps: e.Deps, Moderator: service.ModerationNoop{}}
+}
+
+// PublicPosts は main.go と同じ配線の公開投稿サービス（17 §2）。
+func (e *Env) PublicPosts() *service.PublicPostService {
+	moderator := e.Moderator
+	if moderator == nil {
+		moderator = service.ModerationNoop{}
+	}
+	return &service.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator}
+}
+
+// Jetstream は main.go と同じ配線の Jetstream サービス（03 §5、17 §2.5）。
+// posts は初回の読み込みに使う。nil なら listRecords は呼ばれない。
+func (e *Env) Jetstream(posts service.PublicPostLister) *service.JetstreamService {
+	return &service.JetstreamService{Deps: e.Deps, Posts: posts}
 }
 
 // NewEnv は Redis と SQLite を用意する。Redis に接続できなければテストを skip する。
@@ -85,11 +145,21 @@ func NewEnv(t *testing.T) *Env {
 		JWTKey:      bytes.Repeat([]byte{2}, 32),
 	}
 	deps := service.Deps{Config: cfg, DB: conn, Redis: rdb, Clock: clk, IDs: &idgen.Seq{}}
+	store := &atproto.Store{DB: conn, Redis: rdb, SecretKey: cfg.SecretKey, Clock: clk}
 	return &Env{
-		Deps:  deps,
-		Clock: clk,
-		Store: model.NewSQLiteStore(conn, clk, idgen.NewSeqTID()),
-		Zones: NewFakeZonePresence(),
+		Deps:   deps,
+		Clock:  clk,
+		Store:  model.NewSQLiteStore(conn, clk, idgen.NewSeqTID()),
+		Zones:  NewFakeZonePresence(),
+		Writer: NewFakeRecordWriter(),
+		oauth: &fakeOAuth{
+			store: store,
+			session: &oauth.ClientSessionData{
+				SessionID:  "atp-fake",
+				AccountDID: syntax.DID("did:plc:fake"),
+				HostURL:    "https://pds.example",
+			},
+		},
 	}
 }
 
@@ -153,43 +223,59 @@ func (e *Env) Login(t *testing.T, did string) string {
 	return token
 }
 
+// assessorFor は instance の投稿の判定器を選ぶ。Env.Assessor があればそれ、
+// 無ければ Moderator が PostAssessor を満たせばそれ、それも無ければ Noop。
+func assessorFor(e *Env) service.PostAssessor {
+	if e.Assessor != nil {
+		return e.Assessor
+	}
+	if pa, ok := e.Moderator.(service.PostAssessor); ok {
+		return pa
+	}
+	return service.ModerationNoop{}
+}
+
 // NewApp は controller まで含めた fiber.App を fake の外部依存で組み立てる。
 // main.go と同じ配線だが、OAuth と identity はテスト用の fake に差し替える。
 func NewApp(e *Env) *fiber.App {
-	store := &atproto.Store{DB: e.DB, Redis: e.Redis, SecretKey: e.Config.SecretKey, Clock: e.Clock}
-	oauthFake := &fakeOAuth{
-		store: store,
-		session: &oauth.ClientSessionData{
-			SessionID:  "atp-fake",
-			AccountDID: syntax.DID("did:plc:fake"),
-			HostURL:    "https://pds.example",
-		},
-	}
-	authSvc := &service.AuthService{Deps: e.Deps, OAuth: oauthFake, Dir: fakeDir{}, Profiles: &fakeProfiles{}}
+	authSvc := &service.AuthService{Deps: e.Deps, OAuth: e.oauth, Dir: fakeDir{}, Profiles: &fakeProfiles{}, FirstLoad: fakeFirstLoad{}}
 	sessions := &service.SessionService{Deps: e.Deps}
 	health := &service.HealthService{Deps: e.Deps}
-	me := &service.MeService{Deps: e.Deps}
+	moderator := e.Moderator
+	if moderator == nil {
+		moderator = service.ModerationNoop{}
+	}
+	me := &service.MeService{Deps: e.Deps, Moderator: moderator, Writer: e.Writer}
+	schedule := e.Schedule()
 	user := &service.UserService{Deps: e.Deps}
 	beacon := &service.BeaconService{Deps: e.Deps}
 	location := &service.LocationService{Deps: e.Deps, Hooks: service.NoopLocationHooks{}}
+	locationShares := &service.LocationShareService{Deps: e.Deps}
 	hub := realtime.NewHub()
 	encounters := &service.EncounterService{Deps: e.Deps, Proximity: &service.BLEPeerProximity{Deps: e.Deps}, Broker: hub}
+	stats := &service.StatsService{Deps: e.Deps, Encounters: encounters}
 	blocks := &service.BlockService{Deps: e.Deps}
 	friends := &service.FriendService{Deps: e.Deps, Broker: hub}
 	notifications := &service.NotificationService{Deps: e.Deps}
 
-	mediaStore := storage.NewStore(e.Config.MediaDir)
+	mediaStore := e.Storage()
 	signer := storage.NewSigner(e.Config.JWTKey)
 	zones := &service.GPSZonePresence{Deps: e.Deps}
 	access := &service.AccessService{Deps: e.Deps, Zones: zones}
 	realtimeSvc := &service.RealtimeService{Deps: e.Deps, Access: access, Sessions: sessions}
 	mediaSvc := &service.MediaService{Deps: e.Deps, Store: e.Store, Access: access, Broker: hub, Storage: mediaStore, Signer: signer}
-	instances := &service.InstanceService{Deps: e.Deps, Store: e.Store, Access: access, Assessor: service.ModerationNoop{}, Broker: hub, Signer: signer}
-	moderator := e.Moderator
-	if moderator == nil {
-		moderator = service.ModerationNoop{}
-	}
+	pins := &service.PinService{Deps: e.Deps, Store: e.Store, Access: access, Broker: hub}
+	publicPosts := &service.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator}
+	instances := &service.InstanceService{Deps: e.Deps, Store: e.Store, Access: access, Assessor: assessorFor(e), Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
+	feed := &service.FeedService{Deps: e.Deps, Access: access, Signer: signer}
 	groups := &service.GroupService{Deps: e.Deps, Zones: zones, Access: access, Moderator: moderator, Broker: hub}
+	groupVotes := &service.GroupVoteService{Deps: e.Deps, Access: access, Broker: hub}
+	parties := &service.PartyService{
+		Deps: e.Deps, Proximity: &service.BLEPeerProximity{Deps: e.Deps}, Access: access,
+		Moderator: moderator, Broker: hub, Signer: signer, Beacon: beacon, Store: e.Store,
+	}
+	devices := &service.DeviceService{Deps: e.Deps}
+	account := &service.AccountService{Deps: e.Deps, OAuth: e.oauth, Storage: mediaStore}
 
 	app := fiber.New(fiber.Config{
 		AppName:      "chain-test",
@@ -197,7 +283,11 @@ func NewApp(e *Env) *fiber.App {
 		BodyLimit:    16 << 20,
 	})
 
-	controller.Mount(app, httpx.RequireAuth(e.Config.JWTKey, e.Clock, sessions), controller.Routes{
+	rateLimit := httpx.RateLimitConfig{Redis: e.Redis, Clock: e.Clock}
+	if e.RateLimit != nil {
+		rateLimit = *e.RateLimit
+	}
+	controller.Mount(app, httpx.RequireAuth(e.Config.JWTKey, e.Clock, sessions), httpx.RateLimit(rateLimit), controller.Routes{
 		Root: []controller.Registrar{
 			&controller.HealthController{Health: health},
 			&controller.OAuthController{Config: e.Config, Auth: authSvc},
@@ -219,16 +309,26 @@ func NewApp(e *Env) *fiber.App {
 		Private: []controller.Registrar{
 			&controller.LogoutController{Auth: authSvc},
 			&controller.MeController{Me: me},
+			&controller.ScheduleController{Schedule: schedule},
+			&controller.StatsController{Stats: stats},
 			&controller.UserController{User: user},
+			&controller.DeviceController{Devices: devices},
 			&controller.BeaconController{Beacon: beacon},
 			&controller.LocationController{Location: location},
+			&controller.LocationShareController{Shares: locationShares},
 			&controller.EncounterController{Encounters: encounters},
 			&controller.BlockController{Blocks: blocks},
 			&controller.FriendController{Friends: friends},
 			&controller.NotificationController{Notifications: notifications},
-			&controller.InstanceController{Instances: instances},
+			&controller.InstanceController{Instances: instances, Pins: pins, Feed: feed},
+			&controller.FeedPostController{Posts: publicPosts},
+			&controller.FeedController{Feed: feed},
 			&controller.MediaController{Media: mediaSvc},
 			&controller.GroupController{Groups: groups},
+			&controller.GroupVoteController{Votes: groupVotes},
+			&controller.PartyController{Parties: parties},
+			&controller.MemoryController{Parties: parties},
+			&controller.AccountController{Account: account},
 		},
 	})
 	return app
