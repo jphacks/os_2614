@@ -8,6 +8,7 @@ import {
   validateMediaFile,
 } from "@/components/feature/compose";
 import { AppShell } from "@/components/layout/AppShell";
+import { ImageCropDialog, type ImageCropKind } from "@/components/feature/imageCrop";
 import { MemoryThumbCard } from "@/components/feature/memory";
 import { PublicPostsSection } from "@/components/feature/post";
 import { Avatar } from "@/components/ui/Avatar";
@@ -183,6 +184,10 @@ function ProfileBody({
   const [imageError, setImageError] = useState<string | null>(null);
   const [imageNotice, setImageNotice] = useState<string | null>(null);
 
+  const [crop, setCrop] = useState<{ kind: ImageCropKind; file: File } | null>(
+    null,
+  );
+
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
@@ -296,10 +301,11 @@ function ProfileBody({
     );
   };
 
+  // 選んだ画像はすぐ送らず、トリミング画面で位置と大きさを決めてから送る。
   const onFileSelected = (
     event: ChangeEvent<HTMLInputElement>,
+    kind: ImageCropKind,
     action: ((file: File) => Promise<ProfileActionResult>) | undefined,
-    okMessage: string,
   ) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -311,7 +317,25 @@ function ProfileBody({
       setImageError(check.message);
       return;
     }
-    void runImageAction("upload", () => action(file), okMessage);
+    setImageError(null);
+    setCrop({ kind, file });
+  };
+
+  const confirmCrop = async (file: File) => {
+    if (!crop) {
+      return;
+    }
+    const isAvatar = crop.kind === "avatar";
+    const action = isAvatar ? onChangeAvatar : onChangeBanner;
+    if (!action) {
+      return;
+    }
+    await runImageAction(
+      "upload",
+      () => action(file),
+      isAvatar ? "アイコンを更新しました" : "バナーを更新しました",
+    );
+    setCrop(null);
   };
 
   const pickAvatar = () => avatarInputRef.current?.click();
@@ -340,7 +364,7 @@ function ProfileBody({
         hidden
         data-testid="profile-avatar-input"
         onChange={(event) =>
-          onFileSelected(event, onChangeAvatar, "アイコンを更新しました")
+          onFileSelected(event, "avatar", onChangeAvatar)
         }
       />
       <input
@@ -350,9 +374,19 @@ function ProfileBody({
         hidden
         data-testid="profile-banner-input"
         onChange={(event) =>
-          onFileSelected(event, onChangeBanner, "バナーを更新しました")
+          onFileSelected(event, "banner", onChangeBanner)
         }
       />
+
+      {crop && (
+        <ImageCropDialog
+          kind={crop.kind}
+          file={crop.file}
+          busy={imageBusy !== null}
+          onCancel={() => setCrop(null)}
+          onConfirm={(file) => void confirmCrop(file)}
+        />
+      )}
 
       <div className={styles.bannerWrap}>
         <div className={styles.banner} aria-hidden>
