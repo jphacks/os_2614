@@ -30,16 +30,25 @@ type GroupService struct {
 	Broker    realtime.Broker
 }
 
-// GroupSchedule は 09 §3 の有効な時間帯。
+// GroupSchedule は 09 §3 の有効な時間帯。slots（曜日ごと）か dates（一回限り）の
+// どちらかに当てはまれば有効。
 type GroupSchedule struct {
 	TZ    string              `json:"tz"`
 	Slots []GroupScheduleSlot `json:"slots"`
+	Dates []GroupScheduleDate `json:"dates"`
 }
 
 type GroupScheduleSlot struct {
 	Weekday int    `json:"weekday"`
 	Start   string `json:"start"`
 	End     string `json:"end"`
+}
+
+// GroupScheduleDate は日付を指定した一回限りの時間帯（09 §3）。自動グループが使う。
+type GroupScheduleDate struct {
+	Date  string `json:"date"`
+	Start string `json:"start"`
+	End   string `json:"end"`
 }
 
 type CreateGroupInput struct {
@@ -611,6 +620,11 @@ func (s *GroupService) auditModerationBlock(ctx context.Context, did string) {
 
 // assignParent は新しいグループの parent_space_id と、自分が含むグループ群の parent_space_id を再計算する（09 §2）。
 func (s *GroupService) assignParent(ctx context.Context, q db.Querier, newID string, newGroup model.Group, all []model.GroupWithSpace) (*string, error) {
+	return assignGroupParent(ctx, q, newID, newGroup, all)
+}
+
+// assignGroupParent は assignParent の本体。自動グループの作成からも使う。
+func assignGroupParent(ctx context.Context, q db.Querier, newID string, newGroup model.Group, all []model.GroupWithSpace) (*string, error) {
 	target := namedCircle{ID: newID, GroupCircle: GroupCircle{
 		Lat: newGroup.CenterLat, Lon: newGroup.CenterLon, RadiusM: newGroup.RadiusM,
 	}}
@@ -643,6 +657,26 @@ func (s *GroupService) geoAdd(ctx context.Context, spaceID string, lat, lon floa
 
 func (s *GroupService) geoRemove(ctx context.Context, spaceID string) error {
 	return s.Redis.ZRem(ctx, kv.GeoGroupsKey(), spaceID).Err()
+}
+
+// RebuildGeoIndex は SQLite の active なグループから geo:groups を組み直す（09 §5）。
+// seed で作ったグループは Redis に入らないので、起動時と db-reset でこれを呼ぶ。
+func (s *GroupService) RebuildGeoIndex(ctx context.Context) error {
+	groups, err := model.ListActiveGroups(ctx, s.DB)
+	if err != nil {
+		return err
+	}
+	if err := s.Redis.Del(ctx, kv.GeoGroupsKey()).Err(); err != nil {
+		return err
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+	locations := make([]*redis.GeoLocation, 0, len(groups))
+	for _, g := range groups {
+		locations = append(locations, &redis.GeoLocation{Name: g.SpaceID, Longitude: g.CenterLon, Latitude: g.CenterLat})
+	}
+	return s.Redis.GeoAdd(ctx, kv.GeoGroupsKey(), locations...).Err()
 }
 
 func (s *GroupService) invalidate(ctx context.Context, spaceID, did string) error {

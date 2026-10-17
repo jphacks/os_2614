@@ -11,9 +11,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/applemango/chain/internal/clock"
 	"github.com/applemango/chain/internal/config"
 	"github.com/applemango/chain/internal/db"
+	"github.com/applemango/chain/internal/idgen"
 	"github.com/applemango/chain/internal/kv"
+	"github.com/applemango/chain/internal/service"
 )
 
 func main() {
@@ -60,6 +63,12 @@ func run(noSeed bool) error {
 	defer rdb.Close()
 	if err := rdb.FlushDB(ctx).Err(); err != nil {
 		return err
+	}
+
+	// seed のグループを geo:groups に載せ直す（09 §5）。
+	deps := service.Deps{Config: cfg, DB: conn, Redis: rdb, Clock: clock.Real{}, IDs: idgen.Real{}}
+	if err := (&service.GroupService{Deps: deps}).RebuildGeoIndex(ctx); err != nil {
+		return fmt.Errorf("geo index: %w", err)
 	}
 
 	fmt.Printf("reset %s (seed=%v) and flushed redis\n", cfg.DBPath, !noSeed)
