@@ -66,30 +66,44 @@
   background: var(--color-surface);
 }
 
+.identityRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .identity {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
 }
 
 .nameRow {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .name {
+  margin: 0;
+  min-width: 0;
   font: var(--text-title);
   color: var(--color-text);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .handle {
   margin: 0;
   font: var(--text-caption);
   color: var(--color-text-secondary);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bio {
@@ -206,4 +220,14 @@
   .skeletonBlock {
     animation: none;
   }
+}
+
+.friendAction {
+  flex-shrink: 0;
+}
+
+.friendActionMessage {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
 }
