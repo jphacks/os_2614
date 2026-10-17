@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: run env redis-up redis-down db-reset db-schema test test-integration lint tunnel
+.PHONY: run env redis-up redis-down db-reset db-schema test test-integration lint tunnel codemap
 
 run:
 	go run .
@@ -40,3 +40,7 @@ lint:
 
 tunnel:
 	./scripts/tunnel.sh
+
+# 機能・コントローラー・パスの一覧（specification/backend/18-code-map.md）を作り直す。
+codemap:
+	python3 scripts/codemap.py > ../specification/backend/18-code-map.md
