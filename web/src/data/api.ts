@@ -5,7 +5,7 @@
 // - URL は api() が API_BASE から組む。ここで URL 文字列を組み立てない。
 // - ApiError / SignedOutError は api()/session が投げたものをそのまま扱う。
 
-import { api, type ApiRequest } from "@/auth/api";
+import { api, apiWithMeta, type ApiMeta, type ApiRequest } from "@/auth/api";
 import { ApiError } from "@/auth/errors";
 import type { Page } from "./dto";
 
@@ -22,9 +22,22 @@ export function getJson<T>(path: string, opts: RequestOptions = {}): Promise<T> 
   return api<T>(path, { method: "GET", query: opts.query, signal: opts.signal });
 }
 
+/**
+ * GET。JSON に加えて応答の Date ヘッダも返す。端末時計のずれを測る呼び出し
+ * (beacon token) だけが使う。通常の取得は getJson を使う。
+ */
+export function getJsonWithMeta<T>(path: string, opts: RequestOptions = {}): Promise<ApiMeta<T>> {
+  return apiWithMeta<T>(path, { method: "GET", query: opts.query, signal: opts.signal });
+}
+
 /** POST。body は JSON 化して送られる (api() 側)。 */
 export function postJson<T>(path: string, body: unknown, opts: RequestOptions = {}): Promise<T> {
   return api<T>(path, { method: "POST", body, query: opts.query, signal: opts.signal });
+}
+
+/** POST multipart/form-data (POST /media、10 §4.4)。 */
+export function postForm<T>(path: string, form: FormData, opts: RequestOptions = {}): Promise<T> {
+  return api<T>(path, { method: "POST", form, query: opts.query, signal: opts.signal });
 }
 
 /** PATCH。 */
