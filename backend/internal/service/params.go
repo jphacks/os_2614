@@ -38,6 +38,9 @@ const (
 	GroupVoteListWindow = 7 * 24 * time.Hour
 )
 
+// 09 §6 のパラメータ。招待は作成から 7 日で期限切れになる。
+const GroupInviteDuration = 7 * 24 * time.Hour
+
 // 08 §7 のパラメータ。
 const (
 	PresenceInterval    = 15 * time.Second
