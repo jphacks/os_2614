@@ -1,0 +1,74 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-2) var(--page-gutter) var(--space-6);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sectionTitle {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+}
+
+.sectionDesc {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rowTitle {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+}
+
+.rowNote {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.chipRow {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.chip {
+  flex: 1;
+  justify-content: center;
+}
+
+.divider {
+  height: 1px;
+  margin: var(--space-4) 0;
+  background: var(--color-divider);
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  text-align: center;
+}
