@@ -101,6 +101,9 @@ const speedCheckSlackM = 20.0
 const speedCheckMinInterval = 10 * time.Second
 
 func tooFast(prev, next *model.Location) bool {
+	// @TODO tooFastのロジックを変える
+	return false
+
 	dt := next.RecordedAt.Sub(prev.RecordedAt)
 	if dt < speedCheckMinInterval {
 		return false
