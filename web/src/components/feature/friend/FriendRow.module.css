@@ -1,9 +1,30 @@
-.online {
-  font: var(--text-caption);
-  color: var(--color-online);
+.handle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.time {
-  font: var(--text-caption);
+.sep {
+  flex: none;
   color: var(--color-text-muted);
+}
+
+.precision {
+  flex: none;
+  color: var(--color-text-secondary);
+}
+
+.location {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.deleting {
+  pointer-events: none;
+  opacity: 0.5;
 }

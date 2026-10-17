@@ -1,57 +1,59 @@
-import type { Friend } from "@/domain/types";
+import type { Friend, LocationPrecision } from "@/domain/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
+import { IconButton } from "@/components/ui/IconButton";
 import { ListItem } from "@/components/ui/List";
-import { relativeTime } from "@/data/format";
 import styles from "./FriendRow.module.css";
 
-const SUBTITLE_ICON = {
-  area: "location_on",
-  direction: "explore",
-  hidden: "location_off",
-} as const;
+/** 相手ごとの位置共有精度 (07 §4.1) の表示ラベル。 */
+const PRECISION_LABEL: Record<LocationPrecision, string> = {
+  exact: "正確な位置",
+  approx: "おおよその位置",
+  area: "エリアのみ",
+  direction: "方角と距離",
+  off: "位置を共有しない",
+};
 
 export type FriendRowProps = {
   friend: Friend;
-  now: number | null;
+  /** 友達から削除する (DELETE /friends/{did})。 */
+  onDelete: (friend: Friend) => void;
+  /** 削除リクエスト送信中はボタンを無効化する。 */
+  deleting?: boolean;
 };
 
-export function FriendRow({ friend, now }: FriendRowProps) {
-  if (friend.together) {
-    return (
-      <ListItem
-        leading={<Avatar user={friend} size={40} online />}
-        title={friend.name}
-        subtitle={friend.locationLabel}
-        trailing={<span className={styles.online}>いま</span>}
-      />
-    );
-  }
-
-  const subtitle =
-    friend.locationVisibility === "hidden" ? (
-      <>
-        <Icon name="location_off" size={14} />
-        <span>位置を見せていません</span>
-      </>
-    ) : (
-      <>
-        <Icon name={SUBTITLE_ICON[friend.locationVisibility]} size={14} />
-        <span>{friend.locationLabel}</span>
-      </>
-    );
-
+export function FriendRow({ friend, onDelete, deleting = false }: FriendRowProps) {
   return (
     <ListItem
       leading={<Avatar user={friend} size={40} />}
       title={friend.name}
-      subtitle={subtitle}
-      trailing={
-        friend.lastSeenAt && now !== null ? (
-          <span className={styles.time}>
-            {relativeTime(friend.lastSeenAt, now)}
+      subtitle={
+        <>
+          <span className={styles.handle}>@{friend.handle}</span>
+          <span className={styles.sep} aria-hidden>
+            ·
           </span>
-        ) : undefined
+          <span className={styles.precision}>{PRECISION_LABEL[friend.precision]}</span>
+          <span className={styles.sep} aria-hidden>
+            ·
+          </span>
+          {/*
+            GET /friends/locations (07 §4.2) は未実装。エリア名を捏造せず、
+            位置表示は「準備中」とする。相手ごとの精度は一覧 (GET /friends) が持つ。
+          */}
+          <span className={styles.location}>
+            <Icon name="location_on" size={14} />
+            <span>位置は準備中</span>
+          </span>
+        </>
+      }
+      trailing={
+        <IconButton
+          icon="person_remove"
+          label={`${friend.name}を友達から削除`}
+          onClick={() => onDelete(friend)}
+          className={deleting ? styles.deleting : undefined}
+        />
       }
     />
   );
