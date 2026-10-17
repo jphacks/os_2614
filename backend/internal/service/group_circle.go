@@ -70,6 +70,11 @@ func containsCircle(outer, inner GroupCircle) bool {
 	return Haversine(outer.Lat, outer.Lon, inner.Lat, inner.Lon)+float64(inner.RadiusM) <= float64(outer.RadiusM)
 }
 
+// overlapsCircle は 2 つの円が重なるか（09 §7 の overlaps: distance < r_a + r_b）。
+func overlapsCircle(a, b GroupCircle) bool {
+	return Haversine(a.Lat, a.Lon, b.Lat, b.Lon) < float64(a.RadiusM)+float64(b.RadiusM)
+}
+
 type namedCircle struct {
 	ID string
 	GroupCircle

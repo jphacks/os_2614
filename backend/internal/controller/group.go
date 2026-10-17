@@ -13,6 +13,7 @@ type GroupController struct {
 
 func (h *GroupController) Register(r fiber.Router) {
 	r.Get("/groups/nearby", h.nearby)
+	r.Get("/groups/graph", h.graph)
 	r.Post("/groups", h.create)
 	r.Get("/groups/:id", h.get)
 	r.Patch("/groups/:id", h.update)
@@ -97,6 +98,14 @@ func (h *GroupController) update(c fiber.Ctx) error {
 
 func (h *GroupController) nearby(c fiber.Ctx) error {
 	res, err := h.Groups.Nearby(c.Context(), httpx.DID(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+func (h *GroupController) graph(c fiber.Ctx) error {
+	res, err := h.Groups.Graph(c.Context(), httpx.DID(c))
 	if err != nil {
 		return err
 	}
