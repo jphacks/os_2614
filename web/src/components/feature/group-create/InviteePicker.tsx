@@ -47,13 +47,13 @@ export function InviteePicker({
   return (
     <ul className={styles.strip}>
       {candidates.map((candidate) => {
-        const selected = selectedIds.includes(candidate.id);
+        const selected = selectedIds.includes(candidate.did);
         return (
           <Invitee
-            key={candidate.id}
+            key={candidate.did}
             name={candidate.name}
             selected={selected}
-            onSelect={() => onToggle(candidate.id)}
+            onSelect={() => onToggle(candidate.did)}
           >
             <Avatar user={candidate} size={48} ring={selected} />
           </Invitee>
