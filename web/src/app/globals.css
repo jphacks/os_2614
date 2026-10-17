@@ -1,0 +1,113 @@
+/* CHAIN design tokens — docs/spec/ui-v2.md §2 */
+:root {
+  /* color: base */
+  --color-bg: #f5f5f5;
+  --color-surface: #ffffff;
+  --color-surface-muted: #efefef;
+  --color-divider: #f2f2f2;
+  --color-placeholder: #e7e7e7;
+  --color-placeholder-strong: #d9d9d9;
+
+  /* color: text */
+  --color-text: #3a3535;
+  --color-text-secondary: #8a8585;
+  --color-text-muted: #b3aeae;
+  --color-text-on-primary: #ffffff;
+
+  /* color: brand / state */
+  --color-primary: #5b5555;
+  --color-primary-pressed: #3f3a3a;
+  --color-online: #6fcf97;
+  --color-like: #e5736b;
+  --color-notice-bg: #f4e4df;
+  --color-positive-bg: #cfe6c9;
+  --color-positive-text: #4f7a47;
+  --color-accent: #cf9aea;
+  --color-accent-bg: #f6edfb;
+  --color-overlay-count: #bdb7b7;
+
+  /* color: avatar tones */
+  --tone-peach: #f2c4b8;
+  --tone-blue: #bfd8ee;
+  --tone-green: #cfe6c9;
+  --tone-lavender: #e9d8f2;
+  --tone-mint: #cfe6e3;
+  --tone-yellow: #f6e3b4;
+  --tone-periwinkle: #dde3f6;
+  --tone-sand: #f2e6dc;
+
+  /* radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  /* spacing (4px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* typography */
+  --font-sans: var(--font-noto-sans-jp), system-ui, sans-serif;
+  --text-display: 900 36px/1.1 var(--font-sans);
+  --text-title: 700 22px/1.3 var(--font-sans);
+  --text-heading: 700 16px/1.4 var(--font-sans);
+  --text-body: 400 15px/1.6 var(--font-sans);
+  --text-body-strong: 700 15px/1.5 var(--font-sans);
+  --text-caption: 400 12px/1.4 var(--font-sans);
+  --text-micro: 400 10px/1.3 var(--font-sans);
+
+  /* layout */
+  --page-gutter: 20px;
+  --tab-bar-height: 88px;
+  --shadow-fab: 0 3px 8px rgb(0 0 0 / 0.18);
+  --shadow-thumb: 0 1px 3px rgb(0 0 0 / 0.2);
+  --color-scrim: rgb(0 0 0 / 0.4);
+  --color-on-primary-subtle: rgb(255 255 255 / 0.15);
+  --color-on-primary-muted: rgb(255 255 255 / 0.7);
+}
+
+html {
+  height: 100%;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: var(--color-text);
+  background: var(--color-bg);
+  font: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
