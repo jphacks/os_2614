@@ -155,7 +155,7 @@ test.describe("public post option", () => {
     });
 
     await readyToPost(page, "公開投稿つき");
-    await page.getByRole("switch", { name: "公開投稿も作成" }).click();
+    await page.getByRole("button", { name: "公開", exact: true }).click();
     await page.getByRole("button", { name: "投稿する" }).click();
 
     await expect(
@@ -213,7 +213,7 @@ test.describe("public post option", () => {
     });
 
     await readyToPost(page, "公開投稿つき");
-    await page.getByRole("switch", { name: "公開投稿も作成" }).click();
+    await page.getByRole("button", { name: "公開", exact: true }).click();
     await page.getByRole("button", { name: "投稿する" }).click();
 
     await expect(page).toHaveURL(/\/group\/\?id=g1$/);
