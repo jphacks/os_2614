@@ -24,6 +24,7 @@ import type {
   GroupGraphEdgeKind,
   GroupInvite,
   GroupInviteInboxItem,
+  GroupMember,
   GroupNearby,
   GroupVisibility,
   Invite,
@@ -60,6 +61,7 @@ import type {
   GroupGraph as GroupGraphDTO,
   GroupInvite as GroupInviteDTO,
   GroupInviteInboxItem as GroupInviteInboxItemDTO,
+  GroupMember as GroupMemberDTO,
   GroupNearby as GroupNearbyDTO,
   Instance as InstanceDTO,
   InstancePost as PostDTO,
@@ -310,16 +312,34 @@ export function toEncounter(dto: Maybe<EncounterDTO>): Encounter {
   };
 }
 
-/** GroupDetail → Group。isMember を insideArea に写す。 */
+/** GroupDetail → Group。isMember を insideArea に写す。role は非メンバーでは欠ける。 */
 export function toGroup(dto: Maybe<GroupDTO>): Group {
   return {
     id: dto?.id ?? "",
     name: dto?.name ?? "",
+    description: dto?.description ?? "",
     visibility: oneOf(dto?.visibility, VISIBILITIES, "open"),
     memberCount: num(dto?.memberCount),
     // 半径 (geofence) がある = エリア型グループ。domain の表示ラベル。
     areaLabel: dto?.radiusM != null ? "GPSエリア" : "",
     insideArea: dto?.isMember ?? false,
+    role: dto?.role,
+    inviteQuorum:
+      typeof dto?.inviteQuorum === "number" ? dto.inviteQuorum : undefined,
+  };
+}
+
+/** MemberItem → GroupMember (09 §4)。name は displayName || handle。role の既定は "member"。 */
+export function toGroupMember(dto: Maybe<GroupMemberDTO>): GroupMember {
+  const handle = dto?.handle ?? "";
+  return {
+    did: dto?.did ?? "",
+    handle,
+    name: dto?.displayName || handle,
+    avatarUrl: dto?.avatarUrl,
+    tone: avatarToneFor(dto?.did || handle),
+    role: dto?.role ?? "member",
+    joinedAt: dto?.joinedAt ?? "",
   };
 }
 
