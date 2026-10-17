@@ -36,6 +36,32 @@ export type ComposeSubmitInput = {
 /** 検証結果。NG のときだけ理由を持つ。 */
 export type ComposeValidation = { ok: true } | { ok: false; message: string };
 
+/** `POST /media`（10 §4.4）が受け付ける MIME。仕様は JPEG / PNG / WebP。 */
+export const ACCEPTED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+
+/** 添付画像 1 枚の上限（10 §4.4 の 15 MB）。 */
+export const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
+
+/** 1 投稿に添付できる画像の枚数（10 §4.1: media は 4 件まで）。 */
+export const MAX_MEDIA_COUNT = 4;
+
+/** `validateMediaFile` が見る最小の形（`File` のサブセット。テストで作りやすい）。 */
+export type MediaFileLike = { type: string; size: number };
+
+/**
+ * 画像ファイルの事前検証（10 §4.4）。JPEG / PNG / WebP かつ 15 MB まで。
+ * サーバの 400 / 413 になる前にクライアントで拒否する（EXIF は見ない。落とすのはサーバ）。
+ */
+export function validateMediaFile(file: MediaFileLike): ComposeValidation {
+  if (!(ACCEPTED_MEDIA_TYPES as readonly string[]).includes(file.type)) {
+    return { ok: false, message: "JPEG・PNG・WebP の画像を選んでください" };
+  }
+  if (file.size > MAX_MEDIA_BYTES) {
+    return { ok: false, message: "画像は 15MB までです" };
+  }
+  return { ok: true };
+}
+
 /** `POST /posts` の body（10 §4.1）。キーはこの 5 つだけ。 */
 export type CreatePostBody = {
   spaceIds: string[];
@@ -62,7 +88,7 @@ export function validateComposeInput(input: ComposeSubmitInput): ComposeValidati
       message: "画像を付けられるのは送信先が 1 つのときだけです",
     };
   }
-  if (attachments.length > 4) {
+  if (attachments.length > MAX_MEDIA_COUNT) {
     return { ok: false, message: "画像は 4 枚までです" };
   }
   if (text.trim().length === 0 && attachments.length === 0) {

@@ -45,6 +45,8 @@ export type ComposeScreenProps = {
   attachments?: ComposeAttachment[];
   /** POST /posts の送信中か。 */
   submitting?: boolean;
+  /** 添付 (POST /media) のアップロード中か (todo 15)。送信を止める。 */
+  uploading?: boolean;
   /** 直前の送信失敗。 */
   error?: ComposeSubmitError | null;
   /** 実際の送信は page.tsx が行う (POST /posts)。 */
@@ -82,6 +84,7 @@ export function ComposeScreen({
   initialSpaceIds,
   attachments = [],
   submitting = false,
+  uploading = false,
   error = null,
   onSubmit,
   onPickAttachment,
@@ -154,7 +157,7 @@ export function ComposeScreen({
     !validation.ok &&
     (body.length > 0 || attachments.length > 0 || selectedIds.length === 0);
 
-  const canPost = validation.ok && targets.length > 0 && !submitting;
+  const canPost = validation.ok && targets.length > 0 && !submitting && !uploading;
 
   const submit = () => {
     if (!canPost) {
@@ -294,6 +297,12 @@ export function ComposeScreen({
                 </button>
               </div>
             ))}
+
+            {uploading && (
+              <p className={styles.reason} role="status">
+                画像をアップロード中…
+              </p>
+            )}
 
             <div className={styles.targets}>
               <span className={styles.caption}>送信先</span>
