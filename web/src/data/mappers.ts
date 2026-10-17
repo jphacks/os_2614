@@ -17,9 +17,11 @@ import type {
   EncounterRelation,
   FeedPost,
   Friend,
+  FriendRequest,
   Group,
   GroupNearby,
   GroupVisibility,
+  Invite,
   LocationPrecision,
   Media,
   Memory,
@@ -47,10 +49,12 @@ import type {
   Encounter as EncounterDTO,
   FeedItem as FeedItemDTO,
   Friend as FriendDTO,
+  FriendRequest as FriendRequestDTO,
   Group as GroupDTO,
   GroupNearby as GroupNearbyDTO,
   Instance as InstanceDTO,
   InstancePost as PostDTO,
+  Invite as InviteDTO,
   Media as MediaDTO,
   Memory as MemoryDTO,
   ModerationInfo as ModerationInfoDTO,
@@ -213,6 +217,27 @@ export function toFriend(dto: Maybe<FriendDTO>): Friend {
     ...toUser(dto),
     since: dto?.since ?? "",
     precision: oneOf(dto?.precision, PRECISIONS, "area"),
+  };
+}
+
+/** FriendRequestItem → FriendRequest (07 §2.2)。status の既定は "pending"。 */
+export function toFriendRequest(dto: Maybe<FriendRequestDTO>): FriendRequest {
+  return {
+    id: dto?.id ?? "",
+    peer: toUser(dto?.peer),
+    via: dto?.via ?? "",
+    viaRef: dto?.viaRef,
+    status: dto?.status ?? "pending",
+    createdAt: dto?.createdAt ?? "",
+  };
+}
+
+/** friendInviteResponse → Invite (07 §2.1)。code / url / expiresAt は必須。 */
+export function toInvite(dto: Maybe<InviteDTO>): Invite {
+  return {
+    code: dto?.code ?? "",
+    url: dto?.url ?? "",
+    expiresAt: dto?.expiresAt ?? "",
   };
 }
 

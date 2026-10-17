@@ -46,6 +46,18 @@ export type Friend = User & {
   precision: LocationPrecision;
 };
 
+/** フレンド申請の 1 件 (service.FriendRequestItem、07 §2.2)。 */
+export type FriendRequest = {
+  id: ID;
+  peer: User;
+  /** "encounter" | "space" | "invite" など、成立の根拠。 */
+  via: string;
+  viaRef?: string;
+  /** "pending" | "accepted" | "declined" | "canceled" など。 */
+  status: string;
+  createdAt: Timestamp;
+};
+
 /** 相手との関係 (06 §6)。 */
 export type EncounterRelation = "none" | "requested" | "incoming" | "friend";
 

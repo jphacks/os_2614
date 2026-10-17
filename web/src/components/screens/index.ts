@@ -18,6 +18,12 @@ export { ComposeScreen } from "./ComposeScreen";
 export type { ComposeScreenProps, ComposeSubmitError } from "./ComposeScreen";
 export { FriendsScreen } from "./FriendsScreen";
 export type { FriendsScreenProps } from "./FriendsScreen";
+export { FriendRequestsScreen } from "./FriendRequestsScreen";
+export type {
+  FriendRequestsScreenProps,
+  FriendActionResult,
+  InviteCreateResult,
+} from "./FriendRequestsScreen";
 export { NearbyScreen } from "./NearbyScreen";
 export type { NearbyScreenProps } from "./NearbyScreen";
 export { EncountersScreen } from "./EncountersScreen";

@@ -6,6 +6,17 @@
   margin-bottom: var(--space-5);
 }
 
+.addFriend {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-surface);
+}
+
 .deleteError {
   margin: 0 var(--page-gutter) var(--space-3);
   padding: var(--space-3);

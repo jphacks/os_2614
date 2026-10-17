@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
+import Link from "next/link";
 import type { Friend } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
@@ -74,6 +75,15 @@ export function FriendsScreen({
         title="友達"
         count={state.status === "ok" ? `${friends.length}人` : undefined}
         subtitle="位置はエリア名だけ共有しています"
+        trailing={
+          <Link
+            className={styles.addFriend}
+            href="/friends/requests/"
+            aria-label="友達申請と招待"
+          >
+            <Icon name="person_add" size={22} />
+          </Link>
+        }
       />
 
       {state.status === "ok" ? (
