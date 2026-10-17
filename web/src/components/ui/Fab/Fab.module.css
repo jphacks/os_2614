@@ -1,0 +1,15 @@
+.fab {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(var(--tab-bar-height) + var(--space-4));
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  box-shadow: var(--shadow-fab);
+}

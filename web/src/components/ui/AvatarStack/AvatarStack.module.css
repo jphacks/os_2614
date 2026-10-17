@@ -1,0 +1,20 @@
+.stack {
+  display: inline-flex;
+  align-items: center;
+}
+
+.item {
+  display: inline-flex;
+  margin-left: -8px;
+}
+
+.item:first-child {
+  margin-left: 0;
+}
+
+.extra {
+  font: var(--text-caption);
+  font-weight: 700;
+  color: var(--color-text-muted);
+  margin-right: var(--space-1);
+}

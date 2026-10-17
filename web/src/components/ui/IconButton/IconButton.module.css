@@ -1,0 +1,25 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: background-color 0.15s ease;
+}
+
+.plain {
+  background: transparent;
+  color: var(--color-text);
+}
+
+.filled {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+
+.surface {
+  background: var(--color-surface);
+  color: var(--color-text);
+}

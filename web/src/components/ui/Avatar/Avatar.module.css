@@ -1,0 +1,87 @@
+.avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border: none;
+  border-radius: 50%;
+  overflow: visible;
+  color: var(--color-text);
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.initial {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--color-text);
+  user-select: none;
+}
+
+.online {
+  box-shadow: none;
+}
+
+.dot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--color-online);
+}
+
+.ring {
+  box-shadow: 0 0 0 2px var(--tone-blue);
+}
+
+.avatar.dashed {
+  background: var(--color-surface);
+  border: 2px dashed var(--color-placeholder-strong);
+  color: var(--color-text-muted);
+}
+
+.dashed .initial {
+  color: var(--color-text-muted);
+}
+
+.tonePeach {
+  background: var(--tone-peach);
+}
+
+.toneBlue {
+  background: var(--tone-blue);
+}
+
+.toneGreen {
+  background: var(--tone-green);
+}
+
+.toneLavender {
+  background: var(--tone-lavender);
+}
+
+.toneMint {
+  background: var(--tone-mint);
+}
+
+.toneYellow {
+  background: var(--tone-yellow);
+}
+
+.tonePeriwinkle {
+  background: var(--tone-periwinkle);
+}
+
+.toneSand {
+  background: var(--tone-sand);
+}

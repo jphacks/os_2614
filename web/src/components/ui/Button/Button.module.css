@@ -1,0 +1,44 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-pill);
+  font: var(--text-body-strong);
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+
+.md {
+  min-height: 48px;
+  padding: 0 var(--space-6);
+}
+
+.sm {
+  min-height: 36px;
+  padding: 0 var(--space-4);
+}
+
+.primary {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+
+.primary:active:not(.disabled) {
+  background: var(--color-primary-pressed);
+}
+
+.secondary {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
