@@ -274,6 +274,9 @@ CREATE TABLE public_posts (
   cid         TEXT NOT NULL,
   author_did  TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,
   text        TEXT NOT NULL,
+  langs       TEXT,                           -- JSON 配列
+  bsky_uri    TEXT,                           -- 17 §2.3。Bluesky にも投稿したときの app.bsky.feed.post
+  bsky_cid    TEXT,
   created_at  INTEGER NOT NULL,
   indexed_at  INTEGER NOT NULL,
   deleted_at  INTEGER,
