@@ -59,7 +59,7 @@ func Load() (*Config, error) {
 		RedisURL:        os.Getenv("CHAIN_REDIS_URL"),
 		MediaDir:        get("CHAIN_MEDIA_DIR", "data/media"),
 		OAuthPrivateKey: os.Getenv("CHAIN_OAUTH_PRIVATE_KEY"),
-		OAuthScopes:     strings.Fields(get("CHAIN_OAUTH_SCOPES", "atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile repo:app.bsky.feed.post?action=create&action=delete")),
+		OAuthScopes:     strings.Fields(get("CHAIN_OAUTH_SCOPES", "atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile repo:app.bsky.feed.post?action=create&action=delete repo:app.bsky.actor.profile?action=create&action=update blob:image/*")),
 		JetstreamURL:    get("CHAIN_JETSTREAM_URL", "wss://jetstream2.us-east.bsky.network/subscribe"),
 		NanoGPTURL:      get("CHAIN_NANOGPT_URL", "https://api.nano-gpt.com/api/v1/decisions"),
 		NanoGPTKey:      os.Getenv("CHAIN_NANOGPT_KEY"),

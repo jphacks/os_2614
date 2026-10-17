@@ -72,6 +72,8 @@ var routeBuckets = []struct {
 	{fiber.MethodPost, "/api/v1/posts", BucketPost},
 	{fiber.MethodPost, "/api/v1/feed/posts", BucketPost},
 	{fiber.MethodPost, "/api/v1/media", BucketMedia},
+	{fiber.MethodPut, "/api/v1/me/avatar", BucketMedia},
+	{fiber.MethodPut, "/api/v1/me/banner", BucketMedia},
 	{fiber.MethodPost, "/api/v1/friends/requests", BucketFriendReq},
 }
 

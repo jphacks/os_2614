@@ -64,3 +64,33 @@ func SetProfileStatus(ctx context.Context, q db.Querier, did, status string, now
 		did, nullable(status), clock.UnixMilli(now))
 	return err
 }
+
+// SetProfileText は displayName と description をまとめて更新する（13 §1.3）。空文字なら NULL に戻す。
+// PDS の record を正として、record の最終状態をそのまま入れる。
+func SetProfileText(ctx context.Context, q db.Querier, did, displayName, description string, now time.Time) error {
+	_, err := db.Execute(ctx, q, `
+		INSERT INTO profiles (did, display_name, description, updated_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT (did) DO UPDATE SET
+		  display_name = excluded.display_name, description = excluded.description,
+		  updated_at = excluded.updated_at`,
+		did, nullable(displayName), nullable(description), clock.UnixMilli(now))
+	return err
+}
+
+// SetProfileAvatar はアイコンの CID だけを更新する（13 §1.3）。空文字なら NULL に戻す。
+func SetProfileAvatar(ctx context.Context, q db.Querier, did, cid string, now time.Time) error {
+	_, err := db.Execute(ctx, q, `
+		INSERT INTO profiles (did, avatar_cid, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT (did) DO UPDATE SET avatar_cid = excluded.avatar_cid, updated_at = excluded.updated_at`,
+		did, nullable(cid), clock.UnixMilli(now))
+	return err
+}
+
+// SetProfileBanner はバナーの CID だけを更新する（13 §1.3）。空文字なら NULL に戻す。
+func SetProfileBanner(ctx context.Context, q db.Querier, did, cid string, now time.Time) error {
+	_, err := db.Execute(ctx, q, `
+		INSERT INTO profiles (did, banner_cid, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT (did) DO UPDATE SET banner_cid = excluded.banner_cid, updated_at = excluded.updated_at`,
+		did, nullable(cid), clock.UnixMilli(now))
+	return err
+}

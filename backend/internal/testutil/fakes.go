@@ -173,12 +173,30 @@ type FakeRecordWriter struct {
 	calls       []PutRecordCall
 	createCalls []CreateRecordCall
 	deleteCalls []DeleteRecordCall
+	records     map[string]fakeRecord
+	uploads     []UploadedBlob
 	URI         string
 	CID         string
 	Err         error
+	GetErr      error
+	UploadErr   error
+	SwapErr     bool
 	CreateErrs  map[string]error
 	DeleteErrs  map[string]error
 	seq         int
+	blobSeq     int
+}
+
+// fakeRecord は PDS にある record の現在の値と cid。
+type fakeRecord struct {
+	Value map[string]any
+	CID   string
+}
+
+// UploadedBlob は UploadBlob が受け取った内容。
+type UploadedBlob struct {
+	Mime string
+	Data []byte
 }
 
 // PutRecordCall は PutRecord の引数の記録。
@@ -188,6 +206,7 @@ type PutRecordCall struct {
 	Collection string
 	RKey       string
 	Record     any
+	SwapRecord string
 }
 
 // CreateRecordCall は CreateRecord の引数の記録。
@@ -210,6 +229,7 @@ func NewFakeRecordWriter() *FakeRecordWriter {
 	return &FakeRecordWriter{
 		URI:        "at://did:plc:fake/jp.i32.chain.actor.profile/self",
 		CID:        "bafyfake",
+		records:    map[string]fakeRecord{},
 		CreateErrs: map[string]error{},
 		DeleteErrs: map[string]error{},
 	}
@@ -217,14 +237,107 @@ func NewFakeRecordWriter() *FakeRecordWriter {
 
 var _ service.RecordWriter = (*FakeRecordWriter)(nil)
 
-func (f *FakeRecordWriter) PutRecord(_ context.Context, did, sessionID, collection, rkey string, record any) (string, string, error) {
+// SetRecord は PDS に既にある record を用意する（GetRecord が返す）。
+func (f *FakeRecordWriter) SetRecord(collection, rkey string, value map[string]any, cid string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, PutRecordCall{DID: did, SessionID: sessionID, Collection: collection, RKey: rkey, Record: record})
+	f.records[collection+"/"+rkey] = fakeRecord{Value: value, CID: cid}
+}
+
+// Record は今の record と cid を返す。無ければ found=false。
+func (f *FakeRecordWriter) Record(collection, rkey string) (map[string]any, string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rec, ok := f.records[collection+"/"+rkey]
+	if !ok {
+		return nil, "", false
+	}
+	return rec.Value, rec.CID, true
+}
+
+// Uploads は UploadBlob が受け取った内容のコピーを返す。
+func (f *FakeRecordWriter) Uploads() []UploadedBlob {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]UploadedBlob, len(f.uploads))
+	copy(out, f.uploads)
+	return out
+}
+
+// SetGetError は次の GetRecord が返すエラーを設定する。
+func (f *FakeRecordWriter) SetGetError(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.GetErr = err
+}
+
+// SetUploadError は次の UploadBlob が返すエラーを設定する。
+func (f *FakeRecordWriter) SetUploadError(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.UploadErr = err
+}
+
+// SetSwapConflict は swapRecord を渡した PutRecord を必ず ErrSwapConflict にする（13 §1.3）。
+func (f *FakeRecordWriter) SetSwapConflict(conflict bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.SwapErr = conflict
+}
+
+func (f *FakeRecordWriter) PutRecord(_ context.Context, did, sessionID, collection, rkey string, record any, swapRecord string) (string, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, PutRecordCall{DID: did, SessionID: sessionID, Collection: collection, RKey: rkey, Record: record, SwapRecord: swapRecord})
 	if f.Err != nil {
 		return "", "", f.Err
 	}
-	return f.URI, f.CID, nil
+	if swapRecord != "" {
+		cur, ok := f.records[collection+"/"+rkey]
+		if f.SwapErr || !ok || cur.CID != swapRecord {
+			return "", "", atproto.ErrSwapConflict
+		}
+	}
+	cid := f.CID
+	if value, ok := record.(map[string]any); ok {
+		f.seq++
+		cid = "cid-" + strconv.Itoa(f.seq)
+		f.records[collection+"/"+rkey] = fakeRecord{Value: value, CID: cid}
+	}
+	return f.URI, cid, nil
+}
+
+func (f *FakeRecordWriter) GetRecord(_ context.Context, did, sessionID, collection, rkey string) (map[string]any, string, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.GetErr != nil {
+		return nil, "", false, f.GetErr
+	}
+	rec, ok := f.records[collection+"/"+rkey]
+	if !ok {
+		return nil, "", false, nil
+	}
+	cp := make(map[string]any, len(rec.Value))
+	for k, v := range rec.Value {
+		cp[k] = v
+	}
+	return cp, rec.CID, true, nil
+}
+
+func (f *FakeRecordWriter) UploadBlob(_ context.Context, did, sessionID, mime string, data []byte) (*atproto.Blob, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.uploads = append(f.uploads, UploadedBlob{Mime: mime, Data: append([]byte(nil), data...)})
+	if f.UploadErr != nil {
+		return nil, f.UploadErr
+	}
+	f.blobSeq++
+	return &atproto.Blob{
+		Type:     "blob",
+		Ref:      atproto.BlobLink{Link: "bafyblob" + strconv.Itoa(f.blobSeq)},
+		MimeType: mime,
+		Size:     len(data),
+	}, nil
 }
 
 func (f *FakeRecordWriter) CreateRecord(_ context.Context, did, sessionID, collection string, record any) (string, string, error) {
