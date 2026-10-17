@@ -1,0 +1,64 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.cell {
+  position: relative;
+}
+
+.by {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--color-overlay-count);
+  font: var(--text-heading);
+  font-size: 20px;
+  color: var(--color-text-on-primary);
+}
+
+.tonePeach {
+  background: var(--tone-peach);
+}
+
+.toneBlue {
+  background: var(--tone-blue);
+}
+
+.toneGreen {
+  background: var(--tone-green);
+}
+
+.toneLavender {
+  background: var(--tone-lavender);
+}
+
+.toneMint {
+  background: var(--tone-mint);
+}
+
+.toneYellow {
+  background: var(--tone-yellow);
+}
+
+.tonePeriwinkle {
+  background: var(--tone-periwinkle);
+}
+
+.toneSand {
+  background: var(--tone-sand);
+}
