@@ -94,12 +94,23 @@ func validateLocation(in LocationInput, now time.Time) map[string]string {
 	return fields
 }
 
+// speedCheckMinInterval より短い間隔の 2 点は、GPS の揺れだけで速度が跳ね上がるので判定しない。
+// speedCheckSlackM は静止していても出る位置の揺れ (10〜20m) を無視するための余裕。
+const speedCheckSlackM = 20.0
+
+const speedCheckMinInterval = 10 * time.Second
+
 func tooFast(prev, next *model.Location) bool {
-	dt := next.RecordedAt.Sub(prev.RecordedAt).Hours()
-	if dt <= 0 {
+	dt := next.RecordedAt.Sub(prev.RecordedAt)
+	if dt < speedCheckMinInterval {
 		return false
 	}
-	return Haversine(prev.Lat, prev.Lon, next.Lat, next.Lon)/dt > core.MaxSpeedKmh
+	// 両方の精度円に収まる分は誤差として移動距離から引く。
+	km := Haversine(prev.Lat, prev.Lon, next.Lat, next.Lon) - (prev.AccuracyM+next.AccuracyM+speedCheckSlackM)/1000
+	if km <= 0 {
+		return false
+	}
+	return km/dt.Hours() > core.MaxSpeedKmh
 }
 
 func (s *LocationService) recordSpeedReject(ctx context.Context, did string) {
