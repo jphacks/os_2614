@@ -58,6 +58,19 @@ func jstDayBounds(t time.Time) (time.Time, time.Time) {
 	return start, start.Add(24 * time.Hour)
 }
 
+// jstWeekStart は t が属する週の月曜 0:00（Asia/Tokyo）を返す（06 §6、12 §5）。
+func jstWeekStart(t time.Time) time.Time {
+	l := t.In(jst)
+	offset := (int(l.Weekday()) + 6) % 7 // Monday=0, Sunday=6
+	return time.Date(l.Year(), l.Month(), l.Day(), 0, 0, 0, 0, jst).AddDate(0, 0, -offset)
+}
+
+// jstMonthStart は t が属する月の 1 日 0:00（Asia/Tokyo）を返す（13 §3、12 §5）。
+func jstMonthStart(t time.Time) time.Time {
+	l := t.In(jst)
+	return time.Date(l.Year(), l.Month(), 1, 0, 0, 0, 0, jst)
+}
+
 // OrderDIDs は 2 人の組を user_a < user_b に正規化する（02 §2）。
 func OrderDIDs(a, b string) (string, string) {
 	if a < b {
