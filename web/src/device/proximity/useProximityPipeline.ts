@@ -23,11 +23,14 @@ import {
 import { ChainProximity } from "./index";
 import {
   PROXIMITY_ALL_PERMISSIONS,
+  PERMISSION_RECHECK_MS,
   PROXIMITY_SYNC_POLL_MS,
+  TOKEN_REFRESH_RETRY_MS,
   describeProximityError,
   isForegroundResume,
   missingPermissions,
   proximityPermissionsReady,
+  shouldRefreshTokens,
 } from "./pipeline";
 import { syncSightingsWithPlugin } from "./sightings";
 import { SightingOutbox } from "./sync";
@@ -88,7 +91,33 @@ export function useProximityPipeline(): ProximityPipeline {
   }, []);
 
   const ready = proximityPermissionsReady(permissions);
-  const location = useLocationUpload({ enabled: ready });
+
+  // 権限は他の画面 (ちかくの「位置を有効にする」) や OS の設定でも変わる。
+  // 揃うまでは読み直して、許可された時点で走行と位置送信を始める。
+  useEffect(() => {
+    if (ready) {
+      return;
+    }
+    let active = true;
+    const recheck = () => {
+      ChainProximity.checkPermissions()
+        .then((next) => {
+          if (active) {
+            setPermissions(next);
+          }
+        })
+        .catch(() => undefined);
+    };
+    const timer = setInterval(recheck, PERMISSION_RECHECK_MS);
+    document.addEventListener("visibilitychange", recheck);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", recheck);
+    };
+  }, [ready]);
+  // 位置はグループ表示 (403 location_stale) に要るので、Bluetooth の許可を待たず送る。
+  const location = useLocationUpload({ enabled: permissions?.location === "granted" });
 
   useEffect(() => {
     if (!ready) {
@@ -102,12 +131,43 @@ export function useProximityPipeline(): ProximityPipeline {
     let cancelled = false;
     hiddenRef.current = document.hidden;
 
-    const syncTokens = () =>
-      syncBeaconTokensWithPlugin({ signal: controller.signal }).catch((cause: unknown) => {
-        if (!cancelled) {
-          setSyncError(describeError(cause));
-        }
-      });
+    const tokenSync = { lastAttemptAt: 0 };
+    const syncTokens = () => {
+      tokenSync.lastAttemptAt = Date.now();
+      return syncBeaconTokensWithPlugin({ signal: controller.signal }).then(
+        () => {
+          if (!cancelled) {
+            setSyncError(null);
+          }
+        },
+        (cause: unknown) => {
+          if (!cancelled) {
+            setSyncError(describeError(cause));
+          }
+        },
+      );
+    };
+
+    // 走りっぱなしでも token が尽きないよう、残りが減ったら取り直す。
+    const refreshTokensIfNeeded = () => {
+      const current = statusRef.current;
+      if (current === null) {
+        return;
+      }
+      const nowMs = Date.now();
+      if (nowMs - tokenSync.lastAttemptAt < TOKEN_REFRESH_RETRY_MS) {
+        return;
+      }
+      if (
+        shouldRefreshTokens({
+          tokensValidUntil: current.tokensValidUntil,
+          lastError: current.lastError,
+          nowMs,
+        })
+      ) {
+        void syncTokens();
+      }
+    };
 
     const syncSightings = async (foreground: boolean) => {
       try {
@@ -161,6 +221,7 @@ export function useProximityPipeline(): ProximityPipeline {
     })();
 
     const interval = setInterval(() => {
+      refreshTokensIfNeeded();
       void syncSightings(false);
     }, PROXIMITY_SYNC_POLL_MS);
 
@@ -196,8 +257,12 @@ export function useProximityPipeline(): ProximityPipeline {
       });
   }, []);
 
+  // 再取得の失敗理由が lastError (tokens_exhausted など) に隠れないよう syncError を先に見る。
   const error =
-    describeProximityError(status?.lastError ?? null) ?? location.uploadError ?? syncError;
+    syncError ??
+    describeProximityError(status?.lastError ?? null) ??
+    location.uploadError ??
+    location.error;
 
   return {
     status,

@@ -2,12 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PluginListenerHandle } from "@capacitor/core";
+import { ApiError } from "@/auth/errors";
 import { ChainProximity } from "./index";
 import type { LocationFix, ProximityStatus, SightingEvent } from "./definitions";
 import {
   LOCATION_FOREGROUND_INTERVAL_MS,
-  isLocationUploadable,
+  locationSkipReason,
+  describeSkipReason,
   locationUploadDue,
+  onLocationUploaded,
   uploadLocation,
   type LocationSender,
 } from "./location";
@@ -140,6 +143,13 @@ export function useNearbyTokens(windowMs = 45_000): NearbyToken[] {
 
 /** getCurrentLocation / geolocation の失敗を表示用の文字列にする。 */
 function describeError(error: unknown): string {
+  if (error instanceof ApiError && error.status === 400) {
+    // 「リクエストが不正です」だけでは原因が分からないので、backend の fields を添える。
+    const fields = error.details?.fields;
+    if (fields && typeof fields === "object") {
+      return `${error.message} (${Object.entries(fields).map(([k, v]) => `${k}: ${String(v)}`).join(", ")})`;
+    }
+  }
   if (error instanceof Error) {
     return error.message;
   }
@@ -245,6 +255,22 @@ export function useLocation(opts: { intervalMs: number; enabled: boolean }): {
       setError(describeError(cause));
     });
 
+    // 定期取得の最初の値は intervalMs 後になる。画面を開いた直後に 403 location_stale に
+    // ならないよう、現在地を 1 回すぐ取る。
+    // maxAge 0: 古い低精度のキャッシュを送ると、次の fix との間で移動速度超過 (400) になりうる。
+    ChainProximity.getCurrentLocation({ maxAgeMs: 0 })
+      .then((next) => {
+        if (!disposed) {
+          setFix((prev) => prev ?? next);
+          setError(null);
+        }
+      })
+      .catch((cause) => {
+        if (!disposed) {
+          setError(describeError(cause));
+        }
+      });
+
     return () => {
       disposed = true;
       void handle?.remove();
@@ -300,7 +326,7 @@ export function useLocationUpload(opts: LocationUploadOptions): LocationUploadSt
       return;
     }
     const nowMs = Date.now();
-    if (!isLocationUploadable(fix, nowMs)) {
+    if (locationSkipReason(fix, nowMs) !== null) {
       return;
     }
     if (!locationUploadDue({ lastSentAtMs: lastSentAtRef.current, nowMs, minIntervalMs })) {
@@ -329,10 +355,33 @@ export function useLocationUpload(opts: LocationUploadOptions): LocationUploadSt
     };
   }, [enabled, fix, minIntervalMs, sender]);
 
+  // 送れない fix を黙って捨てると、位置が届かない理由が分からない。表示用に導出する。
+  const skipReason = fix ? locationSkipReason(fix, fix.recordedAt ? Date.parse(fix.recordedAt) + 1 : 0) : null;
+  const skipError = skipReason === "mock" || skipReason === "low_accuracy" ? describeSkipReason(skipReason) : null;
+
   return {
     fix,
     error,
-    uploadError: upload.uploadError,
+    uploadError: skipError ?? upload.uploadError,
     lastUploadedAtMs: upload.lastUploadedAtMs,
   };
+}
+
+/**
+ * active の間、位置の送信が成功するたびに reload を呼ぶ。
+ * 画面を開いた直後は位置がまだ backend に届いておらず 403 location_stale になるため、
+ * 届いたら取り直して「位置情報が必要です」の表示を解く。
+ */
+export function useReloadOnLocationUpload(active: boolean, reload: () => void): void {
+  const reloadRef = useRef(reload);
+  useEffect(() => {
+    reloadRef.current = reload;
+  });
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    return onLocationUploaded(() => reloadRef.current());
+  }, [active]);
 }

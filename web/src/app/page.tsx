@@ -12,7 +12,7 @@ import { useResource, type ResourceState } from "@/data/hooks";
 import { toGroupNearby } from "@/data/mappers";
 import type { GroupNearby } from "@/domain/types";
 import { ChainProximity } from "@/device/proximity";
-import { useProximityStatus } from "@/device/proximity/hooks";
+import { useProximityStatus, useReloadOnLocationUpload } from "@/device/proximity/hooks";
 import { NearbyScreen } from "@/components/screens";
 
 export default function NearbyPage() {
@@ -21,6 +21,11 @@ export default function NearbyPage() {
     [],
   );
   const proximity = useProximityStatus();
+
+  useReloadOnLocationUpload(
+    state.status === "error" && state.error.code === "location_stale",
+    reload,
+  );
 
   const nearbyState: ResourceState<GroupNearby> =
     state.status === "ok"

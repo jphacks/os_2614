@@ -51,6 +51,19 @@ export function locationSkipReason(fix: LocationFix, nowMs: number): LocationSki
   return null;
 }
 
+/** 送らなかった理由の表示文。 */
+export function describeSkipReason(reason: LocationSkipReason): string {
+  switch (reason) {
+    case "mock":
+      return "疑似位置情報が有効なため、位置を送信できません。";
+    case "low_accuracy":
+      return "位置の精度が低いため送信していません。「正確な位置情報」を許可し、屋外などで再度お試しください。";
+    case "stale":
+    case "future":
+      return "端末の位置情報の時刻が合っていないため送信できません。";
+  }
+}
+
 /** 送ってよい fix か。 */
 export function isLocationUploadable(fix: LocationFix, nowMs: number): boolean {
   return locationSkipReason(fix, nowMs) === null;
@@ -94,12 +107,28 @@ export function toLocationUploadBody(fix: LocationFix): LocationUploadBody {
   };
 }
 
+const locationUploadListeners = new Set<() => void>();
+
+/**
+ * 位置の送信が成功したときに呼ばれる。403 location_stale で止まっている画面が、
+ * 位置が届いた時点で取り直すために使う。戻り値で購読を外す。
+ */
+export function onLocationUploaded(listener: () => void): () => void {
+  locationUploadListeners.add(listener);
+  return () => {
+    locationUploadListeners.delete(listener);
+  };
+}
+
 /** データ層経由で現在位置を送る。204 なので戻り値は無い。 */
-export function uploadLocation(
+export async function uploadLocation(
   fix: LocationFix,
   opts: { signal?: AbortSignal } = {},
 ): Promise<void> {
-  return putJson<void>("/me/location", toLocationUploadBody(fix), { signal: opts.signal });
+  await putJson<void>("/me/location", toLocationUploadBody(fix), { signal: opts.signal });
+  for (const listener of [...locationUploadListeners]) {
+    listener();
+  }
 }
 
 /** uploadLocation の差し替え (テスト・別トランスポート用)。 */
