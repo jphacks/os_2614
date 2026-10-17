@@ -72,6 +72,9 @@ type Env struct {
 	// RateLimit は NewApp が使うレート制限の設定。nil なら e.Redis と DefaultLimits を使う。
 	// 壊れた Redis や緩めた上限を試すときに差し替える。
 	RateLimit *httpx.RateLimitConfig
+	// Broker は feed.updated などのリアルタイム配信の宛先をテストから見るための差し込み口。
+	// nil なら配信しない（既定）。FakeBroker を入れると記録できる。
+	Broker realtime.Broker
 	// oauth は NewApp の AuthService と AccountService が共有する fake。
 	oauth *fakeOAuth
 }
@@ -116,13 +119,13 @@ func (e *Env) PublicPosts() *content.PublicPostService {
 	if moderator == nil {
 		moderator = moderation.ModerationNoop{}
 	}
-	return &content.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator}
+	return &content.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator, Broker: e.Broker}
 }
 
 // Jetstream は main.go と同じ配線の Jetstream サービス（03 §5、17 §2.5）。
 // posts は初回の読み込みに使う。nil なら listRecords は呼ばれない。
 func (e *Env) Jetstream(posts content.PublicPostLister) *content.JetstreamService {
-	return &content.JetstreamService{Deps: e.Deps, Posts: posts}
+	return &content.JetstreamService{Deps: e.Deps, Posts: posts, Broker: e.Broker}
 }
 
 // NewEnv は Redis と SQLite を用意する。Redis に接続できなければテストを skip する。
@@ -285,7 +288,7 @@ func NewApp(e *Env) *fiber.App {
 	realtimeSvc := &content.RealtimeService{Deps: e.Deps, Access: access, Sessions: sessions}
 	mediaSvc := &content.MediaService{Deps: e.Deps, Store: e.Store, Access: access, Broker: hub, Storage: mediaStore, Signer: signer}
 	pins := &content.PinService{Deps: e.Deps, Store: e.Store, Access: access, Broker: hub}
-	publicPosts := &content.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator}
+	publicPosts := &content.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator, Broker: hub}
 	instances := &content.InstanceService{Deps: e.Deps, Store: e.Store, Access: access, Assessor: assessorFor(e), Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
 	feed := &content.FeedService{Deps: e.Deps, Access: access, Signer: signer}
 	groups := &groupsvc.GroupService{Deps: e.Deps, Zones: zones, Access: access, Moderator: moderator, Broker: hub}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	encountermodel "github.com/applemango/chain/internal/model/encounter"
 	friendmodel "github.com/applemango/chain/internal/model/friend"
 	spacemodel "github.com/applemango/chain/internal/model/space"
+	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service/access"
 	"github.com/applemango/chain/internal/service/core"
 	"github.com/applemango/chain/internal/storage"
@@ -284,16 +286,23 @@ func (s *homeSource) Fetch(ctx context.Context, viewer string, before FeedCursor
 }
 
 func (s *FeedService) homeAuthors(ctx context.Context, viewer string) ([]string, error) {
+	return homeAuthors(ctx, s.DB, s.Clock, viewer)
+}
+
+// homeAuthors は viewer の home フィードに入る著者（自分・フレンド・直近 30 日に revealed な
+// encounter の相手）を返す（17 §3.1）。FeedService 以外（feed.updated の宛先の組み立て）からも
+// 使えるように、DB と Clock だけで動く package 関数にしてある（17 §3.4）。
+func homeAuthors(ctx context.Context, db *sql.DB, clk clock.Clock, viewer string) ([]string, error) {
 	set := map[string]bool{viewer: true}
-	friends, err := friendmodel.ListFriendships(ctx, s.DB, viewer)
+	friends, err := friendmodel.ListFriendships(ctx, db, viewer)
 	if err != nil {
 		return nil, err
 	}
 	for _, fr := range friends {
 		set[otherDID(fr.UserA, fr.UserB, viewer)] = true
 	}
-	since := s.Clock.Now().Add(-encounterFeedWindow)
-	peers, err := encountermodel.ListRevealedEncounterPeers(ctx, s.DB, viewer, since)
+	since := clk.Now().Add(-encounterFeedWindow)
+	peers, err := encountermodel.ListRevealedEncounterPeers(ctx, db, viewer, since)
 	if err != nil {
 		return nil, err
 	}
@@ -306,6 +315,22 @@ func (s *FeedService) homeAuthors(ctx context.Context, viewer string) ([]string,
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// publishHomeFeedUpdated は公開投稿が索引に入ったことを、投稿者と homeAuthors の相手へ知らせる（17 §3.4）。
+// 中身は載せず、受けた側が GET /feed?source=home で取り直す。失敗は呼び出し元を失敗させない。
+func publishHomeFeedUpdated(ctx context.Context, db *sql.DB, clk clock.Clock, broker realtime.Broker, authorDID string) {
+	if broker == nil {
+		return
+	}
+	recipients, err := homeAuthors(ctx, db, clk, authorDID)
+	if err != nil {
+		slog.WarnContext(ctx, "feed updated (home): homeAuthors failed", "err", err)
+		return
+	}
+	for _, did := range recipients {
+		broker.Publish(ctx, realtime.Event{Name: "feed.updated", User: did, Data: map[string]string{"source": "home"}})
+	}
 }
 
 func otherDID(a, b, me string) string {

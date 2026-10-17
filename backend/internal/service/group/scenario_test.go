@@ -236,6 +236,33 @@ func TestGroupScenarios(t *testing.T) {
 		}
 	})
 
+	t.Run("group.updated を Space 宛てに送る", func(t *testing.T) {
+		h := testutil.NewGroupHarness(t)
+		h.User(alice)
+		h.SetLocation(alice, groupLat, groupLon)
+		g := h.Create(alice, groupsvc.CreateGroupInput{Name: "before", Lat: groupLat, Lon: groupLon, RadiusM: 40})
+
+		broker := testutil.NewFakeBroker()
+		h.Svc.Broker = broker
+
+		name := "after"
+		if _, err := h.Svc.Update(ctx, alice, g.ID, groupsvc.UpdateGroupInput{Name: &name}); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		events := broker.EventsFor("group.updated", "")
+		if len(events) != 1 {
+			t.Fatalf("group.updated = %+v, want 1", events)
+		}
+		if events[0].Space != g.ID || events[0].User != "" {
+			t.Fatalf("event = %+v, want Space %s", events[0], g.ID)
+		}
+		data, ok := events[0].Data.(map[string]string)
+		if !ok || data["id"] != g.ID || data["name"] != "after" {
+			t.Fatalf("data = %+v, want id=%s name=after", events[0].Data, g.ID)
+		}
+	})
+
 	t.Run("moderation の block は 422", func(t *testing.T) {
 		h := testutil.NewGroupHarness(t)
 		h.User(alice)

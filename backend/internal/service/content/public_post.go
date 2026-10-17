@@ -11,6 +11,7 @@ import (
 	"github.com/applemango/chain/internal/external/atproto"
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/model"
+	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service/core"
 	"github.com/applemango/chain/internal/service/moderation"
 	"github.com/applemango/chain/internal/utils"
@@ -38,6 +39,7 @@ type PublicPostService struct {
 	core.Deps
 	Writer    core.RecordWriter
 	Moderator moderation.Moderator
+	Broker    realtime.Broker
 }
 
 // CreatePublicPostInput は公開投稿の作成入力。
@@ -134,6 +136,7 @@ func (s *PublicPostService) Create(ctx context.Context, did, sid string, in Crea
 			slog.WarnContext(ctx, "modq push failed", "err", err)
 		}
 	}
+	publishHomeFeedUpdated(ctx, s.DB, s.Clock, s.Broker, did)
 	return &PublicPostResult{URI: uri, CID: cid, BskyURI: bskyURI}, nil
 }
 

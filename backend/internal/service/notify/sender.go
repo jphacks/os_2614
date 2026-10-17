@@ -131,6 +131,8 @@ func notificationTitle(typ string) string {
 		return "フレンド承認"
 	case "party.confirmed":
 		return "Party"
+	case NotificationPostCreated:
+		return "新しい投稿"
 	case "group.nearby":
 		return "近くのグループ"
 	case "group.invited":
@@ -157,8 +159,8 @@ func notificationChannel(typ string) string {
 // notificationCollapseKey はダイジェストは kind ごと、group.nearby は Space ごと（12 §4）。
 func notificationCollapseKey(typ, spaceID string) string {
 	switch {
-	case typ == "group.nearby" && spaceID != "":
-		return "group.nearby:" + spaceID
+	case (typ == "group.nearby" || typ == NotificationPostCreated) && spaceID != "":
+		return typ + ":" + spaceID
 	case strings.HasPrefix(typ, "encounter."):
 		return typ
 	default:

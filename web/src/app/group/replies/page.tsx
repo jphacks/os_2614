@@ -102,12 +102,23 @@ function GroupReplies() {
     [id, visible, reloadPosts],
   );
 
-  // 表示中の Space を購読し、返信を含む投稿の追加を取りこぼさない (10 §7.2/7.3)。
+  // 表示中の Space を購読し、返信を含む投稿の追加・削除を取りこぼさない
+  // (10 §7.2/7.3)。グループ設定の変更も本体へ反映する。
   useRealtimeSubscription(id || null);
   useRealtimeResync(reloadPosts);
   useRealtimeEvent("post.created", (post) => {
     if (post.spaceId === id) {
       reloadPosts();
+    }
+  });
+  useRealtimeEvent("post.deleted", (_data, frame) => {
+    if (frame.space === id) {
+      reloadPosts();
+    }
+  });
+  useRealtimeEvent("group.updated", (_data, frame) => {
+    if (frame.space === id) {
+      reloadGroup();
     }
   });
 

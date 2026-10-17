@@ -103,7 +103,7 @@ func run() error {
 
 	sessions := &authsvc.SessionService{Deps: deps}
 	health := &service.HealthService{Deps: deps}
-	jetstreamSvc := &content.JetstreamService{Deps: deps, Posts: atproto.NewFirstLoadFetcher()}
+	jetstreamSvc := &content.JetstreamService{Deps: deps, Posts: atproto.NewFirstLoadFetcher(), Broker: hub}
 	authSvc := &authsvc.AuthService{Deps: deps, OAuth: oauthApp, Dir: oauthApp.Dir, Profiles: atproto.NewProfileFetcher(), FirstLoad: jetstreamSvc}
 	me := &mesvc.MeService{Deps: deps, Moderator: moderator, Writer: pdsWriter}
 	schedule := &naturalsvc.ScheduleService{Deps: deps, Embedder: embedderFor(cfg)}
@@ -128,7 +128,7 @@ func run() error {
 	realtimeSvc := &content.RealtimeService{Deps: deps, Access: access, Sessions: sessions}
 	mediaSvc := &content.MediaService{Deps: deps, Store: store, Access: access, Broker: hub, Storage: mediaStore, Signer: signer}
 	pins := &content.PinService{Deps: deps, Store: store, Access: access, Broker: hub}
-	publicPosts := &content.PublicPostService{Deps: deps, Writer: pdsWriter, Moderator: moderator}
+	publicPosts := &content.PublicPostService{Deps: deps, Writer: pdsWriter, Moderator: moderator, Broker: hub}
 	instances := &content.InstanceService{Deps: deps, Store: store, Access: access, Assessor: assessor, Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
 	feed := &content.FeedService{Deps: deps, Access: access, Signer: signer}
 	groups := &groupsvc.GroupService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}, Access: access, Moderator: moderator, Broker: hub}

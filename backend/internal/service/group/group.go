@@ -325,6 +325,7 @@ func (s *GroupService) Update(ctx context.Context, did, id string, in UpdateGrou
 	if err := s.invalidateSpace(ctx, id); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, realtime.Event{Name: "group.updated", Space: id, Data: map[string]string{"id": id, "name": newName}})
 	sp.Name = newName
 	group.Description = newDesc
 	group.ScheduleJSON = newSchedule
