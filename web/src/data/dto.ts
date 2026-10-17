@@ -373,6 +373,27 @@ export type GroupInviteInboxItem = {
   expiresAt: RFC3339;
 };
 
+/** グループの投票 1 件（service.VoteItem、09 §8.6）。myBallot は未投票なら null。 */
+export type GroupVote = {
+  id: string;
+  /** "make_closed" | "make_persistent"。 */
+  kind: string;
+  /** "open" | "passed" | "failed"。 */
+  status: string;
+  createdBy: DID;
+  yesCount: number;
+  noCount: number;
+  /** 可決に必要な賛成数（その時点のメンバー数の過半数）。 */
+  requiredCount: number;
+  createdAt: RFC3339;
+  closesAt: RFC3339;
+  /** 自分の票。true=賛成 / false=反対 / null=未投票。 */
+  myBallot: boolean | null;
+};
+
+/** GET /groups/{id}/votes の応答（service.VoteList、09 §8.6）。 */
+export type GroupVoteList = { items: GroupVote[] };
+
 /** memory の表紙（service.MemoryCover、13 §2）。 */
 export type MemoryCover = { thumbUrl: string };
 

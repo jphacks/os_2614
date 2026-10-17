@@ -26,6 +26,9 @@ import type {
   GroupInviteInboxItem,
   GroupNearby,
   GroupVisibility,
+  GroupVote,
+  GroupVoteKind,
+  GroupVoteStatus,
   Invite,
   LocationPrecision,
   Media,
@@ -61,6 +64,7 @@ import type {
   GroupInvite as GroupInviteDTO,
   GroupInviteInboxItem as GroupInviteInboxItemDTO,
   GroupNearby as GroupNearbyDTO,
+  GroupVote as GroupVoteDTO,
   Instance as InstanceDTO,
   InstancePost as PostDTO,
   Invite as InviteDTO,
@@ -124,6 +128,8 @@ const GROUP_EDGE_KINDS: readonly GroupGraphEdgeKind[] = [
   "overlaps",
   "shared_members",
 ];
+const VOTE_KINDS: readonly GroupVoteKind[] = ["make_closed", "make_persistent"];
+const VOTE_STATUSES: readonly GroupVoteStatus[] = ["open", "passed", "failed"];
 const NOTIFICATION_TYPES: readonly NotificationType[] = [
   "friend.request",
   "friend.accepted",
@@ -367,6 +373,22 @@ export function toGroupInviteInboxItem(
     groupName: dto?.groupName ?? "",
     inviter: dto?.inviter ? toUser(dto.inviter) : undefined,
     expiresAt: dto?.expiresAt ?? "",
+  };
+}
+
+/** VoteItem → GroupVote (09 §8.6)。kind / status の既定は make_closed / open。 */
+export function toGroupVote(dto: Maybe<GroupVoteDTO>): GroupVote {
+  return {
+    id: dto?.id ?? "",
+    kind: oneOf(dto?.kind, VOTE_KINDS, "make_closed"),
+    status: oneOf(dto?.status, VOTE_STATUSES, "open"),
+    createdBy: dto?.createdBy ?? "",
+    yesCount: num(dto?.yesCount),
+    noCount: num(dto?.noCount),
+    requiredCount: num(dto?.requiredCount),
+    createdAt: dto?.createdAt ?? "",
+    closesAt: dto?.closesAt ?? "",
+    myBallot: typeof dto?.myBallot === "boolean" ? dto.myBallot : undefined,
   };
 }
 
