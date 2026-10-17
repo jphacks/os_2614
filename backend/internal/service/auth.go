@@ -49,6 +49,8 @@ type AuthService struct {
 	OAuth    OAuthClient
 	Dir      IdentityDirectory
 	Profiles ProfileFetcher
+	// FirstLoad は初回ログインの公開投稿の読み込み（17 §2.5）。nil なら何もしない。
+	FirstLoad PublicPostBackfiller
 }
 
 type Tokens struct {
@@ -94,6 +96,7 @@ func (s *AuthService) CompleteLogin(ctx context.Context, params url.Values) (str
 	}
 
 	now := s.Clock.Now()
+	firstLogin := s.isFirstLogin(ctx, did)
 	// users の行は Store.SaveSession が仮の handle で作っている。ここで正しい handle に直す。
 	err = db.Transaction(ctx, s.DB, func(tx *sql.Tx) error {
 		if err := model.UpsertUser(ctx, tx, did, handle, sess.HostURL, now); err != nil {
@@ -106,12 +109,43 @@ func (s *AuthService) CompleteLogin(ctx context.Context, params url.Values) (str
 	}
 
 	s.refreshProfile(ctx, did, sess.HostURL)
+	if firstLogin {
+		s.loadPublicPosts(did, sess.HostURL)
+	}
 
 	code := base64.RawURLEncoding.EncodeToString(s.IDs.Bytes(24))
 	if err := model.SaveOneTimeCode(ctx, s.Redis, code, model.OneTimeCode{DID: did, ATProtoSessionID: sess.SessionID}); err != nil {
 		return "", err
 	}
 	return code, nil
+}
+
+// isFirstLogin は users の行がこのログインで新しく作られたかを返す（17 §2.5）。
+// Store.SaveSession が仮の handle（DID）で行を作るので、handle がまだ DID のままなら初回とみなす。
+func (s *AuthService) isFirstLogin(ctx context.Context, did string) bool {
+	u, err := model.GetUser(ctx, s.DB, did)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	return u.Handle == did
+}
+
+// loadPublicPosts は初回の読み込みを非同期で始める（17 §2.5）。ログインを遅らせないよう
+// 呼び出し元の context から切り離し、タイムアウトを 30 秒にする。失敗はログだけにする。
+func (s *AuthService) loadPublicPosts(did, pdsURL string) {
+	if s.FirstLoad == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), FirstLoadTimeout)
+		defer cancel()
+		if err := s.FirstLoad.BackfillPublicPosts(ctx, did, pdsURL); err != nil {
+			slog.WarnContext(ctx, "first public post load failed", "did", did, "err", err)
+		}
+	}()
 }
 
 // refreshProfile はプロフィールを取り直す。失敗してもログインは止めない。
