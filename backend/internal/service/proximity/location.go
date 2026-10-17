@@ -100,9 +100,13 @@ const speedCheckSlackM = 20.0
 
 const speedCheckMinInterval = 10 * time.Second
 
+// speedCheckEnabled は速度判定を有効にするフラグ。速度判定は誤検知が多いので当面無効。判定を見直したら true に戻す。
+const speedCheckEnabled = false
+
 func tooFast(prev, next *model.Location) bool {
-	// @TODO tooFastのロジックを変える
-	return false
+	if !speedCheckEnabled {
+		return false
+	}
 
 	dt := next.RecordedAt.Sub(prev.RecordedAt)
 	if dt < speedCheckMinInterval {

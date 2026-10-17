@@ -124,7 +124,6 @@ func run() error {
 	signer := storage.NewSigner(cfg.JWTKey)
 	account := &authsvc.AccountService{Deps: deps, OAuth: oauthApp, Storage: mediaStore}
 	janitorSvc := &service.Janitor{Deps: deps, Storage: mediaStore}
-	// 位置判定は S3 が作る。ここでは常に location_stale を返す仮実装を差す。
 	access := &access.AccessService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}}
 	realtimeSvc := &content.RealtimeService{Deps: deps, Access: access, Sessions: sessions}
 	mediaSvc := &content.MediaService{Deps: deps, Store: store, Access: access, Broker: hub, Storage: mediaStore, Signer: signer}
