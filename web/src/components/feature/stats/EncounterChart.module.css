@@ -1,0 +1,30 @@
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 90px;
+}
+
+.bar {
+  flex: 1;
+  min-width: 4px;
+  border-radius: 4px;
+  background: var(--color-placeholder-strong);
+}
+
+.today {
+  background: var(--color-primary);
+}
+
+.labels {
+  display: flex;
+  justify-content: space-between;
+  font: var(--text-micro);
+  color: var(--color-text-muted);
+}

@@ -1,0 +1,68 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, 10px);
+  grid-auto-rows: 10px;
+  gap: 4px;
+}
+
+.cell {
+  border-radius: 2px;
+}
+
+.level0 {
+  background: var(--color-surface-muted);
+}
+
+.level1 {
+  background: color-mix(in srgb, var(--color-primary) 25%, var(--color-surface-muted));
+}
+
+.level2 {
+  background: color-mix(in srgb, var(--color-primary) 50%, var(--color-surface-muted));
+}
+
+.level3 {
+  background: color-mix(in srgb, var(--color-primary) 75%, var(--color-surface-muted));
+}
+
+.level4 {
+  background: var(--color-primary);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.sideLabel {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.sideValue {
+  font: var(--text-title);
+  color: var(--color-text);
+}
+
+.caption {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
