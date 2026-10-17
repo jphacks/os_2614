@@ -374,6 +374,29 @@ export type AreaCreateRequest = {
   radiusM: number;
 };
 
+/** 公開投稿が属する Space（service.FeedSpace、17 §3.2）。 */
+export type FeedSpace = { id: string; type: string; name: string };
+
+/** 公開投稿の返信参照（service.ReplyRef、10 §3）。 */
+export type FeedReplyRef = { root: string; parent: string };
+
+/** GET /feed の 1 件（service.FeedItem、17 §3.2）。source=user:{did} で自分の投稿を取る。 */
+export type FeedItem = {
+  kind: string;
+  uri: string;
+  space?: FeedSpace;
+  author?: User;
+  text?: string;
+  format?: PostFormat;
+  reply?: FeedReplyRef;
+  system?: boolean;
+  media?: Media[];
+  moderation?: ModerationInfo;
+  hidden?: string;
+  takenAt?: RFC3339;
+  createdAt: RFC3339;
+};
+
 // --- ここから下は backend 未実装（spec-only）の形。実装されたら json タグに合わせて直す。 ---
 
 /** GET /me/stats（13 §3）。未実装（spec-only）。 */
@@ -419,15 +442,6 @@ export type Pin = {
   subject: string;
   reason: "auto" | "manual";
   pinnedBy?: DID;
-  createdAt: RFC3339;
-};
-
-/** 公開投稿（03 §4 / §5）。未実装（spec-only）。 */
-export type FeedPost = {
-  uri: string;
-  author: User;
-  text: string;
-  langs?: string[];
   createdAt: RFC3339;
 };
 

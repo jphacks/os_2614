@@ -1,19 +1,27 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Memory, Profile } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
 import { MemoryThumbCard } from "@/components/feature/memory";
+import { PublicPostsSection } from "@/components/feature/post";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/IconButton";
 import { List, ListItem } from "@/components/ui/List";
+import { Notice } from "@/components/ui/Notice";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { StatTriple } from "@/components/ui/StatTriple";
 import styles from "./ProfileScreen.module.css";
+
+/** PUT /me/status (13 §1) の結果。 */
+export type StatusSaveResult =
+  | { status: "ok"; value: string }
+  | { status: "unavailable" }
+  | { status: "error"; message: string };
 
 export type ProfileScreenProps = {
   /**
@@ -26,7 +34,8 @@ export type ProfileScreenProps = {
   /** error 状態の再取得。useResource の reload を渡す。 */
   onRetry?: () => void;
   onEditAvatar?: () => void;
-  onEditProfile?: () => void;
+  /** ステータスの保存 (PUT /me/status, 13 §1)。未指定なら編集ボタンを無効にする。 */
+  onSaveStatus?: (status: string) => Promise<StatusSaveResult>;
 };
 
 export function ProfileScreen({
@@ -34,7 +43,7 @@ export function ProfileScreen({
   memories,
   onRetry,
   onEditAvatar,
-  onEditProfile,
+  onSaveStatus,
 }: ProfileScreenProps) {
   return (
     <AppShell tab="profile">
@@ -44,7 +53,7 @@ export function ProfileScreen({
             me={state.data}
             memories={memories}
             onEditAvatar={onEditAvatar}
-            onEditProfile={onEditProfile}
+            onSaveStatus={onSaveStatus}
           />
         ) : state.status === "loading" ? (
           <ProfileSkeleton />
@@ -78,15 +87,59 @@ type ProfileBodyProps = {
   me: Profile;
   memories: Memory[];
   onEditAvatar?: () => void;
-  onEditProfile?: () => void;
+  onSaveStatus?: (status: string) => Promise<StatusSaveResult>;
 };
 
 function ProfileBody({
   me,
   memories,
   onEditAvatar,
-  onEditProfile,
+  onSaveStatus,
 }: ProfileBodyProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // server の status を key にした楽観値。server 値が変わると表示も server に戻る。
+  const [override, setOverride] = useState<{ base: string; value: string }>({
+    base: "",
+    value: "",
+  });
+
+  const serverStatus = me.status ?? "";
+  const status = override.base === serverStatus ? override.value : serverStatus;
+
+  const startEdit = () => {
+    setDraft(status);
+    setSaveError(null);
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setSaveError(null);
+  };
+
+  const save = async () => {
+    if (!onSaveStatus || saving) {
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    const result = await onSaveStatus(draft);
+    setSaving(false);
+    if (result.status === "ok") {
+      setOverride({ base: serverStatus, value: result.value });
+      setEditing(false);
+      return;
+    }
+    setSaveError(
+      result.status === "unavailable"
+        ? "ステータスはまだ更新できません。"
+        : result.message,
+    );
+  };
+
   return (
     <>
       <div className={styles.bannerWrap}>
@@ -107,7 +160,13 @@ function ProfileBody({
           <Avatar user={me} size={80} />
         </span>
         <div className={styles.editButton}>
-          <Button variant="secondary" size="sm" icon="edit" onClick={onEditProfile}>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="edit"
+            onClick={onSaveStatus ? startEdit : undefined}
+            disabled={!onSaveStatus || editing}
+          >
             編集
           </Button>
         </div>
@@ -115,13 +174,45 @@ function ProfileBody({
 
       <div className={styles.nameRow}>
         <h1 className={styles.name}>{me.name}</h1>
-        {me.status && (
+        {status && !editing && (
           <span className={styles.status}>
             <span className={styles.onlineDot} aria-hidden />
-            {me.status}
+            {status}
           </span>
         )}
       </div>
+
+      {editing && (
+        <div className={styles.statusEditor}>
+          <label className={styles.statusLabel} htmlFor="profile-status">
+            ステータス
+          </label>
+          <input
+            id="profile-status"
+            className={styles.statusInput}
+            value={draft}
+            maxLength={40}
+            disabled={saving}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <div className={styles.statusActions}>
+            <Button variant="secondary" size="sm" onClick={cancelEdit} disabled={saving}>
+              キャンセル
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => void save()} disabled={saving}>
+              {saving ? "保存しています…" : "保存"}
+            </Button>
+          </div>
+          {saveError && (
+            <div role="alert">
+              <Notice tone="warning" icon="error">
+                {saveError}
+              </Notice>
+            </div>
+          )}
+        </div>
+      )}
+
       <p className={styles.bio}>{me.bio}</p>
 
       <StatTriple
@@ -147,6 +238,8 @@ function ProfileBody({
           )}
         </div>
       </section>
+
+      <PublicPostsSection did={me.did} />
 
       <Card padding="md">
         <List>

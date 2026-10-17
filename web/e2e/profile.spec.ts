@@ -50,6 +50,11 @@ const EVIDENCE_PATH = path.resolve(
   "../.omo/evidence/chain-fe-be-gap-closure/task-7-chain-fe-be-gap-closure.png",
 );
 
+const STATUS_EVIDENCE_PATH = path.resolve(
+  process.cwd(),
+  "../.omo/evidence/chain-fe-be-gap-closure/task-13-chain-fe-be-gap-closure.png",
+);
+
 function base64url(value: string): string {
   return Buffer.from(value, "utf8").toString("base64url");
 }
@@ -172,5 +177,113 @@ test.describe("profile auth", () => {
     await expect(
       page.getByRole("button", { name: "Blueskyで続ける" }),
     ).toBeVisible();
+  });
+});
+
+/** /me, PUT /me/status, GET /feed をモックする。statuses には送った body を積む。 */
+async function mockProfileApi(
+  page: Page,
+  opts: { statusStatus?: number; statusMessage?: string; feed?: unknown } = {},
+): Promise<{ statuses: { status: string }[] }> {
+  const statuses: { status: string }[] = [];
+  await mockApi(page, async (route, request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+
+    if (path === "/api/v1/me" && method === "GET") {
+      await fulfillJson(route, 200, ME);
+      return;
+    }
+    if (path === "/api/v1/me/status" && method === "PUT") {
+      const body = request.postDataJSON() as { status: string };
+      statuses.push(body);
+      if (opts.statusStatus && opts.statusStatus >= 400) {
+        await fulfillJson(route, opts.statusStatus, {
+          error: {
+            code: "moderation_block",
+            message: opts.statusMessage ?? "blocked",
+          },
+        });
+        return;
+      }
+      await fulfillJson(route, 200, { status: body.status });
+      return;
+    }
+    if (path === "/api/v1/feed") {
+      await fulfillJson(route, 200, opts.feed ?? { items: [] });
+      return;
+    }
+    await fulfillJson(route, 404, {
+      error: { code: "not_found", message: "not found" },
+    });
+  });
+  return { statuses };
+}
+
+test.describe("profile status edit", () => {
+  test("saves the status via PUT /me/status and updates the display", async ({
+    page,
+  }, testInfo) => {
+    await useStoredSession(page, makeStoredSession());
+    const { statuses } = await mockProfileApi(page);
+    await page.goto("/profile/");
+
+    await expect(page.getByText(ME.status)).toBeVisible();
+
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    await page.getByLabel("ステータス").fill("旅の途中");
+    await page.getByRole("button", { name: "保存" }).click();
+
+    await expect(page.getByText("旅の途中")).toBeVisible();
+    await expect(page.getByText(ME.status)).toHaveCount(0);
+    expect(statuses).toEqual([{ status: "旅の途中" }]);
+
+    if (testInfo.project.name === "desktop-chrome") {
+      mkdirSync(path.dirname(STATUS_EVIDENCE_PATH), { recursive: true });
+      await page.screenshot({ path: STATUS_EVIDENCE_PATH, fullPage: true });
+    }
+  });
+
+  test("shows the moderation error when PUT /me/status is rejected", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockProfileApi(page, {
+      statusStatus: 422,
+      statusMessage: "投稿内容が不適切です",
+    });
+    await page.goto("/profile/");
+
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    await page.getByLabel("ステータス").fill("不適切な文言");
+    await page.getByRole("button", { name: "保存" }).click();
+
+    await expect(page.getByText("投稿内容が不適切です")).toBeVisible();
+    // 失敗時は編集を開いたままにして、入力を残す。
+    await expect(page.getByLabel("ステータス")).toBeVisible();
+  });
+
+  test("lists the user's public posts from GET /feed?source=user:{did}", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockProfileApi(page, {
+      feed: {
+        items: [
+          {
+            kind: "public",
+            uri: "at://did:plc:testuser/jp.i32.chain.feed.post/1",
+            author: { did: "did:plc:testuser", handle: "test.bsky.social" },
+            text: "今日はいい天気",
+            createdAt: "2026-10-17T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    await page.goto("/profile/");
+
+    const section = page.locator("section", { hasText: "公開投稿" });
+    await expect(section.getByText("今日はいい天気")).toBeVisible();
   });
 });

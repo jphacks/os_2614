@@ -15,6 +15,7 @@ import type {
   Encounter,
   EncounterMode,
   EncounterRelation,
+  FeedPost,
   Friend,
   Group,
   GroupVisibility,
@@ -36,6 +37,7 @@ import type {
 import type {
   Area as AreaDTO,
   Encounter as EncounterDTO,
+  FeedItem as FeedItemDTO,
   Friend as FriendDTO,
   Group as GroupDTO,
   Instance as InstanceDTO,
@@ -183,6 +185,17 @@ export function toFriend(dto: Maybe<FriendDTO>): Friend {
     ...toUser(dto),
     since: dto?.since ?? "",
     precision: oneOf(dto?.precision, PRECISIONS, "area"),
+  };
+}
+
+/** FeedItem → FeedPost (17 §3.2)。著者不明は空ユーザーに寄せる。 */
+export function toFeedPost(dto: Maybe<FeedItemDTO>): FeedPost {
+  return {
+    uri: dto?.uri ?? "",
+    author: dto?.author ? toUser(dto.author) : emptyUser(),
+    text: dto?.text ?? "",
+    createdAt: dto?.createdAt ?? "",
+    attachments: (dto?.media ?? []).map(toMedia),
   };
 }
 

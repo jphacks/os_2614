@@ -4,3 +4,5 @@ export { PinnedPostCard } from "./PinnedPostCard";
 export type { PinnedPostCardProps } from "./PinnedPostCard";
 export { ReplySheet } from "./ReplySheet";
 export type { ReplySheetProps } from "./ReplySheet";
+export { PublicPostsSection } from "./PublicPostsSection";
+export type { PublicPostsSectionProps } from "./PublicPostsSection";

@@ -105,6 +105,15 @@ export type Reply = {
   likedByMe: boolean;
 };
 
+/** 公開投稿 (service.FeedItem の表示用、17 §3.2)。 */
+export type FeedPost = {
+  uri: string;
+  author: User;
+  text: string;
+  createdAt: Timestamp;
+  attachments: Media[];
+};
+
 /** party の段階 (08 §4.2)。 */
 export type PartyPhase = "tentative" | "confirmed";
 

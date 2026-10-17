@@ -19,7 +19,7 @@ export type { ComposeScreenProps, ComposeSubmitError } from "./ComposeScreen";
 export { FriendsScreen } from "./FriendsScreen";
 export type { FriendsScreenProps } from "./FriendsScreen";
 export { ProfileScreen } from "./ProfileScreen";
-export type { ProfileScreenProps } from "./ProfileScreen";
+export type { ProfileScreenProps, StatusSaveResult } from "./ProfileScreen";
 export { MemoryScreen } from "./MemoryScreen";
 export type { MemoryScreenProps } from "./MemoryScreen";
 export { StatsScreen } from "./StatsScreen";
