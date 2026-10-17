@@ -1,12 +1,4 @@
-import { mkdirSync } from "node:fs";
-import path from "node:path";
-import {
-  expect,
-  test,
-  type Page,
-  type Request,
-  type Route,
-} from "@playwright/test";
+import { expect, test, type Page, type Request, type Route } from "@playwright/test";
 
 const API_BASE = "https://chain.i32.jp";
 const SESSION_KEY = "chain.auth.session.v1";
@@ -55,8 +47,16 @@ const ME = {
   },
 };
 
-/** GET /instances/{spaceId}/posts の 1 件 (service.PostItem、10 §4.2)。 */
-function post(uri: string, displayName: string, text: string, createdAt: string) {
+type ReplyRef = { root: string; parent: string };
+
+/** GET /instances/{spaceId}/posts の 1 件 (service.FeedItem、10 §4.2)。 */
+function post(
+  uri: string,
+  displayName: string,
+  text: string,
+  createdAt: string,
+  reply?: ReplyRef,
+) {
   return {
     kind: "post",
     uri,
@@ -66,17 +66,23 @@ function post(uri: string, displayName: string, text: string, createdAt: string)
     format: "plain",
     media: [],
     createdAt,
+    ...(reply ? { reply } : {}),
   };
 }
 
 const ORIGINAL = post("p1", "けんた", "元の投稿です。", "2026-10-17T02:30:00.000Z");
-const OTHER = post("p2", "みさき", "一覧で返ってくる投稿です。", "2026-10-17T01:12:00.000Z");
-
-const PAGE1 = { items: [ORIGINAL, OTHER] };
-
-const EVIDENCE_PATH = path.resolve(
-  process.cwd(),
-  "../.omo/evidence/chain-fe-be-gap-closure/task-17-chain-fe-be-gap-closure.png",
+const OTHER = post("p2", "みさき", "別スレッドの投稿です。", "2026-10-17T01:12:00.000Z");
+const SENT = post("p3", "じぶん", "ありがとう！", "2026-10-17T03:00:00.000Z", {
+  root: "p1",
+  parent: "p1",
+});
+/** 返信への返信を開くケース。root はスレッド先頭 (p1)、parent はこの投稿。 */
+const NESTED_OPENED = post(
+  "p2b",
+  "みさき",
+  "返信への返信を開きます。",
+  "2026-10-17T02:40:00.000Z",
+  { root: "p1", parent: "p1" },
 );
 
 function base64url(value: string): string {
@@ -84,15 +90,11 @@ function base64url(value: string): string {
 }
 
 /** JWT 風の文字列。session.ts は payload の iat / exp だけを読む。 */
-function fakeJwt(claims: Record<string, unknown>): string {
-  const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const payload = base64url(JSON.stringify(claims));
-  return `${header}.${payload}.signature`;
-}
-
 function jwtFor(did: string): string {
   const now = Math.floor(Date.now() / 1000);
-  return fakeJwt({ sub: did, iat: now, exp: now + 900 });
+  const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = base64url(JSON.stringify({ sub: did, iat: now, exp: now + 900 }));
+  return `${header}.${payload}.signature`;
 }
 
 function makeStoredSession(): StoredSession {
@@ -134,59 +136,146 @@ async function mockApi(page: Page, mock: ApiMock): Promise<void> {
   });
 }
 
-test.describe("group reply sheet", () => {
-  test("shows 準備中 instead of a fake reply submit and renders the API list", async ({
-    page,
-  }, testInfo) => {
-    await useStoredSession(page, makeStoredSession());
+function apiPath(url: string): string {
+  return decodeURIComponent(new URL(url).pathname);
+}
 
-    const postedToPosts: string[] = [];
-    page.on("request", (request) => {
-      if (request.method() === "POST" && request.url().includes("/api/v1/posts")) {
-        postedToPosts.push(request.url());
-      }
-    });
+type ReplyCapture = { path: string; body: unknown };
 
-    await mockApi(page, async (route, request) => {
-      const url = new URL(request.url());
-      if (url.pathname === "/api/v1/groups/g1") {
-        await fulfillJson(route, 200, GROUP);
-        return;
-      }
-      if (url.pathname === "/api/v1/instances/g1/posts") {
-        await fulfillJson(route, 200, PAGE1);
-        return;
-      }
-      if (url.pathname === "/api/v1/me") {
-        await fulfillJson(route, 200, ME);
-        return;
-      }
-      await fulfillJson(route, 404, {
-        error: { code: "not_found", message: "not found" },
+/**
+ * group / 返信画面の共通 mock。POST /posts の body を captured に集め、
+ * 送信後の一覧 (afterPost) を返せるようにする。
+ */
+async function mockReplies(
+  page: Page,
+  opts: {
+    items: unknown[];
+    afterPost?: unknown[];
+    replyStatus?: number;
+    replyBody?: unknown;
+    captured: ReplyCapture[];
+  },
+): Promise<void> {
+  let posted = false;
+  await mockApi(page, async (route, request) => {
+    const method = request.method();
+    const pathname = apiPath(request.url());
+    if (method === "GET" && pathname === "/api/v1/groups/g1") {
+      await fulfillJson(route, 200, GROUP);
+      return;
+    }
+    if (method === "GET" && pathname === "/api/v1/me") {
+      await fulfillJson(route, 200, ME);
+      return;
+    }
+    if (method === "GET" && pathname === "/api/v1/instances/g1/posts") {
+      await fulfillJson(route, 200, {
+        items: posted && opts.afterPost ? opts.afterPost : opts.items,
       });
+      return;
+    }
+    if (method === "POST" && pathname === "/api/v1/posts") {
+      opts.captured.push({ path: pathname, body: request.postDataJSON() });
+      if (opts.replyStatus !== undefined && opts.replyStatus >= 300) {
+        await fulfillJson(route, opts.replyStatus, opts.replyBody);
+        return;
+      }
+      posted = true;
+      await fulfillJson(route, 201, { items: [{ uri: "p3", spaceId: "g1" }] });
+      return;
+    }
+    await fulfillJson(route, 404, {
+      error: { code: "not_found", message: "not found" },
+    });
+  });
+}
+
+test.describe("group reply thread", () => {
+  test("sends a reply with reply.root/parent and shows it in the thread", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+    const captured: ReplyCapture[] = [];
+    await mockReplies(page, {
+      items: [ORIGINAL, OTHER],
+      afterPost: [SENT, ORIGINAL, OTHER],
+      captured,
     });
 
     await page.goto("/group/replies/?id=g1&post=p1");
 
     const dialog = page.getByRole("dialog", { name: "返信" });
     await expect(dialog).toBeVisible();
-
-    // 元の投稿と、API が返した一覧をそのまま描画する (スレッド構造は作らない)。
     await expect(dialog.getByText(ORIGINAL.text)).toBeVisible();
-    await expect(dialog.getByText(OTHER.text)).toBeVisible();
+    // reply を持たない別スレッドの投稿は返信として混ざらない。
+    await expect(dialog.getByText(OTHER.text)).toHaveCount(0);
 
-    // 送信は準備中: 通知が見え、送信ボタンと入力は無効。
-    await expect(dialog.getByText("返信は準備中です")).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "返信を送信" })).toBeDisabled();
-    await expect(dialog.getByLabel("返信を書く")).toBeDisabled();
+    const input = dialog.getByLabel("返信を書く");
+    await input.fill("ありがとう！");
+    await dialog.getByRole("button", { name: "返信を送信" }).click();
 
-    // 無言の no-op ではない: 操作しても POST /posts は飛ばない。
-    expect(postedToPosts).toHaveLength(0);
+    await expect(dialog.getByText(SENT.text)).toBeVisible();
+    await expect(input).toHaveValue("");
 
-    if (testInfo.project.name === "desktop-chrome") {
-      mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
-      await page.screenshot({ path: EVIDENCE_PATH });
-    }
+    expect(captured).toHaveLength(1);
+    expect(captured[0].path).toBe("/api/v1/posts");
+    expect(captured[0].body).toEqual({
+      spaceIds: ["g1"],
+      text: "ありがとう！",
+      format: "plain",
+      reply: { root: "p1", parent: "p1" },
+    });
+  });
+
+  test("replies to a reply with the thread root as reply.root", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const captured: ReplyCapture[] = [];
+    await mockReplies(page, { items: [ORIGINAL, NESTED_OPENED], captured });
+
+    await page.goto("/group/replies/?id=g1&post=p2b");
+
+    const dialog = page.getByRole("dialog", { name: "返信" });
+    await expect(dialog.getByText(NESTED_OPENED.text)).toBeVisible();
+    // 同じ root を持つスレッド先頭の投稿は返信一覧に並ぶ。
+    await expect(dialog.getByText(ORIGINAL.text)).toBeVisible();
+
+    await dialog.getByLabel("返信を書く").fill("了解です");
+    await dialog.getByRole("button", { name: "返信を送信" }).click();
+
+    await expect.poll(() => captured.length).toBe(1);
+    expect(captured[0].body).toEqual({
+      spaceIds: ["g1"],
+      text: "了解です",
+      format: "plain",
+      reply: { root: "p1", parent: "p2b" },
+    });
+  });
+
+  test("shows an inline error and keeps the text when the reply is rejected", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+    const captured: ReplyCapture[] = [];
+    await mockReplies(page, {
+      items: [ORIGINAL],
+      captured,
+      replyStatus: 410,
+      replyBody: { error: { code: "gone", message: "期限切れか、終了しています" } },
+    });
+
+    await page.goto("/group/replies/?id=g1&post=p1");
+
+    const dialog = page.getByRole("dialog", { name: "返信" });
+    const input = dialog.getByLabel("返信を書く");
+    await input.fill("送れない返信");
+    await dialog.getByRole("button", { name: "返信を送信" }).click();
+
+    await expect(
+      dialog.getByText("この投稿は終了しているため返信できません。"),
+    ).toBeVisible();
+    // 失敗した本文は消さない (そのまま再送できる)。
+    await expect(input).toHaveValue("送れない返信");
+    expect(captured).toHaveLength(1);
   });
 
   test("shows an inline error when the posts API fails", async ({ page }) => {

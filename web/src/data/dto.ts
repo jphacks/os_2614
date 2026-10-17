@@ -144,6 +144,8 @@ export type InstancePost = {
   author?: User;
   text?: string;
   format?: PostFormat;
+  /** 返信の参照（service.ReplyRef、10 §3）。返信でなければ無い。 */
+  reply?: FeedReplyRef;
   media?: Media[];
   moderation?: ModerationInfo;
   hidden?: string;
@@ -195,6 +197,25 @@ export type MediaUpload = {
 export type Friend = User & {
   since: RFC3339;
   precision: LocationPrecision;
+};
+
+/**
+ * GET /friends/locations の 1 件（controller.friendLocationResponse、07 §4.2）。
+ * precision ごとに含まれる項目が変わる。stale のときは位置を返さない。
+ */
+export type FriendLocation = {
+  did: DID;
+  precision: LocationPrecision;
+  stale?: boolean;
+  updatedAt?: RFC3339;
+  lat?: number;
+  lon?: number;
+  accuracyM?: number;
+  area?: { label: string } | null;
+  outside?: boolean;
+  direction?: string;
+  distanceBucket?: string;
+  viewerStale?: boolean;
 };
 
 /** フレンド申請の 1 件（service.FriendRequestItem、07 §2.2）。 */
