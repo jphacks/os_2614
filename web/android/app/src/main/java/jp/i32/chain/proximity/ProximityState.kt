@@ -10,6 +10,26 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 /**
+ * statusJson() の lastError に出してよい語彙。
+ * spec §2 の 5 語 (permission_revoked / bluetooth_off / advertise_failed / scan_failed / tokens_exhausted)
+ * に加えて、FE 契約 `web/src/device/proximity/definitions.ts` の `ProximityError` が持つ
+ * `bluetooth_unsupported` を許容する (spec §2 の一覧には無いが凍結済みの契約なので残す)。
+ * ここに無い文字列は [ProximityState.lastError] の setter で無視され、statusJson() には出ない。
+ * `session_expired` は Phase B の語彙なので意図的に含めない。
+ */
+internal val PROXIMITY_ERRORS: Set<String> = setOf(
+    "permission_revoked",
+    "bluetooth_off",
+    "advertise_failed",
+    "scan_failed",
+    "tokens_exhausted",
+    "bluetooth_unsupported",
+)
+
+/** [value] を lastError として受理してよいか。null は常に可。 */
+internal fun isValidProximityError(value: String?): Boolean = value == null || value in PROXIMITY_ERRORS
+
+/**
  * プラグイン (WebView 側) と ProximityService (FGS 側) が共有する状態。
  * どちらのライフサイクルにも属さないので process 単位の object に置く。
  * token と時刻補正は SharedPreferences に残し、START_STICKY での再生成後も発信を続けられるようにする。
@@ -37,7 +57,12 @@ object ProximityState {
     @Volatile var advertising = false
     @Volatile var scanning = false
     @Volatile var currentWindowStartSec: Long? = null
+
+    /** 語彙外の値は無視する。lastError を statusJson() に出す唯一の経路をここに集約する。 */
     @Volatile var lastError: String? = null
+        set(value) {
+            field = if (isValidProximityError(value)) value else null
+        }
 
     private val sightings = SightingAggregator()
     private val clockOffsetEstimator = ClockOffsetEstimator()

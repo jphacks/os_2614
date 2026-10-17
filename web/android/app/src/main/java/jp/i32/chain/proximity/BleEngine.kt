@@ -53,6 +53,9 @@ class BleEngine(
     private var screenOn = context.getSystemService(PowerManager::class.java)?.isInteractive ?: true
     private var started = false
 
+    /** 権限取消 (SecurityException) 後は再入しない。start() でだけ解除する。 */
+    private var revoked = false
+
     private val rotate = Runnable { restartAdvertising() }
     private val restartScan = Runnable { restartScanning() }
 
@@ -77,6 +80,7 @@ class BleEngine(
     fun start() = handler.post {
         if (started) return@post
         started = true
+        revoked = false
         ContextCompat.registerReceiver(
             context, bluetoothReceiver,
             IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED,
@@ -127,12 +131,13 @@ class BleEngine(
     // ---- advertise ----
 
     private fun restartAdvertising() {
-        if (!started) return
+        if (!started || revoked) return
         stopAdvertising()
         startAdvertising()
     }
 
     private fun startAdvertising() {
+        if (revoked) return
         if (adapter?.isEnabled != true) return
         val advertiser = adapter.bluetoothLeAdvertiser ?: return setError("advertise_failed")
         val now = ProximityState.now()
@@ -205,12 +210,13 @@ class BleEngine(
     // ---- scan ----
 
     private fun restartScanning() {
-        if (!started) return
+        if (!started || revoked) return
         stopScanning()
         startScanning()
     }
 
     private fun startScanning() {
+        if (revoked) return
         if (adapter?.isEnabled != true) return
         val scanner = adapter.bluetoothLeScanner ?: return setError("scan_failed")
 
@@ -297,6 +303,9 @@ class BleEngine(
 
     private fun permissionRevoked(e: SecurityException) {
         Log.w(TAG, "permission revoked", e)
+        revoked = true
+        ProximityState.advertising = false
+        ProximityState.scanning = false
         setError("permission_revoked")
         onFatal()
     }
