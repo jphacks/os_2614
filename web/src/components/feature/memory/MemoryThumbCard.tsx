@@ -12,12 +12,12 @@ export function MemoryThumbCard({ memory }: MemoryThumbCardProps) {
     <div className={styles.card}>
       <ImagePlaceholder
         ratio="1/1"
-        src={memory.photos[0]?.url || undefined}
+        src={memory.cover?.thumbUrl || undefined}
         className={styles.thumb}
       />
-      <span className={styles.title}>{memory.title}</span>
+      <span className={styles.title}>{memory.name}</span>
       <span className={styles.meta}>
-        {durationLabel(memory.startedAt, memory.endedAt)}・写真 {memory.photoCount}枚
+        {durationLabel(memory.from, memory.until)}・写真 {memory.mediaCount}枚
       </span>
     </div>
   );
