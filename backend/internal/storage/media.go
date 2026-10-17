@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -52,4 +53,14 @@ func (s *Store) Size(id string, createdAt time.Time, v Variant) (int, error) {
 		return 0, err
 	}
 	return int(fi.Size()), nil
+}
+
+// Delete は本体とサムネイルを消す。既になければ何もしない。
+func (s *Store) Delete(id string, createdAt time.Time) error {
+	for _, v := range []Variant{VariantFull, VariantThumb} {
+		if err := os.Remove(s.Path(id, createdAt, v)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
