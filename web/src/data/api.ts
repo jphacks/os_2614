@@ -40,6 +40,11 @@ export function postForm<T>(path: string, form: FormData, opts: RequestOptions =
   return api<T>(path, { method: "POST", form, query: opts.query, signal: opts.signal });
 }
 
+/** PUT multipart/form-data (PUT /me/avatar、PUT /me/banner、13 §1.3)。 */
+export function putForm<T>(path: string, form: FormData, opts: RequestOptions = {}): Promise<T> {
+  return api<T>(path, { method: "PUT", form, query: opts.query, signal: opts.signal });
+}
+
 /** PATCH。 */
 export function patchJson<T>(path: string, body: unknown, opts: RequestOptions = {}): Promise<T> {
   return api<T>(path, { method: "PATCH", body, query: opts.query, signal: opts.signal });

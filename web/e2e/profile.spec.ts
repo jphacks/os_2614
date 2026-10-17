@@ -287,3 +287,190 @@ test.describe("profile status edit", () => {
     await expect(section.getByText("今日はいい天気")).toBeVisible();
   });
 });
+
+/** アイコン・バナーのある meResponse。画像の差し替え / 削除の表示確認に使う。 */
+const ME_WITH_IMAGES = {
+  ...ME,
+  avatarUrl: "https://cdn.example/avatar.jpg",
+  bannerUrl: "https://cdn.example/banner.jpg",
+};
+
+/** 1x1 の PNG。multipart の file として送れる最小の有効な画像。 */
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+type EditMockOptions = {
+  me?: unknown;
+  profileStatus?: number;
+  profileMessage?: string;
+  avatarStatus?: number;
+  avatarMessage?: string;
+};
+
+/**
+ * /me, PATCH /me/profile, PUT /me/avatar, DELETE /me/banner, GET /feed をモックする。
+ * 送られた PATCH body と各リクエストを記録して返す。
+ */
+async function mockEditApi(
+  page: Page,
+  opts: EditMockOptions = {},
+): Promise<{
+  patches: { displayName?: string; description?: string }[];
+  avatarContentType: string | null;
+  deletedBanner: boolean;
+}> {
+  const patches: { displayName?: string; description?: string }[] = [];
+  const state = { avatarContentType: null as string | null, deletedBanner: false };
+  await mockApi(page, async (route, request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+
+    if (path === "/api/v1/me" && method === "GET") {
+      await fulfillJson(route, 200, opts.me ?? ME);
+      return;
+    }
+    if (path === "/api/v1/me/profile" && method === "PATCH") {
+      const body = request.postDataJSON() as { displayName: string; description: string };
+      patches.push(body);
+      if (opts.profileStatus && opts.profileStatus >= 400) {
+        await fulfillJson(route, opts.profileStatus, {
+          error: {
+            code: "invalid_request",
+            message: opts.profileMessage ?? "不正なリクエストです",
+          },
+        });
+        return;
+      }
+      await fulfillJson(route, 200, {
+        ...ME,
+        displayName: body.displayName,
+        description: body.description,
+      });
+      return;
+    }
+    if (path === "/api/v1/me/avatar" && method === "PUT") {
+      state.avatarContentType = request.headers()["content-type"] ?? null;
+      if (opts.avatarStatus && opts.avatarStatus >= 400) {
+        await fulfillJson(route, opts.avatarStatus, {
+          error: { code: "internal", message: opts.avatarMessage ?? "boom" },
+        });
+        return;
+      }
+      await fulfillJson(route, 200, ME_WITH_IMAGES);
+      return;
+    }
+    if (path === "/api/v1/me/banner" && method === "DELETE") {
+      state.deletedBanner = true;
+      await fulfillJson(route, 200, ME);
+      return;
+    }
+    if (path === "/api/v1/feed") {
+      await fulfillJson(route, 200, { items: [] });
+      return;
+    }
+    await fulfillJson(route, 404, {
+      error: { code: "not_found", message: "not found" },
+    });
+  });
+  return {
+    get patches() {
+      return patches;
+    },
+    get avatarContentType() {
+      return state.avatarContentType;
+    },
+    get deletedBanner() {
+      return state.deletedBanner;
+    },
+  };
+}
+
+test.describe("profile edit", () => {
+  test("saves the display name and description via PATCH /me/profile", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+    const api = await mockEditApi(page);
+    await page.goto("/profile/");
+
+    await page.getByRole("button", { name: "プロフィールを編集" }).click();
+    await page.getByLabel("名前").fill("あたらしい名前");
+    await page.getByLabel("自己紹介").fill("よろしくおねがいします");
+    await page.getByRole("button", { name: "保存" }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "あたらしい名前" }),
+    ).toBeVisible();
+    await expect(page.getByText("よろしくおねがいします")).toBeVisible();
+    await expect(page.getByText("プロフィールを更新しました")).toBeVisible();
+    expect(api.patches).toEqual([
+      { displayName: "あたらしい名前", description: "よろしくおねがいします" },
+    ]);
+  });
+
+  test("uploads the avatar as multipart via PUT /me/avatar", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const api = await mockEditApi(page);
+    await page.goto("/profile/");
+
+    await page.setInputFiles('[data-testid="profile-avatar-input"]', {
+      name: "avatar.png",
+      mimeType: "image/png",
+      buffer: PNG_1X1,
+    });
+
+    await expect(page.getByText("アイコンを更新しました")).toBeVisible();
+    expect(api.avatarContentType).toContain("multipart/form-data");
+  });
+
+  test("removes the banner via DELETE /me/banner", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const api = await mockEditApi(page, { me: ME_WITH_IMAGES });
+    await page.goto("/profile/");
+
+    await page.getByRole("button", { name: "プロフィールを編集" }).click();
+    await page.getByRole("button", { name: "バナーを削除" }).click();
+
+    await expect(page.getByText("バナーを削除しました")).toBeVisible();
+    expect(api.deletedBanner).toBe(true);
+  });
+
+  test("shows the error and keeps the editor open when PATCH /me/profile is 400", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockEditApi(page, {
+      profileStatus: 400,
+      profileMessage: "64 文字までです",
+    });
+    await page.goto("/profile/");
+
+    await page.getByRole("button", { name: "プロフィールを編集" }).click();
+    await page.getByLabel("名前").fill("x");
+    await page.getByRole("button", { name: "保存" }).click();
+
+    await expect(
+      page.getByRole("alert").filter({ hasText: "64 文字までです" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("名前")).toBeVisible();
+  });
+
+  test("shows an error when PUT /me/avatar fails with 500", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockEditApi(page, { avatarStatus: 500, avatarMessage: "保存できません" });
+    await page.goto("/profile/");
+
+    await page.setInputFiles('[data-testid="profile-avatar-input"]', {
+      name: "avatar.png",
+      mimeType: "image/png",
+      buffer: PNG_1X1,
+    });
+
+    await expect(
+      page.getByRole("alert").filter({ hasText: "保存できません" }),
+    ).toBeVisible();
+  });
+});
