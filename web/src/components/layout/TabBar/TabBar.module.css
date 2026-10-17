@@ -1,0 +1,35 @@
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: stretch;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-divider);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: var(--tab-bar-height);
+  color: var(--color-text-muted);
+}
+
+.selected {
+  color: var(--color-text);
+}
+
+.label {
+  font: var(--text-micro);
+}
+
+.selected .label {
+  font-weight: 700;
+}
