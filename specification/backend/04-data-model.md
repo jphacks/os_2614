@@ -43,6 +43,7 @@ CREATE TABLE user_settings (
   party_auto           INTEGER NOT NULL DEFAULT 1,        -- 08 §2
   location_paused      INTEGER NOT NULL DEFAULT 0,        -- 07 §4
   warn_display         TEXT NOT NULL DEFAULT 'blur' CHECK (warn_display IN ('show','blur','hide')),
+  natural_groups       INTEGER NOT NULL DEFAULT 1,        -- 09 §8。0 なら自動グループの照合に使わない
   notify_json          TEXT NOT NULL DEFAULT '{}',        -- 12 §3。種別ごとの on/off
   content_scan_consent_version INTEGER,                    -- 02 §8。NULL なら未同意
   content_scan_consent_at      INTEGER,
@@ -305,6 +306,9 @@ CREATE TABLE public_posts (
   cid         TEXT NOT NULL,
   author_did  TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,
   text        TEXT NOT NULL,
+  langs       TEXT,                           -- JSON 配列
+  bsky_uri    TEXT,                           -- 17 §2.3。Bluesky にも投稿したときの app.bsky.feed.post
+  bsky_cid    TEXT,
   created_at  INTEGER NOT NULL,
   indexed_at  INTEGER NOT NULL,
   deleted_at  INTEGER,
@@ -312,6 +316,22 @@ CREATE TABLE public_posts (
   mod_state   TEXT NOT NULL DEFAULT 'pending'
 );
 CREATE INDEX public_posts_author ON public_posts(author_did, created_at);
+
+CREATE TABLE schedule_entries (               -- 09 §8.2。今日と明日の分だけを持つ
+  id           TEXT PRIMARY KEY,
+  did          TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,
+  date         TEXT NOT NULL,                  -- Asia/Tokyo の YYYY-MM-DD
+  source       TEXT NOT NULL CHECK (source IN ('calendar','manual')),  -- 09 §8.2。同じ source だけを置き換える
+  start_min    INTEGER NOT NULL,               -- 0:00 からの分
+  end_min      INTEGER NOT NULL,
+  title        TEXT NOT NULL,                  -- 平文（README L8）
+  embedding    BLOB,                           -- float32 リトルエンディアン。未計算なら NULL
+  embed_model  TEXT,
+  created_at   INTEGER NOT NULL,
+  CHECK (start_min < end_min)
+);
+CREATE INDEX schedule_entries_did_date ON schedule_entries(did, date, source);
+CREATE INDEX schedule_entries_date ON schedule_entries(date, start_min);
 
 CREATE TABLE jetstream_cursor (
   id         INTEGER PRIMARY KEY CHECK (id = 1),
@@ -374,8 +394,11 @@ CREATE TABLE audit_log (
 | `pe:{a}:{b}` | hash | 30 分 | フレンド近接の連続性 `since`, `last` | 08 §3 |
 | `pe:active` | zset | なし（score で掃除） | `{a}|{b}` → 最終観測時刻 | 08 §3 |
 | `party:of:{did}` | string | なし | 所属中の party の space ID | 08 §4 |
+| `pp:{space}` | hash | 8 日（party 終了時に削除） | メンバーごとの最終在席時刻。不在による離脱の判定に使う | 08 §4.2 |
+| `pleft:{space}` | set | 8 日（party 終了時に削除） | 自分から退出したメンバー。その party が終わるまで自動で再合流させない | 08 §4.2 |
 | `acc:{space}:{did}:{mode}` | string | 最大 10 分 | アクセス判定結果（`1` / `0`） | 10 §5 |
-| `gn:{did}:{space}` | string | 24 時間 | グループ入場通知の送信済み印 | 09 §6 |
+| `gn:{did}:{space}` | string | 24 時間 | グループ入場通知の送信済み印 | 09 §6.1 |
+| `ng:cand:{geohash7}:{slot}` | string（JSON） | 30 分 | 自動グループの候補と、続けて見つかった回数 | 09 §8.4 |
 | `rl:{bucket}:{did}:{window}` | string | 窓長 | レート制限カウンタ | 02 §5 |
 | `idem:{did}:{key}` | string | 24 時間 | 冪等キーと最初のレスポンス | 02 §1 |
 | `modq` | list | なし | moderation 再判定待ち | 11 §3 |
@@ -394,6 +417,7 @@ CREATE TABLE audit_log (
 | 未添付の `media` | 作成から 24 時間 | ファイルと行を削除 |
 | 論理削除した `records` / `media` | 30 日 | 本文・ファイルを物理削除 |
 | `notifications` | 90 日 | 物理削除 |
+| `schedule_entries` | `date` が昨日以前になったら | 物理削除 |
 | `group_invites` | 期限切れで `expired` に更新し、30 日後に削除 | |
 
 ## 5. 作り直しと seed

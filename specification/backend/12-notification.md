@@ -20,7 +20,9 @@
 | `party.confirmed` | 本 party になった | on | 「Bob さんたちと party が始まりました」 | P1 |
 | `group.nearby` | open グループのエリアに入った | on | 「近くに『情報科学演習 A』があります」 | P1 |
 | `group.invited` | closed グループの招待が承認数に達した | on | 「『〇〇』に招待されました」 | P1 |
-| `group.suggested` | 自然発生グループの候補 | on | 「近くに同じ予定の人が 4 人います」 | P2 |
+| `group.invite_approval` | closed グループで、他のメンバーが招待を作った（承認のお願い） | on | 「Bob さんが『〇〇』に Carol さんを招待しようとしています」 | P1 |
+| `group.auto_joined` | 自動グループに参加させた（09 §8.5） | on | 「『線形代数 II』のグループに参加しました」 | P2 |
+| `group.vote_passed` | グループの投票が可決した（09 §8.6） | on | 「『〇〇』は招待制になりました」 | P2 |
 | `encounter.daily` | 毎日 21:00 JST | on | 「今日のすれ違い: 12 人」 | P1 |
 | `encounter.weekly` | 毎週月曜 21:00 JST（前週分） | on | 「先週のすれ違い: 48 人」 | P1 |
 | `encounter.monthly` | 毎月 1 日 21:00 JST（前月分） | on | 「10 月のすれ違い: 160 人」 | P1 |

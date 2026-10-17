@@ -134,4 +134,5 @@ ATProto OAuth の client_id とコールバックには、外部から HTTPS で
 | 前提 | `cf` CLI でログイン済みであること。外向きの 7844 番ポート（TCP / UDP）が通るネットワークであること |
 
 - `CHAIN_PUBLIC_URL=https://chain.i32.jp` とする
+- Tunnel 経由の接続元は、backend からは手元の cloudflared（ループバック）に見える。ループバックから来たリクエストに限って `CF-Connecting-IP` を信頼し、レート制限（02 §5）などで本来の接続元の IP を使う（`main.go` の `ProxyHeader` / `TrustProxy`）
 - 同じ Tunnel を複数の人が同時に張ると、リクエストが各人の手元に振り分けられてしまう。複数人で開発するときは、人ごとに Tunnel とホスト名（例: `chain-{name}.i32.jp`）を足す

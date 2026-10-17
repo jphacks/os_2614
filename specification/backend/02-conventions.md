@@ -31,6 +31,7 @@
 | 400 | `invalid_request` | 形式・値域の検証エラー。`details.fields` に項目別の理由を入れる |
 | 401 | `unauthenticated` | トークンなし・期限切れ |
 | 401 | `atproto_session_expired` | PDS 側のセッションが失効した。再ログインが必要 |
+| 403 | `atproto_reauth_required` | 必要な scope がない（scope を足した後の既存ユーザー）。再ログインが必要（17 §2.4） |
 | 403 | `forbidden` | 権限なし |
 | 403 | `not_in_geofence` | 位置条件を満たさない |
 | 403 | `location_stale` | 判定に使える新しい位置がない（05 §4） |
@@ -80,12 +81,15 @@ Redis の固定窓カウンタ（`rl:{bucket}:{did}:{window}`）で、DID 単位
 | `CHAIN_SECRET_KEY` | ✓ | 32 バイトの base64 | DB 内の秘密情報を暗号化する AES-256-GCM 鍵 |
 | `CHAIN_JWT_KEY` | ✓ | 32 バイト以上の base64 | アクセス JWT（HS256）と署名付きメディア URL の鍵 |
 | `CHAIN_OAUTH_PRIVATE_KEY` | prod で ✓ | P-256 秘密鍵の multibase（`go run ./cmd/keygen`） | OAuth confidential client の `private_key_jwt` 用。dev で未設定なら loopback クライアントになる（03 §2.1.1） |
-| `CHAIN_OAUTH_SCOPES` | | `atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile` | 要求する scope（空白区切り）。granular scope が通らない場合は `atproto transition:generic` にする |
+| `CHAIN_OAUTH_SCOPES` | | `atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile repo:app.bsky.feed.post?action=create&action=delete` | 要求する scope（空白区切り）。granular scope が通らない場合は `atproto transition:generic` にする |
 | `CHAIN_JETSTREAM_URL` | | `wss://jetstream2.us-east.bsky.network/subscribe` | |
 | `CHAIN_NANOGPT_URL` | | `https://api.nano-gpt.com/api/v1/decisions` | NanoGPT Decisions API（11 §5） |
 | `CHAIN_NANOGPT_KEY` | | | 未設定なら moderation は常に `ok`、Pin は常に `false` を返す（開発用） |
 | `CHAIN_JEV_MODEL` | | `typesafe/jev-1.13` | 判定モデル。再現性のため `jev-latest` ではなく版を固定する |
 | `CHAIN_FCM_CREDENTIALS` | | サービスアカウント JSON のパス | 未設定なら通知はログ出力のみ |
+| `CHAIN_EMBED_URL` | | `http://127.0.0.1:11434/v1/embeddings` | 自動グループの embedding（09 §8.3）。OpenAI 互換の推論サーバ。未設定なら自動グループの照合をしない |
+| `CHAIN_EMBED_MODEL` | | `embeddinggemma` | embedding のモデル |
+| `CHAIN_EMBED_DIM` | | `256` | 使う次元数 |
 | `CHAIN_CORS_ORIGINS` | | `https://localhost,capacitor://localhost,http://localhost:3000` | 許可するオリジン（カンマ区切り） |
 
 近接判定・party などの調整値は、各仕様書の「パラメータ」表にある既定値を `config` パッケージの定数として持つ。環境変数では上書きしない（実機調整のときにだけコードで変える）。

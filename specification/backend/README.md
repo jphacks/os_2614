@@ -23,6 +23,7 @@ Android クライアント側の構成（Capacitor + Kotlin native BLE）は `do
 | 14 | [14-api.md](14-api.md) | REST / WebSocket エンドポイント一覧 |
 | 15 | [15-testing.md](15-testing.md) | テスト方針 |
 | 16 | [16-implementation-order.md](16-implementation-order.md) | 実装の順番（S0〜S9 と P1） |
+| 17 | [17-feed.md](17-feed.md) | 公開投稿（Bluesky への同時投稿）と、共通のフィード |
 | — | [../android/README.md](../android/README.md) | Android native プラグインと backend の取り決め |
 
 ## 確定した方針
@@ -42,6 +43,9 @@ Android クライアント側の構成（Capacitor + Kotlin native BLE）は `do
 | 電気通信事業法 | グループ / Party 内の投稿は**届出対象として扱い**、公開前に届出る。通信の秘密を前提に設計する（02 §8） | 特定の相手との間の通信の媒介に当たるため |
 | DM | MVP では実装しない。届出後に再検討できる | 届出をしても、DM には通報・moderation の設計が別途要る |
 | moderation / Pin の判定 | NanoGPT Decisions API の `typesafe/jev-1.13` | 11 §5 |
+| 自動グループ | 予定のタイトルの embedding（EmbeddingGemma など）の類似度と時間の重なりで判定し、条件を満たした人を自動で参加させる（09 §8） | 単語の一致より意味の近さで比べた方が精度が出るため |
+| 公開投稿 | `jp.i32.chain.feed.post` を PDS に書く。投稿ごとに Bluesky（`app.bsky.feed.post`）にも出せる（17 §2） | |
+| フィード | source を差し替えられる 1 つの API と要素の形（17 §3） | 画面ごとに別の API を作らず、あとから source を足せるようにするため |
 | 対象 OS | Android のみ | `docs/research/report.md` U6 |
 | 地図表示 | 使わない。グループは包含関係のグラフとして返す | draft「地図を用いる優位性はない」 |
 
@@ -103,3 +107,4 @@ Android クライアント側の構成（Capacitor + Kotlin native BLE）は `do
 | L5 | 安全面と年齢 | つきまとい対策。年齢制限（例: 18 歳未満は位置共有なし）、位置共有をすぐ止められる UI |
 | L6 | バックアップと再起動 | SQLite のバックアップ（Litestream など）、Redis の永続化方針、再起動時に Party の状態を SQLite から組み直す処理 |
 | L7 | NanoGPT の費用と上限 | 利用者数 × 1 日の投稿数での費用見積もり。レート制限が非公開なので実測する |
+| L8 | 予定のタイトルの扱い | 自動グループ（09 §8）のために、予定のタイトルと時間を平文で送り、サーバに保存する。スケールしたら、端末側での embedding 計算、保存期間の短縮、暗号化などを検討する。外部の embedding サービスに送る場合は L4 と同じく第三者提供の確認が要る |

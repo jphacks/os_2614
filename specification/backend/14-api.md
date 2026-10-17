@@ -31,7 +31,7 @@
 | PUT | `/api/v1/me/devices` | FCM トークンの登録 | P0 | 12 §2 |
 | DELETE | `/api/v1/me/devices/{fcmToken}` | FCM トークンの削除 | P0 | 12 §2 |
 | GET | `/api/v1/me/stats` | 統計 | P1 | 13 §3 |
-| PUT | `/api/v1/me/schedule-today` | 今日の予定キーワード | P2 | 09 §8 |
+| GET / PUT / DELETE | `/api/v1/me/schedule-today` | 今日・明日の予定（タイトルと時間）。`source` は `calendar`（native が端末のカレンダーから）/ `manual`（手入力） | P2 | 09 §8.2、android §11 |
 | DELETE | `/api/v1/me` | アカウント削除 | P0 | 13 §5 |
 
 ## ユーザー・ブロック
@@ -93,6 +93,8 @@
 | DELETE | `/api/v1/groups/{id}/members/{did}` | 追放（owner） | P1 | 09 §9 |
 | POST | `/api/v1/groups/{id}/invites` | 招待の作成 | P1 | 09 §6 |
 | POST | `/api/v1/groups/{id}/invites/{inviteId}/approve` | 招待の承認 | P1 | 09 §6 |
+| GET | `/api/v1/groups/{id}/invites` | 承認待ちの招待（メンバー） | P1 | 09 §6 |
+| GET | `/api/v1/group-invites` | 自分宛ての招待 | P1 | 09 §6 |
 | POST | `/api/v1/group-invites/{inviteId}/accept`、`/decline` | 招待への応答（対象者） | P1 | 09 §6 |
 | POST | `/api/v1/groups/{id}/votes` | 投票の発議 | P2 | 09 §8 |
 | POST | `/api/v1/groups/{id}/votes/{voteId}/ballot` | 投票 | P2 | 09 §8 |
@@ -113,14 +115,13 @@
 | DELETE | `/api/v1/instances/{spaceId}/pins/{rkey}` | Pin の解除 | P1 | 10 §6 |
 | GET | `/api/v1/ws` | WebSocket | P0 | 10 §7 |
 
-## 公開投稿（PDS）
+## 公開投稿・フィード
 
 | メソッド | パス | 内容 | 優先度 | 仕様 |
 | --- | --- | --- | --- | --- |
-| POST | `/api/v1/feed/posts` | 公開投稿だけを作る（PDS に書く） | P1 | 03 §4 |
-| DELETE | `/api/v1/feed/posts/{rkey}` | 公開投稿の削除（PDS から消す） | P1 | 03 §4 |
-| GET | `/api/v1/feed/home` | ホームフィード: フレンドと、直近 30 日に revealed な encounter がある相手の公開投稿（新しい順） | P1 | 03 §5 |
-| GET | `/api/v1/users/{did}/posts` | 特定ユーザーの公開投稿（13 §1.2 の関係がある相手のみ） | P1 | 03 §5 |
+| POST | `/api/v1/feed/posts` | 公開投稿（`alsoBluesky` で Bluesky にも） | P1 | 17 §2.1 |
+| DELETE | `/api/v1/feed/posts/{rkey}` | 公開投稿の削除（Bluesky 側も） | P1 | 17 §2.2 |
+| GET | `/api/v1/feed?source=` | 共通のフィード。source は `home` / `groups` / `space:{id}` / `user:{did}` | P1 | 17 §3 |
 
 ## memory・通知・その他
 
