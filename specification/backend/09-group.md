@@ -101,7 +101,9 @@ draft「closed は n 名の招待が必要」を、メンバーの承認数で�
 - 必要な承認数は、承認のたびに「その時点のメンバー数」で計算し直す（メンバーが減って条件を満たしたら、その時点で `offered` にする）
 - 通知（12 §3）: 招待が作られたら、招待者以外のメンバーに `group.invite_approval`（承認のお願い）。`offered` になったら対象者に `group.invited`
 - closed グループは、メンバー以外には nearby・グラフ・詳細のどこにも出さない（詳細は 404）
-- open から closed への変更は owner の PATCH（P1）か、投票（§8.6、P2）で行う。closed から open への変更は owner のみ
+- 招待者は、`collecting` の間だけ招待を取り消せる（`DELETE /api/v1/groups/{id}/invites/{inviteId}`）。`offered` 以降は取り消せない
+- 招待者が退出しても招待はそのまま残し、招待者の承認も 1 として数え続ける
+- open と closed の切り替えは、owner の `PATCH /api/v1/groups/{id}`（`visibility`）か、投票（§8.6）で行う。owner のいない自動グループは投票だけ。closed から open に変えたら、`collecting` / `offered` の招待はそのまま有効にする（承諾すれば参加できる）
 
 ### 6.1 エリア入場通知（P1）
 

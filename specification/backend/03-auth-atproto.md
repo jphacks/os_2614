@@ -48,7 +48,7 @@ App                       Backend                         PDS / 認可サーバ
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "redirect_uris": ["{PUBLIC_URL}/auth/callback"],
-  "scope": "atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile repo:app.bsky.feed.post?action=create&action=delete",
+  "scope": "atproto repo:jp.i32.chain.feed.post repo:jp.i32.chain.actor.profile repo:app.bsky.feed.post?action=create&action=delete repo:app.bsky.actor.profile?action=create&action=update blob:image/*",
   "token_endpoint_auth_method": "private_key_jwt",
   "token_endpoint_auth_signing_alg": "ES256",
   "jwks_uri": "{PUBLIC_URL}/oauth/jwks.json",
@@ -58,6 +58,7 @@ App                       Backend                         PDS / 認可サーバ
 
 - scope は書き込むコレクションだけに絞った granular scope にする。認可サーバが granular scope を受け付けない場合に限り、`transition:generic` に落とす（設定値で切替）
 - `repo:app.bsky.feed.post` は、公開投稿を Bluesky にも出すため（17 §2.4）
+- `repo:app.bsky.actor.profile` と `blob:image/*` は、CHAIN からプロフィールとアイコン・バナーを編集するため（13 §1.3）
 - Spaces 統合時には `space:` scope を追加する（§7）。scope を足すと、既存ユーザーには再認可が必要になる（17 §2.4 の `atproto_reauth_required`）
 
 ### 2.1.1 クライアントの方式

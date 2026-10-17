@@ -172,10 +172,31 @@ seed のグループと archived の Party を使って、S6・S7 を待たず�
 | --- | --- | --- | --- |
 | 1 | すれ違いの集計（`/encounters/summary`）とダイジェスト通知、個人の統計 | 06 §6、12 §5、13 §3 | 済 |
 | 2 | 公開投稿（Bluesky への同時投稿を含む）、Jetstream の購読と初回の読み込み、共通のフィード（`/feed?source=`） | 17、03 §4・§5 | 済 |
-| 3 | closed グループの招待、永続化、エリア入場通知、グラフ API | 09 §6、§6.1、§7 | 仕様済み |
+| 3 | closed グループの招待、永続化、エリア入場通知、グラフ API | 09 §6、§6.1、§7 | 済 |
 | 4 | 自動 Pin・手動 Pin、Party の固定と確定の通知、返信、ステータス | 10 §3・§6、08 §4.4、12 §3、13 §1 | 済 |
 | 5 | フレンドの位置共有（exact / approx / area / off）とエリア | 07 §4 | 済 |
 | 6 | Jetstream で取り込んだ投稿の moderation | 11 §2 | 済 |
 | 7 | 自動グループ（予定の送信、embedding、照合、自動参加）と投票 | 09 §8 | 済（実際の embedding サーバでの照合は未確認） |
 
-P2 と、後回しにした L1〜L8（README）は、P1 が終わった時点で計画する。
+| 8 | memory に archive したグループを出す、`DELETE /memories/{spaceId}` | 13 §2 | 済 |
+| 9 | フレンドの位置共有の `direction` と `areasOnly` | 07 §4.1 | 済 |
+| 10 | CHAIN からのプロフィール編集（名前・説明・アイコン・バナー） | 13 §1.3 | 済 |
+
+## todo（P2）
+
+draft の機能のうち、まだ実装していないもの。後回しにした L1〜L8（README）とあわせて、着手するときに仕様を詰める。
+
+| # | 機能 | 内容 | 仕様 |
+| --- | --- | --- | --- |
+| T1 | すれ違った場所の記録 | 双方が許可したときだけ、geohash 6 桁を保存する（列はある） | 06 §7 |
+| T2 | 本 party 同士の統合 | 今は統合しない。手動で統合する操作を足す | 08 §4.3、README Q6 |
+| T3 | BLE でのグループ | GPS の代わりに、ゾーン内の在席メンバーを BLE で観測して判定する | 05 §1 |
+| T4 | instance のリアクション | | 10 §3 |
+| T5 | 公開投稿の画像 | PDS の blob に上げて、`jp.i32.chain.feed.post` と `app.bsky.feed.post` に付ける | 17 §2.1 |
+| T6 | Bluesky で書いた投稿の取り込み | `app.bsky.feed.post` も Jetstream で取り込み、フィードに出すか | 17 §2.5 |
+| T7 | 通報 | `POST /reports`、グループの owner と運営が見る一覧 | 11 §6 |
+| T8 | 画像の moderation | 画像に対応したモデル（zero data retention のもの）で判定する | 11 §5.6 |
+| T9 | 変わった表示 ID | draft「unique id は普遍的すぎる」 | README Q5 |
+| T10 | 活発度、事業向けの集計 | 個人を特定できない粒度に限る | 13 §3、README Q7 |
+| T11 | Spaces との統合 | `pds-spaces-alpha` の自前運用と `SpacesStore` の実装 | 03 §7.2、README Q4 |
+| T12 | CDN に載らない PDS の画像 | `com.atproto.sync.getBlob` を backend で中継する | 13 §1.1 |

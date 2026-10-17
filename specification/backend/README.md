@@ -24,6 +24,7 @@ Android クライアント側の構成（Capacitor + Kotlin native BLE）は `do
 | 15 | [15-testing.md](15-testing.md) | テスト方針 |
 | 16 | [16-implementation-order.md](16-implementation-order.md) | 実装の順番（S0〜S9 と P1） |
 | 17 | [17-feed.md](17-feed.md) | 公開投稿（Bluesky への同時投稿）と、共通のフィード |
+| 18 | [18-code-map.md](18-code-map.md) | 機能とコードのパス、コントローラーとパスの一覧（`make codemap` で生成） |
 | — | [../android/README.md](../android/README.md) | Android native プラグインと backend の取り決め |
 
 ## 確定した方針
