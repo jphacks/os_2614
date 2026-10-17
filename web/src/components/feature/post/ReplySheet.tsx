@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Post, Reply, User } from "@/domain/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
+import { Notice } from "@/components/ui/Notice";
 import { clockTime } from "@/data/format";
 import styles from "./ReplySheet.module.css";
 
@@ -44,27 +45,9 @@ export type ReplySheetProps = {
   replies: Reply[];
   me: User;
   onClose: () => void;
-  onSubmit: (body: string) => void;
 };
 
-export function ReplySheet({
-  post,
-  replies,
-  me,
-  onClose,
-  onSubmit,
-}: ReplySheetProps) {
-  const [body, setBody] = useState("");
-
-  const handleSubmit = () => {
-    const text = body.trim();
-    if (text.length === 0) {
-      return;
-    }
-    onSubmit(text);
-    setBody("");
-  };
-
+export function ReplySheet({ post, replies, me, onClose }: ReplySheetProps) {
   return (
     <div className={styles.overlay}>
       <div className={styles.sheet} role="dialog" aria-modal="true" aria-label="返信">
@@ -90,7 +73,6 @@ export function ReplySheet({
                 <span className={styles.time}>・{clockTime(post.createdAt)}</span>
               </div>
               <p className={styles.body}>{post.body}</p>
-              <span className={styles.replyCount}>返信 {post.replyCount}件</span>
             </div>
           </div>
           <ul className={styles.replies}>
@@ -100,32 +82,31 @@ export function ReplySheet({
           </ul>
         </div>
 
+        {/* 返信の送信は backend 未対応（POST /posts に reply が無く、独立エンドポイントも無い）。
+            無言の no-op を避けるため、composer は操作不能にして「準備中」を明示する。 */}
         <form
           className={styles.composer}
-          onSubmit={(event) => {
-            event.preventDefault();
-            handleSubmit();
-          }}
+          onSubmit={(event) => event.preventDefault()}
         >
           <span className={styles.composerLabel}>{post.author.name} に返信</span>
           <div className={styles.composerRow}>
             <Avatar user={me} size={32} />
             <input
               className={styles.input}
-              value={body}
               placeholder="返信を書く…"
               aria-label="返信を書く"
-              onChange={(event) => setBody(event.target.value)}
+              disabled
             />
             <button
               type="submit"
               className={styles.send}
               aria-label="返信を送信"
-              disabled={body.trim().length === 0}
+              disabled
             >
               <Icon name="arrow_upward" size={20} />
             </button>
           </div>
+          <Notice tone="info" icon="info">返信は準備中です</Notice>
         </form>
       </div>
     </div>

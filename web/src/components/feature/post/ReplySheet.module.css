@@ -106,11 +106,6 @@
   word-break: break-word;
 }
 
-.replyCount {
-  font: var(--text-caption);
-  color: var(--color-text-muted);
-}
-
 .replies {
   list-style: none;
   margin: 0;
@@ -183,6 +178,11 @@
 
 .input::placeholder {
   color: var(--color-text-muted);
+}
+
+.input:disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
 }
 
 .send {
