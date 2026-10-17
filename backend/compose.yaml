@@ -1,0 +1,7 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    # 開発用。永続化はしない（backend README L6 で本番の方針を決める）。
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
