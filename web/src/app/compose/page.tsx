@@ -227,6 +227,14 @@ function ComposeForm() {
         "/posts",
         buildCreatePostBody(input),
       );
+      if (result.public?.error) {
+        setError({
+          kind: "public",
+          message:
+            "公開投稿は作成できませんでした。Space への投稿は完了しています。",
+        });
+        return;
+      }
       const created = result.items[0];
       router.push(destinationFor(created?.spaceId ?? input.spaceIds[0], targetList));
     } catch (e) {

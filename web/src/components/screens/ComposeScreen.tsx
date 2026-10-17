@@ -32,7 +32,9 @@ export type ComposeSubmitError =
   | { kind: "consent" }
   | { kind: "unavailable" }
   | { kind: "invalid"; message: string }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  /** instance 投稿は成功したが、同時作成した公開投稿だけ失敗した (10 §4.1)。 */
+  | { kind: "public"; message: string };
 
 export type ComposeScreenProps = {
   /** GET /me の著者 (アバター用)。取得できないときは省略。 */
@@ -372,6 +374,10 @@ export function ComposeScreen({
                 ) : error.kind === "unavailable" ? (
                   <Notice tone="warning" icon="cloud_off">
                     Space への投稿はまだ利用できません
+                  </Notice>
+                ) : error.kind === "public" ? (
+                  <Notice tone="info" icon="public">
+                    {error.message}
                   </Notice>
                 ) : (
                   <Notice tone="warning" icon="error">

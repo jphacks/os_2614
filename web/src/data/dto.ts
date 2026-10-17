@@ -168,9 +168,20 @@ export type CreatedPost = {
   spaceId: string;
 };
 
+/** POST /posts と同時に作る公開投稿の結果（service.PublicPostOutcome、10 §4.1）。 */
+export type PublicPostOutcome = {
+  uri?: string;
+  cid?: string;
+  bskyUri?: string;
+  /** PDS への公開投稿に失敗したときの API コード。instance 投稿は成功している。 */
+  error?: string;
+};
+
 /** POST /posts の応答（service.CreatePostResult、10 §4.1）。 */
 export type CreatePostResult = {
   items: CreatedPost[];
+  /** alsoPublic:true のときだけ入る。失敗しても items は成功している。 */
+  public?: PublicPostOutcome;
 };
 
 /** POST /media の応答（service.MediaUpload、10 §4.4）。 */
