@@ -20,6 +20,8 @@ export { FriendsScreen } from "./FriendsScreen";
 export type { FriendsScreenProps } from "./FriendsScreen";
 export { NearbyScreen } from "./NearbyScreen";
 export type { NearbyScreenProps } from "./NearbyScreen";
+export { EncountersScreen } from "./EncountersScreen";
+export type { EncountersScreenProps } from "./EncountersScreen";
 export { ProfileScreen } from "./ProfileScreen";
 export type { ProfileScreenProps, StatusSaveResult } from "./ProfileScreen";
 export { MemoryScreen } from "./MemoryScreen";
