@@ -7,11 +7,24 @@ export type ToggleProps = {
   onChange: (checked: boolean) => void;
   /** aria-label */
   label: string;
+  /** backend がオフを許さない設定など、切替不可の行に使う。 */
+  disabled?: boolean;
   className?: string;
 };
 
-export function Toggle({ checked, onChange, label, className }: ToggleProps) {
-  const classes = [styles.toggle, checked && styles.on, className]
+export function Toggle({
+  checked,
+  onChange,
+  label,
+  disabled = false,
+  className,
+}: ToggleProps) {
+  const classes = [
+    styles.toggle,
+    checked && styles.on,
+    disabled && styles.disabled,
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -21,6 +34,8 @@ export function Toggle({ checked, onChange, label, className }: ToggleProps) {
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      aria-disabled={disabled}
+      disabled={disabled}
       className={classes}
       onClick={() => onChange(!checked)}
     >
