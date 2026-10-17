@@ -22,7 +22,7 @@ export function AvatarStack({
     <span className={[styles.stack, className].filter(Boolean).join(" ")}>
       {extra > 0 && <span className={styles.extra}>+{extra}</span>}
       {shown.map((user) => (
-        <span key={user.id} className={styles.item}>
+        <span key={user.did} className={styles.item}>
           <Avatar user={user} size={size} />
         </span>
       ))}
