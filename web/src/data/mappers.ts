@@ -25,6 +25,7 @@ import type {
   Party,
   PartyMember,
   PartyPhase,
+  Pin,
   Post,
   PostTarget,
   Profile,
@@ -46,6 +47,7 @@ import type {
   Memory as MemoryDTO,
   Party as PartyDTO,
   PartyMember as PartyMemberDTO,
+  Pin as PinDTO,
   Profile as ProfileDTO,
   Settings as SettingsDTO,
   Stats as StatsDTO,
@@ -94,6 +96,7 @@ const RELATIONS: readonly EncounterRelation[] = [
 ];
 const PHASES: readonly PartyPhase[] = ["tentative", "confirmed"];
 const VISIBILITIES: readonly GroupVisibility[] = ["open", "closed"];
+const PIN_REASONS: readonly Pin["reason"][] = ["auto", "manual"];
 
 /** 数値でなければ既定値にする。0 や負値は有効な値として通す。 */
 function num(value: unknown, fallback = 0): number {
@@ -235,7 +238,7 @@ export function toGroup(dto: Maybe<GroupDTO>): Group {
   };
 }
 
-/** InstancePost → Post。moderation が付いた投稿は自動ピン扱い。 */
+/** InstancePost → Post。 */
 export function toPost(dto: Maybe<PostDTO>): Post {
   return {
     id: dto?.uri ?? "",
@@ -246,8 +249,9 @@ export function toPost(dto: Maybe<PostDTO>): Post {
     replyCount: 0,
     likeCount: 0,
     likedByMe: false,
-    // moderation / hidden は backend 側の判定。フラグ付きは自動ピンとして先頭に置く。
-    pinned: Boolean(dto?.moderation),
+    // Pin は Space の Pin 一覧 (GET /instances/{spaceId}/pins, 10 §6) が正。
+    // タイムラインの投稿は既定で非 Pin とし、呼び出し側が subjects で上書きする。
+    pinned: false,
   };
 }
 
@@ -273,6 +277,17 @@ export function toPostTarget(dto: Maybe<InstanceDTO>): PostTarget {
     type: dto?.type ?? "",
     name: dto?.name ?? "",
     memberCount: num(dto?.memberCount),
+  };
+}
+
+/** Pin (10 §6) → Pin。reason の既定は "auto"。 */
+export function toPin(dto: Maybe<PinDTO>): Pin {
+  return {
+    uri: dto?.uri ?? "",
+    subject: dto?.subject ?? "",
+    reason: oneOf(dto?.reason, PIN_REASONS, "auto"),
+    pinnedBy: dto?.pinnedBy,
+    createdAt: dto?.createdAt ?? "",
   };
 }
 

@@ -1,0 +1,53 @@
+.empty {
+  text-align: center;
+  color: var(--color-text-muted);
+  font: var(--text-caption);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.reason {
+  font: var(--text-caption);
+}
+
+.body {
+  font: var(--text-body);
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.subject {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sectionTitle {
+  font: var(--text-heading);
+  color: var(--color-text);
+  padding: var(--space-2) 0;
+}

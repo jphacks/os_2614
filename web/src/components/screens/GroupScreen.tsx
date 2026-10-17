@@ -2,10 +2,11 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import type { Group, Post } from "@/domain/types";
+import type { Group, Pin, Post } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
+import { PinList } from "@/components/feature/pin";
 import { PinnedPostCard, PostCard } from "@/components/feature/post";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -57,6 +58,20 @@ export type GroupScreenProps = {
   groupRetry?: () => void;
   /** 投稿一覧の再実行 (usePagedResource.reload)。 */
   postsRetry?: () => void;
+  /** Space の Pin 一覧 (GET /instances/{spaceId}/pins, 10 §6)。 */
+  pins?: Pin[];
+  /** Pin 一覧の取得状態。 */
+  pinsState?: ResourceState<Pin[]>;
+  /** Pin 一覧の再実行 (useResource.reload)。 */
+  pinsRetry?: () => void;
+  /** Pin / 解除の送信中。 */
+  pinBusy?: boolean;
+  /** 投稿を手動 Pin する。 */
+  onPin?: (post: Post) => void;
+  /** Pin を外す。 */
+  onUnpin?: (pin: Pin) => void;
+  /** Pin / 解除の直近の失敗。 */
+  pinError?: string | null;
   tabBar?: boolean;
   overlay?: ReactNode;
   onCompose?: (group: Group) => void;
@@ -74,6 +89,13 @@ export function GroupScreen({
   onLoadMore,
   groupRetry,
   postsRetry,
+  pins = [],
+  pinsState,
+  pinsRetry,
+  pinBusy = false,
+  onPin,
+  onUnpin,
+  pinError,
   tabBar = true,
   overlay,
   onCompose,
@@ -143,6 +165,8 @@ export function GroupScreen({
   };
 
   const postsStatus = postsState?.status ?? "ok";
+  const pinState: ResourceState<Pin[]> =
+    pinsState ?? { status: "ok", data: pins };
 
   return (
     <AppShell tab={tabBar ? "nearby" : undefined}>
@@ -222,6 +246,23 @@ export function GroupScreen({
               )}
             </>
           )}
+        </div>
+      ) : tab === "pin" ? (
+        <div className={styles.timeline}>
+          {pinError && (
+            <Notice tone="warning" icon="error">
+              {pinError}
+            </Notice>
+          )}
+          <PinList
+            state={pinState}
+            pins={pins}
+            posts={posts}
+            onPin={(post) => onPin?.(post)}
+            onUnpin={(pin) => onUnpin?.(pin)}
+            onRetry={pinsRetry}
+            busy={pinBusy}
+          />
         </div>
       ) : (
         <div className={styles.gutter}>
