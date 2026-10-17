@@ -38,6 +38,7 @@ var (
 	ErrInvalidRequest    = NewError(fiber.StatusBadRequest, "invalid_request", "リクエストが不正です")
 	ErrUnauthenticated   = NewError(fiber.StatusUnauthorized, "unauthenticated", "認証が必要です")
 	ErrATProtoSession    = NewError(fiber.StatusUnauthorized, "atproto_session_expired", "再ログインが必要です")
+	ErrReauthRequired    = NewError(fiber.StatusForbidden, "atproto_reauth_required", "再ログインが必要です")
 	ErrForbidden         = NewError(fiber.StatusForbidden, "forbidden", "権限がありません")
 	ErrNotInGeofence     = NewError(fiber.StatusForbidden, "not_in_geofence", "エリアの外です")
 	ErrLocationStale     = NewError(fiber.StatusForbidden, "location_stale", "位置情報が古いか、ありません")
