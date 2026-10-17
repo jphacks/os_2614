@@ -2,11 +2,12 @@
 // backend ができたら app/*/page.tsx が src/data/api.ts に差し替える。
 
 import type {
-  Attachment,
   Friend,
   Group,
+  Media,
   Memory,
   Party,
+  PartyMember,
   Post,
   PostTarget,
   Profile,
@@ -17,26 +18,38 @@ import type {
 } from "@/domain/types";
 import { avatarToneFor } from "./mappers";
 
-function createUser(id: string, name: string, avatarUrl?: string): User {
-  return { id, name, avatarUrl, tone: avatarToneFor(id) };
+function createUser(
+  did: string,
+  handle: string,
+  name: string,
+  avatarUrl?: string,
+): User {
+  return { did, handle, name, avatarUrl, tone: avatarToneFor(did) };
 }
 
-function createPhoto(
-  id: string,
-  by: User,
-  url = "",
-): Attachment {
-  return { id, kind: "image", url, by };
+function createMedia(id: string, url = ""): Media {
+  return { id, alt: "", url, thumbUrl: url, width: 1600, height: 1200 };
 }
 
-export const yui = createUser("u-yui", "ゆい");
-export const kenta = createUser("u-kenta", "Kenta");
-export const misaki = createUser("u-misaki", "みさき");
-export const takumi = createUser("u-takumi", "たくみ");
-export const sota = createUser("u-sota", "そうた");
-export const nana = createUser("u-nana", "なな");
-export const sho = createUser("u-sho", "しょう");
-export const haru = createUser("u-haru", "はる");
+function partyMember(u: User, present = true, left = false): PartyMember {
+  return {
+    did: u.did,
+    handle: u.handle,
+    displayName: u.name,
+    avatarUrl: u.avatarUrl,
+    present,
+    left,
+  };
+}
+
+export const yui = createUser("did:plc:yui0000000000", "yui.bsky.social", "ゆい");
+export const kenta = createUser("did:plc:kenta00000000", "kenta.bsky.social", "Kenta");
+export const misaki = createUser("did:plc:misaki0000000", "misaki.bsky.social", "みさき");
+export const takumi = createUser("did:plc:takumi0000000", "takumi.bsky.social", "たくみ");
+export const sota = createUser("did:plc:sota000000000", "sota.bsky.social", "そうた");
+export const nana = createUser("did:plc:nana000000000", "nana.bsky.social", "なな");
+export const sho = createUser("did:plc:sho0000000000", "sho.bsky.social", "しょう");
+export const haru = createUser("did:plc:haru000000000", "haru.bsky.social", "はる");
 
 export const users: User[] = [
   yui,
@@ -57,53 +70,13 @@ export const me: Profile = {
 };
 
 export const friends: Friend[] = [
-  {
-    ...kenta,
-    together: true,
-    locationLabel: "パーティ中・大学キャンパス",
-    locationVisibility: "area",
-    lastSeenAt: "2026-10-17T13:58:00+09:00",
-  },
-  {
-    ...misaki,
-    together: true,
-    locationLabel: "渋谷エリア",
-    locationVisibility: "area",
-    lastSeenAt: "2026-10-17T13:55:00+09:00",
-  },
-  {
-    ...takumi,
-    together: false,
-    locationLabel: "北東のほう",
-    locationVisibility: "direction",
-    lastSeenAt: "2026-10-17T12:20:00+09:00",
-  },
-  {
-    ...sota,
-    together: false,
-    locationLabel: "京都駅エリア",
-    locationVisibility: "area",
-    lastSeenAt: "2026-10-17T09:05:00+09:00",
-  },
-  {
-    ...nana,
-    together: false,
-    locationVisibility: "hidden",
-  },
-  {
-    ...sho,
-    together: false,
-    locationLabel: "大学キャンパス",
-    locationVisibility: "area",
-    lastSeenAt: "2026-10-16T19:40:00+09:00",
-  },
-  {
-    ...haru,
-    together: false,
-    locationLabel: "南のほう",
-    locationVisibility: "direction",
-    lastSeenAt: "2026-10-15T21:10:00+09:00",
-  },
+  { ...kenta, since: "2026-05-01T10:00:00Z", precision: "area" },
+  { ...misaki, since: "2026-05-01T10:00:00Z", precision: "area" },
+  { ...takumi, since: "2026-06-12T10:00:00Z", precision: "direction" },
+  { ...sota, since: "2026-04-20T10:00:00Z", precision: "area" },
+  { ...nana, since: "2026-07-03T10:00:00Z", precision: "off" },
+  { ...sho, since: "2026-03-15T10:00:00Z", precision: "area" },
+  { ...haru, since: "2026-08-21T10:00:00Z", precision: "direction" },
 ];
 
 export const groupInfoKeisanden: Group = {
@@ -134,7 +107,7 @@ export const posts: Post[] = [
     author: misaki,
     body: "レポート終わった人いる？図書館で見せ合いっこしたい。",
     createdAt: "2026-10-17T09:12:00+09:00",
-    attachments: [createPhoto("a1", misaki)],
+    attachments: [createMedia("a1")],
     replyCount: 3,
     likeCount: 5,
     likedByMe: false,
@@ -174,83 +147,57 @@ export const replies: Reply[] = [
 
 export const party: Party = {
   id: "party-1",
-  areaLabel: "渋谷エリア",
-  stage: "active",
+  name: "大学キャンパスパーティ",
+  phase: "confirmed",
+  locked: false,
   // 画面確認用に、表示時点の 42 分 18 秒前から始まったことにする
-  startedAt: new Date(Date.now() - (42 * 60 + 18) * 1000).toISOString(),
-  fixed: false,
+  tentativeAt: new Date(Date.now() - (42 * 60 + 18) * 1000).toISOString(),
+  confirmedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
   members: [
-    { ...kenta, viaFriend: false },
-    { ...misaki, viaFriend: false },
-    { ...takumi, viaFriend: true },
-    { ...sota, viaFriend: true },
+    partyMember(kenta),
+    partyMember(misaki),
+    partyMember(takumi),
+    partyMember(sota),
   ],
-  photos: [
-    createPhoto("pp1", kenta),
-    createPhoto("pp2", misaki),
-    createPhoto("pp3", takumi),
-    createPhoto("pp4", kenta),
-    createPhoto("pp5", sota),
-    createPhoto("pp6", misaki),
-  ],
-  photoCount: 9,
 };
 
 export const memories: Memory[] = [
   {
-    id: "m1",
-    title: "京都旅行",
-    startedAt: "2026-10-03T10:00:00+09:00",
-    endedAt: "2026-10-04T18:00:00+09:00",
+    spaceId: "mem-kyoto",
+    type: "party",
+    name: "京都旅行",
+    from: "2026-10-03T10:00:00Z",
+    until: "2026-10-04T18:00:00Z",
     memberCount: 5,
-    members: [yui, kenta, misaki, takumi, sota],
-    photos: [
-      createPhoto("mp1", kenta),
-      createPhoto("mp2", misaki),
-      createPhoto("mp3", takumi),
-      createPhoto("mp4", yui),
-    ],
-    photoCount: 12,
+    mediaCount: 12,
+    cover: { thumbUrl: "" },
   },
 ];
 
-const activity: number[][] = Array.from({ length: 12 }, (_, week) =>
-  Array.from({ length: 7 }, (_, day) => (week + day * 2) % 5),
-);
-
 export const stats: Stats = {
-  range: "month",
-  encounters: {
-    total: 248,
-    delta: 38,
-    series: [
-      { label: "10/11", value: 12 },
-      { label: "10/12", value: 18 },
-      { label: "10/13", value: 9 },
-      { label: "10/14", value: 22 },
-      { label: "10/15", value: 16 },
-      { label: "10/16", value: 27 },
-      { label: "10/17", value: 31 },
-    ],
-  },
-  friends: { total: 60, delta: 4 },
-  parties: { total: 12, totalHours: 34 },
-  peakHourLabel: "18時ごろ",
-  peakHourNote: "授業終わりに多い",
-  topArea: { label: "大学キャンパス", ratio: 60 },
-  activity,
-  messagesThisMonth: 812,
+  encounters: { today: 7, week: 42, month: 248, total: 1204, uniquePeople: 96 },
+  friends: 60,
+  parties: { total: 12 },
+  groups: { member: 8 },
+  posts: { month: 812 },
 };
 
 export const settings: Settings = {
-  revealDelay: { hours: 3 },
-  allowFriendRequests: true,
-  locationVisibility: "area",
-  restrictToAreas: true,
-  sharedAreas: ["大学キャンパス", "渋谷エリア"],
+  encounterMode: "delayed",
+  encounterDelaySec: 10800,
+  friendBeaconShare: true,
+  partyAuto: false,
+  locationPaused: false,
+  warnDisplay: "blur",
+  notify: { "encounter.daily": true, "friend.request": true },
 };
 
 export const postTargets: PostTarget[] = [
-  { kind: "group", id: "g1", name: "情報工学科 3年", memberCount: 8 },
-  { kind: "party", id: "party-1", name: "パーティ" },
+  { spaceId: "g1", type: "group", name: "情報工学科 3年", memberCount: 8 },
+  {
+    spaceId: "party-1",
+    type: "party",
+    name: "大学キャンパスパーティ",
+    memberCount: 4,
+  },
 ];

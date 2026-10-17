@@ -2,10 +2,10 @@
 // UI はこのファイルを経由した値だけを見る (DTO を UI に持ち込まない)。
 
 import type {
-  Attachment,
   AvatarTone,
   Friend,
   Group,
+  Media,
   Memory,
   Party,
   Post,
@@ -39,7 +39,7 @@ const TONES: AvatarTone[] = [
   "sand",
 ];
 
-/** ユーザー ID の文字コード和 mod 8 でアバター背景色を決める */
+/** ユーザー DID の文字コード和 mod 8 でアバター背景色を決める */
 export function avatarToneFor(id: string): AvatarTone {
   let sum = 0;
   for (const char of id) {
@@ -51,19 +51,22 @@ export function avatarToneFor(id: string): AvatarTone {
 
 export function toUser(dto: UserDTO): User {
   return {
-    id: dto.did,
+    did: dto.did,
+    handle: dto.handle,
     name: dto.displayName || dto.handle,
     avatarUrl: dto.avatarUrl,
     tone: avatarToneFor(dto.did),
   };
 }
 
-function toAttachment(dto: MediaDTO): Attachment {
+function toMedia(dto: MediaDTO): Media {
   return {
     id: dto.id,
-    kind: "image",
+    alt: dto.alt,
     url: dto.url,
-    by: undefined,
+    thumbUrl: dto.thumbUrl,
+    width: dto.width,
+    height: dto.height,
   };
 }
 
@@ -84,15 +87,8 @@ export function toProfile(dto: ProfileDTO): Profile {
 export function toFriend(dto: FriendDTO): Friend {
   return {
     ...toUser(dto),
-    together: false,
-    locationLabel: undefined,
-    locationVisibility:
-      dto.precision === "direction"
-        ? "direction"
-        : dto.precision === "off"
-          ? "hidden"
-          : "area",
-    lastSeenAt: undefined,
+    since: dto.since,
+    precision: dto.precision,
   };
 }
 
@@ -114,7 +110,7 @@ export function toPost(dto: PostDTO): Post {
     author: toUser(dto.author ?? { did: "", handle: "" }),
     body: dto.text ?? "",
     createdAt: dto.createdAt,
-    attachments: (dto.media ?? []).map(toAttachment),
+    attachments: (dto.media ?? []).map(toMedia),
     replyCount: 0,
     likeCount: 0,
     likedByMe: false,
@@ -134,100 +130,62 @@ export function toReply(dto: PostDTO): Reply {
 }
 
 export function toParty(dto: PartyDTO): Party {
-  const photos: Attachment[] = [];
   return {
     id: dto.id,
-    areaLabel: dto.name,
-    stage: dto.phase === "confirmed" ? "active" : "provisional",
-    startedAt: dto.tentativeAt,
-    fixed: dto.locked,
-    members: dto.members.map((member) => ({
-      id: member.did,
-      name: member.displayName || member.handle || "",
-      avatarUrl: member.avatarUrl,
-      tone: avatarToneFor(member.did),
-      viaFriend: false,
-    })),
-    photos,
-    photoCount: photos.length,
+    name: dto.name,
+    phase: dto.phase,
+    locked: dto.locked,
+    tentativeAt: dto.tentativeAt,
+    confirmedAt: dto.confirmedAt,
+    members: dto.members,
   };
 }
 
 export function toMemory(dto: MemoryDTO): Memory {
   return {
-    id: dto.spaceId,
-    title: dto.name,
-    startedAt: dto.from,
-    endedAt: dto.until,
+    spaceId: dto.spaceId,
+    type: dto.type,
+    name: dto.name,
+    from: dto.from,
+    until: dto.until,
     memberCount: dto.memberCount,
-    members: [],
-    photos: [],
-    photoCount: dto.mediaCount,
+    mediaCount: dto.mediaCount,
+    cover: dto.cover,
   };
 }
 
 export function toStats(dto: StatsDTO): Stats {
   return {
-    range: "month",
-    encounters: {
-      total: dto.encounters.total,
-      delta: 0,
-      series: [],
-    },
-    friends: {
-      total: dto.friends,
-      delta: 0,
-    },
-    parties: {
-      total: dto.parties.total,
-      totalHours: 0,
-    },
-    peakHourLabel: "",
-    peakHourNote: "",
-    topArea: {
-      label: "",
-      ratio: 0,
-    },
-    activity: [],
-    messagesThisMonth: dto.posts.month,
+    encounters: dto.encounters,
+    friends: dto.friends,
+    parties: dto.parties,
+    groups: dto.groups,
+    posts: dto.posts,
   };
 }
 
 export function toSettings(dto: SettingsDTO): Settings {
-  let revealDelay: Settings["revealDelay"];
-  if (dto.encounterMode === "private") {
-    revealDelay = null;
-  } else if (dto.encounterMode === "immediate") {
-    revealDelay = { hours: 0 };
-  } else {
-    revealDelay = { hours: Math.round(dto.encounterDelaySec / 3600) };
-  }
-
   return {
-    revealDelay,
-    allowFriendRequests: true,
-    locationVisibility: "area",
-    restrictToAreas: false,
-    sharedAreas: [],
+    encounterMode: dto.encounterMode,
+    encounterDelaySec: dto.encounterDelaySec,
+    friendBeaconShare: dto.friendBeaconShare,
+    partyAuto: dto.partyAuto,
+    locationPaused: dto.locationPaused,
+    warnDisplay: dto.warnDisplay,
+    contentScanConsentVersion: dto.contentScanConsentVersion,
+    notify: dto.notify,
   };
 }
 
 export function fromSettings(settings: Settings): SettingsDTO {
   return {
-    encounterMode:
-      settings.revealDelay === null
-        ? "private"
-        : settings.revealDelay.hours === 0
-          ? "immediate"
-          : "delayed",
-    encounterDelaySec:
-      settings.revealDelay && settings.revealDelay.hours > 0
-        ? settings.revealDelay.hours * 3600
-        : 3600,
-    friendBeaconShare: false,
-    partyAuto: false,
-    locationPaused: false,
-    warnDisplay: "show",
-    notify: {},
+    encounterMode: settings.encounterMode,
+    encounterDelaySec: settings.encounterDelaySec,
+    friendBeaconShare: settings.friendBeaconShare,
+    partyAuto: settings.partyAuto,
+    locationPaused: settings.locationPaused,
+    warnDisplay: settings.warnDisplay,
+    contentScanConsentVersion: settings.contentScanConsentVersion,
+    notify: settings.notify,
   };
 }
