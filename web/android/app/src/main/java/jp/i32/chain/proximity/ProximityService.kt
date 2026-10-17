@@ -27,11 +27,13 @@ class ProximityService : Service() {
         private const val NOTIFICATION_ID = 2614
 
         fun start(context: Context) {
+            // startedByUser=true: 再起動後 (BootReceiver) にこの FGS を復帰させる
             BootState.setStartedByUser(context, true)
             ContextCompat.startForegroundService(context, Intent(context, ProximityService::class.java))
         }
 
         fun stop(context: Context) {
+            // startedByUser=false: 再起動後の復帰対象から外す (START_NOT_STICKY で止める)
             BootState.setStartedByUser(context, false)
             context.stopService(Intent(context, ProximityService::class.java))
         }
@@ -46,6 +48,7 @@ class ProximityService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            // startedByUser=false: 通知の stop でも再起動復帰を断つ
             BootState.setStartedByUser(this, false)
             stopSelf()
             return START_NOT_STICKY
@@ -62,12 +65,18 @@ class ProximityService : Service() {
             // 権限が無い、またはバックグラウンドからの起動が許されない (Android 12+)
             Log.w(TAG, "startForeground failed", e)
             ProximityState.lastError = "permission_revoked"
+            // startedByUser=false: 二度と起動できないサービスを再起動後 (BootReceiver) に再試行させない
+            BootState.setStartedByUser(this, false)
             stopSelf()
             return START_NOT_STICKY
         }
 
         if (engine == null) {
-            engine = BleEngine(this) { stopSelf() }.also { it.start() }
+            engine = BleEngine(this) {
+                // startedByUser=false: 権限取消でユーザーの「オン」意思を履行できないため boot 再試行を止める
+                BootState.setStartedByUser(this, false)
+                stopSelf()
+            }.also { it.start() }
         }
         ProximityState.running = true
         ProximityState.emitStatus()
