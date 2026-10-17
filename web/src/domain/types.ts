@@ -304,6 +304,30 @@ export type GroupNearby = {
   near: GroupNearbyNear[];
 };
 
+/** closed グループの招待 1 件 (service.InviteItem、09 §6)。承認数が要件に達すると offered になる。 */
+export type GroupInvite = {
+  id: ID;
+  targetDid: DID;
+  createdBy: DID;
+  /** "collecting" | "offered" | "accepted" | "declined" | "expired"。 */
+  status: string;
+  /** 承認したメンバー数 (招待者の 1 を含む)。 */
+  approvedCount: number;
+  /** 必要な承認数 min(inviteQuorum, その時点のメンバー数)。 */
+  requiredCount: number;
+  createdAt: Timestamp;
+  expiresAt: Timestamp;
+};
+
+/** 自分宛ての offered な招待 1 件 (GET /group-invites、09 §6)。 */
+export type GroupInviteInboxItem = {
+  id: ID;
+  spaceId: string;
+  groupName: string;
+  inviter?: User;
+  expiresAt: Timestamp;
+};
+
 /** グループグラフのノード (09 §7、spec-only)。 */
 export type GroupGraphNode = {
   id: ID;

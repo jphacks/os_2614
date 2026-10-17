@@ -20,6 +20,8 @@ import type {
   FriendLocation,
   FriendRequest,
   Group,
+  GroupInvite,
+  GroupInviteInboxItem,
   GroupNearby,
   GroupVisibility,
   Invite,
@@ -53,6 +55,8 @@ import type {
   FriendLocation as FriendLocationDTO,
   FriendRequest as FriendRequestDTO,
   Group as GroupDTO,
+  GroupInvite as GroupInviteDTO,
+  GroupInviteInboxItem as GroupInviteInboxItemDTO,
   GroupNearby as GroupNearbyDTO,
   Instance as InstanceDTO,
   InstancePost as PostDTO,
@@ -328,6 +332,33 @@ export function toGroupNearby(dto: Maybe<GroupNearbyDTO>): GroupNearby {
       memberCount: num(item?.memberCount),
       distanceBucket: item?.distanceBucket ?? "",
     })),
+  };
+}
+
+/** InviteItem → GroupInvite (09 §6)。status の既定は "collecting"。 */
+export function toGroupInvite(dto: Maybe<GroupInviteDTO>): GroupInvite {
+  return {
+    id: dto?.id ?? "",
+    targetDid: dto?.targetDid ?? "",
+    createdBy: dto?.createdBy ?? "",
+    status: dto?.status ?? "collecting",
+    approvedCount: num(dto?.approvedCount),
+    requiredCount: num(dto?.requiredCount),
+    createdAt: dto?.createdAt ?? "",
+    expiresAt: dto?.expiresAt ?? "",
+  };
+}
+
+/** InviteInboxItem → GroupInviteInboxItem (09 §6)。inviter は任意。 */
+export function toGroupInviteInboxItem(
+  dto: Maybe<GroupInviteInboxItemDTO>,
+): GroupInviteInboxItem {
+  return {
+    id: dto?.id ?? "",
+    spaceId: dto?.spaceId ?? "",
+    groupName: dto?.groupName ?? "",
+    inviter: dto?.inviter ? toUser(dto.inviter) : undefined,
+    expiresAt: dto?.expiresAt ?? "",
   };
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Group, Pin, Post } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
@@ -11,6 +12,7 @@ import { PinnedPostCard, PostCard } from "@/components/feature/post";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Fab } from "@/components/ui/Fab";
+import { Icon } from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/IconButton";
 import { Notice } from "@/components/ui/Notice";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -172,7 +174,18 @@ export function GroupScreen({
         title={group.name}
         back
         trailing={
-          <IconButton icon="more_horiz" label="グループのメニュー" />
+          <span className={styles.headerActions}>
+            {group.visibility === "closed" && (
+              <Link
+                className={styles.headerLink}
+                href={`/group/invites/?id=${group.id}`}
+                aria-label="グループの招待"
+              >
+                <Icon name="group_add" size={22} />
+              </Link>
+            )}
+            <IconButton icon="more_horiz" label="グループのメニュー" />
+          </span>
         }
       />
 

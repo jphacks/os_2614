@@ -5,6 +5,19 @@
   padding: 0 var(--page-gutter) var(--space-3);
 }
 
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.headerLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+}
+
 .gutter {
   padding: 0 var(--page-gutter);
   margin-bottom: var(--space-4);

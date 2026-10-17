@@ -352,6 +352,27 @@ export type GroupNearby = {
   near: GroupNearbyNear[];
 };
 
+/** GET /groups/{id}/invites の 1 件（service.InviteItem、09 §6）。 */
+export type GroupInvite = {
+  id: string;
+  targetDid: DID;
+  createdBy: DID;
+  status: string;
+  approvedCount: number;
+  requiredCount: number;
+  createdAt: RFC3339;
+  expiresAt: RFC3339;
+};
+
+/** GET /group-invites の 1 件（service.InviteInboxItem、09 §6）。 */
+export type GroupInviteInboxItem = {
+  id: string;
+  spaceId: string;
+  groupName: string;
+  inviter?: User;
+  expiresAt: RFC3339;
+};
+
 /** memory の表紙（service.MemoryCover、13 §2）。 */
 export type MemoryCover = { thumbUrl: string };
 
