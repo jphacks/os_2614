@@ -23,3 +23,47 @@
   font: var(--text-body-strong);
   color: var(--color-text);
 }
+
+.modes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+}
+
+.mode {
+  flex: 1;
+  height: 32px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font: var(--text-caption);
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.mode:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.modeSelected {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+
+.presets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.presetsLabel {
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}

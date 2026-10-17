@@ -31,6 +31,11 @@ export function SettingsScreen({ settings, onChange }: SettingsScreenProps) {
   const router = useRouter();
   const { logout } = useAuth();
 
+  // TODO(todo 9): 位置の見せ方カードの書き直しまでは旧 mock フィールドを安全に読むだけ。
+  const legacySharedAreas = (
+    current as unknown as { sharedAreas?: string[] }
+  ).sharedAreas;
+
   const patch = (partial: Partial<Settings>) => {
     const next = { ...current, ...partial };
     setCurrent(next);
@@ -62,8 +67,9 @@ export function SettingsScreen({ settings, onChange }: SettingsScreenProps) {
             </p>
           </div>
           <RevealDelaySetting
-            revealDelay={current.revealDelay}
-            onChange={(revealDelay) => patch({ revealDelay })}
+            encounterMode={current.encounterMode}
+            encounterDelaySec={current.encounterDelaySec}
+            onChange={(next) => patch(next)}
           />
         </section>
 
@@ -106,8 +112,9 @@ export function SettingsScreen({ settings, onChange }: SettingsScreenProps) {
               <div className={styles.rowText}>
                 <span className={styles.rowTitle}>決めたエリアだけで共有</span>
                 <span className={styles.rowNote}>
-                  {current.sharedAreas.join("・")}の{current.sharedAreas.length}
-                  か所
+                  {legacySharedAreas
+                    ? `${legacySharedAreas.join("・")}の${legacySharedAreas.length}か所`
+                    : ""}
                 </span>
               </div>
               <Toggle
