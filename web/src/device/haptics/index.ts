@@ -4,9 +4,19 @@
 // 振動は演出なので、失敗しても呼び出し側には伝えない (await も不要)。
 // vibrate 非対応のブラウザや、ユーザー操作前の呼び出しで弾かれても黙って何もしない。
 
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 
+interface ChainHapticsPlugin {
+  contextClick(): Promise<void>;
+}
+
+// native (Android) だけが実装する。ブラウザ・iOS では呼ばず impact に落とす。
+const ChainHaptics = registerPlugin<ChainHapticsPlugin>("ChainHaptics");
+
 export type HapticImpact = "light" | "medium" | "heavy";
+/** 押下時の触覚の種類。contextClick は Android のシステム触覚、それ以外は impact の強さ。 */
+export type HapticPress = HapticImpact | "contextClick";
 export type HapticNotification = "success" | "warning" | "error";
 
 const IMPACT_STYLE: Record<HapticImpact, ImpactStyle> = {
@@ -40,4 +50,20 @@ export function hapticNotification(type: HapticNotification): void {
 /** セグメントやスライダーで選択が切り替わったときの軽い刻み。 */
 export function hapticSelection(): void {
   ignore(Haptics.selectionStart().then(() => Haptics.selectionChanged()).then(() => Haptics.selectionEnd()));
+}
+
+/**
+ * ボタンを押したときの触覚。contextClick は Android で CONTEXT_CLICK を鳴らし、
+ * 非対応の環境 (ブラウザ・iOS) では light の impact にする。
+ */
+export function hapticPress(kind: HapticPress = "contextClick"): void {
+  if (kind !== "contextClick") {
+    hapticImpact(kind);
+    return;
+  }
+  if (Capacitor.getPlatform() === "android") {
+    ignore(ChainHaptics.contextClick());
+    return;
+  }
+  hapticImpact("light");
 }

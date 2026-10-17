@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, type ButtonHTMLAttributes, type PointerEvent, type Ref } from "react";
-import { hapticImpact, type HapticImpact } from "@/device/haptics";
+import { hapticPress, type HapticPress } from "@/device/haptics";
 import styles from "./Pressable.module.css";
 
 export type PressableProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  /** 押した瞬間の振動。false で振動させない。既定は light */
-  haptic?: HapticImpact | false;
+  /** 押した瞬間の振動。false で振動させない。既定は contextClick */
+  haptic?: HapticPress | false;
   ref?: Ref<HTMLButtonElement>;
 };
 
@@ -15,7 +15,7 @@ export type PressableProps = ButtonHTMLAttributes<HTMLButtonElement> & {
  * :active は Android WebView だと反応が遅れるため、pointer イベントで押下状態を持つ。
  */
 export function Pressable({
-  haptic = "light",
+  haptic = "contextClick",
   type = "button",
   className,
   disabled,
@@ -35,7 +35,7 @@ export function Pressable({
     }
     setPressed(true);
     if (haptic) {
-      hapticImpact(haptic);
+      hapticPress(haptic);
     }
   };
 
