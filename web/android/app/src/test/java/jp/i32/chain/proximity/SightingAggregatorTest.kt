@@ -105,4 +105,23 @@ class SightingAggregatorTest {
         assertEquals((threads * perThread - 1).toLong(), agg.lastMs)
         assertEquals(-100 + perThread - 1, agg.maxRssi)
     }
+
+    @Test
+    fun `drain returns exactly the live keys it removed`() {
+        val aggregator = SightingAggregator(ttlMs = 1000L)
+        aggregator.record("stale", 0L, -50)
+        aggregator.record("live", 500L, -50)
+        assertEquals(setOf("live"), aggregator.drain(1000L).keys)
+    }
+
+    @Test
+    fun `a record after drain is returned by the next drain`() {
+        val aggregator = SightingAggregator(ttlMs = 1000L)
+        aggregator.record("first", 100L, -50)
+        assertEquals(setOf("first"), aggregator.drain(100L).keys)
+
+        aggregator.record("second", 150L, -60)
+        assertEquals(setOf("second"), aggregator.drain(150L).keys)
+        assertEquals(0, aggregator.pending(150L))
+    }
 }

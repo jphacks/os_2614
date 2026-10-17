@@ -10,6 +10,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -243,6 +245,87 @@ class SightingStoreTest {
         }
     }
 
+    // ---- F-02b: drain must delete only the tokens it returned ----
+
+    @Test
+    fun drainDoesNotDeleteRowsItDidNotReturn() {
+        val db = newDb()
+        try {
+            val dispatcher = GatedDispatcher()
+            val store = SightingStore(appContext, ttlMs, db, dispatcher)
+            // record enqueues its chained job; the gated dispatcher keeps that job from running.
+            store.record("in-flight", 100L, -50)
+            // drain before the chained job runs: the aggregate is not in the mirror yet, so it is not returned.
+            val drained = store.drain(100L)
+            assertTrue("drain must not return an aggregate it has not merged yet", drained.isEmpty())
+
+            dispatcher.resume()
+            store.awaitIdle()
+
+            // The just-committed row must survive: a scoped delete removes only returned tokens.
+            val rows = runBlocking { db.sightingDao().getAll() }
+            assertEquals(listOf("in-flight"), rows.map { it.token })
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun drainBeforeHydrationDeletesNothingAndRowsSurvive() {
+        val db = newDb()
+        try {
+            runBlocking { db.sightingDao().upsert(SightingEntity("persisted", 100L, 100L, -40, 1)) }
+            val dispatcher = GatedDispatcher()
+            val store = SightingStore(appContext, ttlMs, db, dispatcher)
+
+            // hydration has not run, so the mirror is empty and this drain returns nothing.
+            val beforeHydration = store.drain(200L)
+            assertTrue("a pre-hydration drain returns nothing", beforeHydration.isEmpty())
+
+            dispatcher.resume()
+            store.awaitIdle()
+            assertEquals(
+                "pre-hydration drain must not delete persisted rows",
+                1L,
+                runBlocking { db.sightingDao().count().toLong() },
+            )
+
+            val afterHydration = store.drain(200L)
+            assertEquals(setOf("persisted"), afterHydration.keys)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun recordReturnsWithoutTouchingTheDao() {
+        val db = newDb()
+        try {
+            val dispatcher = GatedDispatcher()
+            val store = SightingStore(appContext, ttlMs, db, dispatcher)
+            dispatcher.resume()
+            store.awaitIdle()
+            dispatcher.pause()
+
+            store.record("tok", 100L, -50)
+            assertEquals(
+                "record must not touch the DAO synchronously",
+                0L,
+                runBlocking { db.sightingDao().count().toLong() },
+            )
+
+            dispatcher.resume()
+            store.awaitIdle()
+            assertEquals(
+                "the chained job must persist the record",
+                1L,
+                runBlocking { db.sightingDao().count().toLong() },
+            )
+        } finally {
+            db.close()
+        }
+    }
+
     // ---- ProximityState wiring (F-01 / F-12) ----
 
     @Test
@@ -274,7 +357,7 @@ class SightingStoreTest {
             assertEquals(1, events.size)
 
             // 実時間を待たずに 5 秒窓を越えさせる (clock offset を進める)。
-            ProximityState.setClockOffset(appContext, 10_000L)
+            ProximityState.setClockOffset(10_000L)
             ProximityState.recordSighting(token, -60)
             assertEquals(2, events.size)
 
@@ -335,4 +418,31 @@ class SightingStoreTest {
 
     private fun getField(name: String): Any? =
         ProximityState::class.java.getDeclaredField(name).apply { isAccessible = true }.get(ProximityState)
+}
+
+/**
+ * テスト用ディスパッチャ。既定は closed で、dispatch された Runnable を単一スレッドの executor 上で
+ * gate の前で止める。[resume] するまで何も実行しないため、record と drain の順序を sleep 無しで
+ * 決定的に組み立てられる (record の chained job を「まだ走っていない」状態に固定できる)。
+ */
+private class GatedDispatcher : CoroutineDispatcher() {
+    private val executor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "gated-io").apply { isDaemon = true }
+    }
+    private val gate = Object()
+    private var open = false
+
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        executor.execute {
+            synchronized(gate) { while (!open) gate.wait() }
+            block.run()
+        }
+    }
+
+    fun pause() = synchronized(gate) { open = false }
+
+    fun resume() = synchronized(gate) {
+        open = true
+        gate.notifyAll()
+    }
 }

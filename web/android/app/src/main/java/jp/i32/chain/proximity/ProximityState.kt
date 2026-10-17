@@ -145,10 +145,8 @@ object ProximityState {
         loaded = true
     }
 
-    // F-09: `context` は plaintext SharedPreferences 時代の名残で未使用。呼び出し元
-    // (ChainProximityPlugin.kt:127) が `setTokens(context, ...)` のままなので、プラグイン側の
-    // 更新までの間はシグネチャ互換のため残す (削除はプラグインと同一コミットで行う)。
-    fun setTokens(context: Context, windowSec: Long, tokens: List<Token>) {
+    // F-09: plaintext SharedPreferences 時代の未使用 `context` 引数は削除した (呼び出し元も更新済み)。
+    fun setTokens(windowSec: Long, tokens: List<Token>) {
         this.windowSec = windowSec
         this.tokens = tokens.sortedBy { it.windowStartSec }
         val array = JSONArray()
@@ -162,8 +160,7 @@ object ProximityState {
         emitStatus()
     }
 
-    // F-09: 上と同様、`context` は未使用だが呼び出し互換のため残す。
-    fun setClockOffset(context: Context, offsetMs: Long) {
+    fun setClockOffset(offsetMs: Long) {
         // 生のサンプルではなく、直近サンプルの中央値を採用して保存する。
         val median = sampler.add(offsetMs)
         clockOffsetMs = median

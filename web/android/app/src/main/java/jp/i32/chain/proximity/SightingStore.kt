@@ -2,6 +2,7 @@ package jp.i32.chain.proximity
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,7 +26,7 @@ import java.util.concurrent.TimeUnit
  *  - [mirror] が読み取りの唯一のソース。全ての変更 (hydration → record → ミラー剪定) は
  *    前の操作の完了に join してから走るため、必ず hydration の後に record が適用される。
  *  - hydration は最初の操作。既存 DB 行をミラーに読み込み、以降の record と競合しない。
- *  - drain はミラーから生きた行を snapshot して即座に全消しし、DB 側の削除は chain の末尾に投げる。
+ *  - drain はミラーから生きた行を snapshot して全て消し、返した token だけの DB 削除を chain の末尾へ投げる。
  *
  * 耐久性の窓 (F-02 の durability window):
  *  - record は「ミラーへのマージ + DB upsert」を enqueue して即座に返る。
@@ -38,6 +39,7 @@ class SightingStore(
     context: Context,
     private val ttlMs: Long = DEFAULT_TTL_MS,
     private val database: SightingDatabase = SightingDatabase.get(context),
+    dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val dao = database.sightingDao()
 
@@ -45,7 +47,7 @@ class SightingStore(
     private val lock = Any()
     private val mirror = HashMap<String, Aggregate>()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val chainLock = Any()
 
     /** 直近に enqueue した操作。次の操作はこれに join してから走る (直列化 + 完了観測)。 */
@@ -117,8 +119,15 @@ class SightingStore(
             }
             result
         }
+        // 返した token だけを DB から消す (full-table delete は IS-1 違反になるため禁止)。
+        //  - snapshot に無い record (chained job が未実行) は消さないので、その committed 行は残り、
+        //    次の drain で返る -> プロセス死でも失われない。
+        //  - hydration 前はミラーが空 = snapshot が空なので何も enqueue しない。永続化済みの行は
+        //    そのまま残り、hydration 後の drain が同じように返す (全消ししないので安全)。
+        if (live.isEmpty()) return live
+        val tokens = live.keys.toList()
         enqueue {
-            runCatching { dao.deleteAll() }
+            runCatching { dao.deleteByTokens(tokens) }
                 .onFailure { Log.w(TAG, "sighting drain cleanup failed", it) }
         }
         return live
