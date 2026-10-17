@@ -57,7 +57,7 @@ export function EncountersScreen({
                   {encounters.map((encounter) => (
                     <ListItem
                       key={encounter.id}
-                      href="/friends/"
+                      href={`/users/?did=${encodeURIComponent(encounter.peer.did)}`}
                       leading={<Avatar user={encounter.peer} size={40} />}
                       title={encounter.peer.name}
                       subtitle={`${dateRange(encounter.seenFrom, encounter.seenUntil)}・${clockTime(encounter.seenFrom)}〜${clockTime(encounter.seenUntil)}・${encounter.timesWithPeer}回`}

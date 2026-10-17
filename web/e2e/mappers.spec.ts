@@ -208,10 +208,13 @@ test.describe("toGroup", () => {
     ).toEqual({
       id: "g1",
       name: "情報工学科 3年",
+      description: "",
       visibility: "open",
       memberCount: 8,
       areaLabel: "GPSエリア",
       insideArea: true,
+      role: undefined,
+      inviteQuorum: undefined,
     });
   });
 
@@ -232,10 +235,13 @@ test.describe("toGroup", () => {
     expect(toGroup(null)).toEqual({
       id: "",
       name: "",
+      description: "",
       visibility: "open",
       memberCount: 0,
       areaLabel: "",
       insideArea: false,
+      role: undefined,
+      inviteQuorum: undefined,
     });
   });
 });
