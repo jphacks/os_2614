@@ -2,6 +2,7 @@ package jp.i32.chain.proximity
 
 import android.content.Context
 import android.util.Base64
+import android.util.Log
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import org.json.JSONArray
@@ -32,10 +33,11 @@ internal fun isValidProximityError(value: String?): Boolean = value == null || v
 /**
  * プラグイン (WebView 側) と ProximityService (FGS 側) が共有する状態。
  * どちらのライフサイクルにも属さないので process 単位の object に置く。
- * token と時刻補正は SharedPreferences に残し、START_STICKY での再生成後も発信を続けられるようにする。
+ * token と時刻補正は [SecureStore] (Keystore 暗号化) に残し、START_STICKY での再生成後も発信を続けられるようにする。
+ * sighting は [SightingStore] (Room) に永続化し、load 前だけ in-memory の [SightingAggregator] を使う。
  */
 object ProximityState {
-    private const val PREFS = "chain_proximity"
+    private const val TAG = "ChainProximity"
     private const val KEY_TOKENS = "tokens"
     private const val KEY_WINDOW_SEC = "window_sec"
     private const val KEY_CLOCK_OFFSET = "clock_offset_ms"
@@ -65,8 +67,15 @@ object ProximityState {
         }
 
     private val sightings = SightingAggregator()
-    private val clockOffsetEstimator = ClockOffsetEstimator()
+    private val sampler = ClockSampler()
     private val lastSightingEvent = ConcurrentHashMap<String, Long>()
+
+    /** Room 版の永続ストア。load に失敗したら null のままにして in-memory 集約にフォールバックする。 */
+    @Volatile private var store: SightingStore? = null
+
+    /** Keystore 暗号化ストア。生成に失敗しても平文には決して書かない (null は「永続化しない」の意)。 */
+    @Volatile private var secure: SecureStore? = null
+
     private var loaded = false
 
     /** プラグインが登録する。WebView が無いときは null */
@@ -78,22 +87,39 @@ object ProximityState {
     /** backend の時計での現在時刻 */
     fun now(): Long = System.currentTimeMillis() + clockOffsetMs
 
+    /** load は絶対に例外を投げない。失敗した部品はログだけ残して in-memory 側にフォールバックする。 */
     @Synchronized
     fun load(context: Context) {
         if (loaded) return
         loaded = true
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        windowSec = prefs.getLong(KEY_WINDOW_SEC, 900)
-        clockOffsetMs = prefs.getLong(KEY_CLOCK_OFFSET, 0)
-        clockOffsetEstimator.clear()
-        clockOffsetEstimator.add(clockOffsetMs)
+
+        val secured = runCatching { SecureStore.create(context) }
+            .getOrElse { e ->
+                Log.w(TAG, "secure store unavailable: ${e.javaClass.simpleName}", e)
+                null
+            }
+        secure = secured
+        if (secured != null) {
+            if (!secured.usable) Log.w(TAG, "secure store unusable: ${secured.lastError}")
+            // 平文 chain_proximity からの移行は 1 回だけ。冪等なので loaded ガード内で呼ぶ。
+            runCatching { secured.migrate(context) }
+                .onFailure { Log.w(TAG, "secure store migration failed", it) }
+        }
+
+        windowSec = secured?.getLong(KEY_WINDOW_SEC, 900) ?: 900
+        sampler.clear()
+        clockOffsetMs = sampler.add(secured?.getLong(KEY_CLOCK_OFFSET, 0) ?: 0)
         tokens = runCatching {
-            val array = JSONArray(prefs.getString(KEY_TOKENS, "[]"))
+            val array = JSONArray(secured?.getString(KEY_TOKENS) ?: "[]")
             (0 until array.length()).map {
                 val item = array.getJSONObject(it)
                 Token(item.getLong("w"), decodeToken(item.getString("t")))
             }
         }.getOrDefault(emptyList())
+
+        store = runCatching { SightingStore(context) }
+            .onFailure { Log.w(TAG, "room sighting store unavailable; using in-memory aggregator", it) }
+            .getOrNull()
     }
 
     fun setTokens(context: Context, windowSec: Long, tokens: List<Token>) {
@@ -101,20 +127,21 @@ object ProximityState {
         this.tokens = tokens.sortedBy { it.windowStartSec }
         val array = JSONArray()
         this.tokens.forEach { array.put(JSONObject().put("w", it.windowStartSec).put("t", encodeToken(it.bytes))) }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putLong(KEY_WINDOW_SEC, windowSec)
-            .putString(KEY_TOKENS, array.toString())
-            .apply()
+        // 機密値は暗号化ストアのみに書く。平文には決して書かない。
+        secure?.let {
+            it.putLong(KEY_WINDOW_SEC, windowSec)
+            it.putString(KEY_TOKENS, array.toString())
+        }
         onBeaconConfigChanged?.invoke()
         emitStatus()
     }
 
     fun setClockOffset(context: Context, offsetMs: Long) {
-        clockOffsetMs = offsetMs
-        clockOffsetEstimator.add(offsetMs)
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putLong(KEY_CLOCK_OFFSET, offsetMs)
-            .apply()
+        // 生のサンプルではなく、直近サンプルの中央値を採用して保存する。
+        val median = sampler.add(offsetMs)
+        clockOffsetMs = median
+        secure?.putLong(KEY_CLOCK_OFFSET, median)
+        if (sampler.shouldWarn()) Log.w(TAG, "clock offset is large: ${median}ms")
         onBeaconConfigChanged?.invoke()
         emitStatus()
     }
@@ -128,7 +155,8 @@ object ProximityState {
     fun recordSighting(tokenBytes: ByteArray, rssi: Int) {
         val token = encodeToken(tokenBytes)
         val now = now()
-        sightings.record(token, now, rssi)
+        val active = store
+        if (active != null) active.record(token, now, rssi) else sightings.record(token, now, rssi)
         val last = lastSightingEvent[token]
         if (last == null || now - last >= SIGHTING_EVENT_INTERVAL_MS) {
             lastSightingEvent[token] = now
@@ -141,7 +169,10 @@ object ProximityState {
 
     fun drainSightings(): JSArray {
         val items = JSArray()
-        for ((token, agg) in sightings.drain(now())) {
+        val now = now()
+        val active = store
+        val drained = if (active != null) active.drain(now) else sightings.drain(now)
+        for ((token, agg) in drained) {
             items.put(
                 JSObject()
                     .put("token", token)
@@ -151,7 +182,7 @@ object ProximityState {
                     .put("count", agg.count),
             )
         }
-        val cutoff = now() - SIGHTING_EVENT_INTERVAL_MS
+        val cutoff = now - SIGHTING_EVENT_INTERVAL_MS
         lastSightingEvent.entries.removeIf { it.value < cutoff }
         return items
     }
@@ -165,7 +196,7 @@ object ProximityState {
             .put("scanning", scanning)
             .put("currentWindowStart", currentWindowStartSec?.let { iso(it * 1000) } ?: JSONObject.NULL)
             .put("tokensValidUntil", validUntil?.let { iso(it) } ?: JSONObject.NULL)
-            .put("pendingSightings", sightings.pending())
+            .put("pendingSightings", store?.pending() ?: sightings.pending())
             .put("clockOffsetMs", clockOffsetMs)
             .put("lastError", lastError ?: JSONObject.NULL)
     }
