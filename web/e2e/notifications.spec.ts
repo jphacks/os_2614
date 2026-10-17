@@ -200,3 +200,19 @@ test.describe("notifications", () => {
     await expect(page.getByText("通知はありません")).toBeVisible();
   });
 });
+
+test.describe("notifications unavailable state", () => {
+  test("shows 準備中 and no rows when GET /notifications is 404", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route) => {
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/notifications/");
+
+    await expect(page.getByText("通知は準備中です")).toBeVisible();
+    await expect(page.getByText("通知はありません")).toHaveCount(0);
+  });
+});

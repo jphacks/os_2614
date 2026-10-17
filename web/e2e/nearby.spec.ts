@@ -222,3 +222,20 @@ test.describe("nearby", () => {
     await expect(page.getByText("近くのグループはありません")).toBeVisible();
   });
 });
+
+test.describe("nearby unavailable state", () => {
+  test("shows 準備中 and no rows when GET /groups/nearby is 404", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route) => {
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/");
+
+    await expect(page.getByText("ちかくは準備中です")).toBeVisible();
+    await expect(page.getByText("いまいるエリア")).toHaveCount(0);
+    await expect(page.getByText("近くのグループはありません")).toHaveCount(0);
+  });
+});

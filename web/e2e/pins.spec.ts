@@ -294,3 +294,33 @@ test.describe("instance pins", () => {
     await expect(page.getByText("Pin の上限に達しています")).toBeVisible();
   });
 });
+
+test.describe("pins unavailable fallback", () => {
+  test("shows ピンはまだ利用できません and no rows when GET /instances/{spaceId}/pins is 404", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    await mockApi(page, async (route, request) => {
+      const method = request.method();
+      const pathname = apiPath(request.url());
+      if (method === "GET" && pathname === "/api/v1/groups/g1") {
+        await fulfillJson(route, 200, GROUP);
+        return;
+      }
+      if (method === "GET" && pathname === "/api/v1/instances/g1/posts") {
+        await fulfillJson(route, 200, POSTS);
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/group/?id=g1");
+    await page.getByRole("radio", { name: "ピン" }).click();
+
+    await expect(page.getByText("ピンはまだ利用できません")).toBeVisible();
+    await expect(page.getByText("手動ピン")).toHaveCount(0);
+  });
+});

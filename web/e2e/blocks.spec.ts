@@ -192,3 +192,19 @@ test.describe("blocks", () => {
     await expect(page.getByText("ブロックした人はいません")).toBeVisible();
   });
 });
+
+test.describe("blocks unavailable state", () => {
+  test("shows 準備中 and no rows when GET /blocks is 404", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route) => {
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/blocks/");
+
+    await expect(page.getByText("ブロックは準備中です")).toBeVisible();
+    await expect(page.getByText("ブロックした人はいません")).toHaveCount(0);
+  });
+});

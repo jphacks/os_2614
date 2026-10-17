@@ -250,3 +250,19 @@ test.describe("consent gate", () => {
     await expect.poll(() => putBody).toEqual({ contentScan: 0 });
   });
 });
+
+test.describe("consent unavailable state", () => {
+  test("shows 準備中 and no rows when GET /me is 404", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route) => {
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/consent/");
+
+    await expect(page.getByText("同意は準備中です")).toBeVisible();
+    await expect(page.getByText("まだ同意していません")).toHaveCount(0);
+  });
+});

@@ -169,3 +169,19 @@ test.describe("encounters", () => {
     await expect(page.getByText("まだすれ違いはありません")).toBeVisible();
   });
 });
+
+test.describe("encounters unavailable state", () => {
+  test("shows 準備中 and no rows when GET /encounters is 404", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route) => {
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/encounters/");
+
+    await expect(page.getByText("すれ違いは準備中です")).toBeVisible();
+    await expect(page.getByText("まだすれ違いはありません")).toHaveCount(0);
+  });
+});

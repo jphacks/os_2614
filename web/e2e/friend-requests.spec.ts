@@ -252,3 +252,23 @@ test.describe("friend requests", () => {
     await expect(page.getByText("関係がありません")).toBeVisible();
   });
 });
+
+test.describe("friend requests unavailable state", () => {
+  test("shows 準備中 for both boxes and no rows when GET /friends/requests is 404", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route) => {
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/friends/requests/");
+
+    await expect(page.getByText("受け取った申請は準備中です")).toBeVisible();
+    await expect(page.getByText("送った申請は準備中です")).toBeVisible();
+    await expect(page.getByText("申請は届いていません")).toHaveCount(0);
+    await expect(page.getByText("送った申請はありません")).toHaveCount(0);
+  });
+});
