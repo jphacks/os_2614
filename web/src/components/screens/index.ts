@@ -26,6 +26,8 @@ export { NotificationsScreen } from "./NotificationsScreen";
 export type { NotificationsScreenProps } from "./NotificationsScreen";
 export { BlocksScreen } from "./BlocksScreen";
 export type { BlocksScreenProps, BlockAddResult } from "./BlocksScreen";
+export { ConsentScreen } from "./ConsentScreen";
+export type { ConsentScreenProps, ConsentState } from "./ConsentScreen";
 export { ProfileScreen } from "./ProfileScreen";
 export type { ProfileScreenProps, StatusSaveResult } from "./ProfileScreen";
 export { MemoryScreen } from "./MemoryScreen";

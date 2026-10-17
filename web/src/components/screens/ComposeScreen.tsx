@@ -56,6 +56,8 @@ export type ComposeScreenProps = {
   onRemoveAttachment?: (key: string) => void;
   /** 403 consent_required のときの同意導線 (todo 35)。 */
   onConsent?: () => void;
+  /** 内容チェックへの同意がまだ済んでいない (PUT /me/consents)。true の間は投稿させない。 */
+  consentRequired?: boolean;
   /** 送信先の再取得。 */
   targetsRetry?: () => void;
   onCancel?: () => void;
@@ -90,6 +92,7 @@ export function ComposeScreen({
   onPickAttachment,
   onRemoveAttachment,
   onConsent,
+  consentRequired = false,
   targetsRetry,
   onCancel,
 }: ComposeScreenProps) {
@@ -157,7 +160,8 @@ export function ComposeScreen({
     !validation.ok &&
     (body.length > 0 || attachments.length > 0 || selectedIds.length === 0);
 
-  const canPost = validation.ok && targets.length > 0 && !submitting && !uploading;
+  const canPost =
+    validation.ok && targets.length > 0 && !submitting && !uploading && !consentRequired;
 
   const submit = () => {
     if (!canPost) {
@@ -334,6 +338,19 @@ export function ComposeScreen({
                 label="公開投稿も作成"
               />
             </div>
+
+            {consentRequired && (
+              <div className={styles.errorBlock}>
+                <Notice tone="warning" icon="verified_user">
+                  投稿には内容チェックへの同意が必要です
+                </Notice>
+                {onConsent && (
+                  <Button variant="secondary" onClick={onConsent}>
+                    同意する
+                  </Button>
+                )}
+              </div>
+            )}
 
             {showReason && !validation.ok && (
               <p className={styles.reason}>{validation.message}</p>

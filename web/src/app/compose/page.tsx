@@ -34,8 +34,8 @@ import {
   type ComposeSubmitInput,
 } from "@/components/feature/compose";
 
-/** 同意フロー (todo 35) の導線。画面ができたらそこへ差し替える。 */
-const CONSENT_PATH = "/settings/";
+/** 同意フロー (todo 35) の導線。 */
+const CONSENT_PATH = "/consent/?next=compose";
 
 /** 作成された投稿の Space に応じた戻り先。 */
 function destinationFor(spaceId: string, targets: PostTarget[]): string {
@@ -255,6 +255,10 @@ function ComposeForm() {
         submitting={submitting}
         uploading={uploading}
         error={error}
+        consentRequired={
+          meState.status === "ok" &&
+          meState.data.settings.contentScanConsentVersion !== 1
+        }
         onSubmit={submit}
         onPickAttachment={pickAttachment}
         onRemoveAttachment={removeAttachment}
