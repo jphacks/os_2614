@@ -8,9 +8,14 @@ export type { GroupScreenProps } from "./GroupScreen";
 export { GroupReplyScreen } from "./GroupReplyScreen";
 export type { GroupReplyScreenProps } from "./GroupReplyScreen";
 export { CreateGroupScreen } from "./CreateGroupScreen";
-export type { CreateGroupScreenProps, CreateGroupDraft } from "./CreateGroupScreen";
+export type {
+  CreateGroupScreenProps,
+  CreateGroupDraft,
+  CreateGroupResult,
+  SimilarGroup,
+} from "./CreateGroupScreen";
 export { ComposeScreen } from "./ComposeScreen";
-export type { ComposeScreenProps, ComposeDraft } from "./ComposeScreen";
+export type { ComposeScreenProps, ComposeSubmitError } from "./ComposeScreen";
 export { FriendsScreen } from "./FriendsScreen";
 export type { FriendsScreenProps } from "./FriendsScreen";
 export { ProfileScreen } from "./ProfileScreen";

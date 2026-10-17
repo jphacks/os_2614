@@ -1,0 +1,99 @@
+// Compose の送信入力と `POST /posts` の body（10 §4.1）を 1 箇所にまとめる純関数。
+// 画面（ComposeScreen）と e2e が同じ規則を見るように、検証と body 生成はここだけに置く。
+//
+// 規則は backend `internal/controller/instance.go` の `createPostRequest.Validate` に合わせる:
+//   - spaceIds は 1〜5 件
+//   - media は 4 件まで、かつ spaceIds が 1 件のときだけ
+//   - text が空なら media が必要
+//   - text は 2000 ルーンまで（Go の utf8.RuneCountInString と同じ数え方）
+// 140 字は UI の目安でしかない（サーバ上限ではない）。
+
+import type { PostFormat } from "@/data/dto";
+
+/**
+ * 画面が持つ添付 1 件。`id` は `POST /media`（10 §4.4、todo 15）が返した値だけが入る。
+ * `id` が無い添付は「未アップロード」で、送信時に media へは載せない（黙って落とさない）。
+ */
+export type ComposeAttachment = {
+  /** 画面で一意なキー（サーバ id ではない）。 */
+  key: string;
+  /** `POST /media` 済みの media id。未アップロードなら undefined。 */
+  id?: string;
+  alt?: string;
+  /** プレビュー URL（署名付き URL か object URL）。 */
+  previewUrl?: string;
+};
+
+/** 画面が `onSubmit` に渡す入力。 */
+export type ComposeSubmitInput = {
+  spaceIds: string[];
+  text: string;
+  format: PostFormat;
+  attachments: ComposeAttachment[];
+  alsoPublic: boolean;
+};
+
+/** 検証結果。NG のときだけ理由を持つ。 */
+export type ComposeValidation = { ok: true } | { ok: false; message: string };
+
+/** `POST /posts` の body（10 §4.1）。キーはこの 5 つだけ。 */
+export type CreatePostBody = {
+  spaceIds: string[];
+  text: string;
+  format: PostFormat;
+  media: { id: string; alt: string }[];
+  alsoPublic: boolean;
+};
+
+/** Go の `utf8.RuneCountInString` に合わせたルーン数（サロゲートペアを 1 と数える）。 */
+export function runeCount(text: string): number {
+  return Array.from(text).length;
+}
+
+/** 送信可能かを検証する。サーバの 400 になる前にクライアントで拒否する。 */
+export function validateComposeInput(input: ComposeSubmitInput): ComposeValidation {
+  const { spaceIds, text, attachments } = input;
+  if (spaceIds.length < 1 || spaceIds.length > 5) {
+    return { ok: false, message: "送信先は 1〜5 件で選んでください" };
+  }
+  if (attachments.length > 0 && spaceIds.length !== 1) {
+    return {
+      ok: false,
+      message: "画像を付けられるのは送信先が 1 つのときだけです",
+    };
+  }
+  if (attachments.length > 4) {
+    return { ok: false, message: "画像は 4 枚までです" };
+  }
+  if (text.trim().length === 0 && attachments.length === 0) {
+    return { ok: false, message: "本文か画像が必要です" };
+  }
+  if (runeCount(text) > 2000) {
+    return { ok: false, message: "本文は 2000 文字までです" };
+  }
+  return { ok: true };
+}
+
+/**
+ * 送信入力から body を作る。media は `id` を持つ添付（アップロード済み）だけを載せる。
+ * 未アップロードの添付が混ざっていても黙って落とさないよう、呼び出し側が先に確認する
+ * （page.tsx の submit を参照）。
+ */
+export function buildCreatePostBody(input: ComposeSubmitInput): CreatePostBody {
+  return {
+    spaceIds: [...input.spaceIds],
+    text: input.text,
+    format: input.format,
+    media: input.attachments
+      .filter((attachment) => attachment.id !== undefined && attachment.id !== "")
+      .map((attachment) => ({ id: attachment.id as string, alt: attachment.alt ?? "" })),
+    alsoPublic: input.alsoPublic,
+  };
+}
+
+/** 送信前に未アップロードの添付が残っていないか。 */
+export function hasPendingAttachments(attachments: ComposeAttachment[]): boolean {
+  return attachments.some(
+    (attachment) => attachment.id === undefined || attachment.id === "",
+  );
+}

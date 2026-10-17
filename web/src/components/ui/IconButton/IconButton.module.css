@@ -23,3 +23,8 @@
   background: var(--color-surface);
   color: var(--color-text);
 }
+
+.disabled {
+  color: var(--color-text-muted);
+  pointer-events: none;
+}

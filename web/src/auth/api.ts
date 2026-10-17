@@ -9,6 +9,8 @@ export interface ApiRequest {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** JSON にして送る */
   body?: unknown;
+  /** multipart/form-data で送る (POST /media など)。body とは同時に使わない。 */
+  form?: FormData;
   query?: Record<string, string | number | boolean | undefined>;
   signal?: AbortSignal;
 }
@@ -54,7 +56,7 @@ export async function apiWithMeta<T>(path: string, req: ApiRequest = {}): Promis
     return fetch(url, {
       method: req.method ?? "GET",
       headers,
-      body: req.body !== undefined ? JSON.stringify(req.body) : undefined,
+      body: req.form ?? (req.body !== undefined ? JSON.stringify(req.body) : undefined),
       signal: req.signal,
     });
   };

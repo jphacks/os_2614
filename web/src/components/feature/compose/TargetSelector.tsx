@@ -1,19 +1,17 @@
 "use client";
 
-import type { PostTarget } from "@/domain/types";
 import { Icon } from "@/components/ui/Icon";
 import styles from "./TargetSelector.module.css";
 
-function iconFor(target: PostTarget): string {
-  return target.kind === "group" ? "hub" : "celebration";
-}
-
 export type TargetSelectorProps = {
-  target: PostTarget;
+  /** 選択中の送信先を要約した表示名（複数選択では「名前 他N件」）。 */
+  label: string;
+  /** 先頭に出す material symbol 名。 */
+  icon?: string;
   onClick?: () => void;
 };
 
-export function TargetSelector({ target, onClick }: TargetSelectorProps) {
+export function TargetSelector({ label, icon = "hub", onClick }: TargetSelectorProps) {
   return (
     <button
       type="button"
@@ -21,8 +19,8 @@ export function TargetSelector({ target, onClick }: TargetSelectorProps) {
       onClick={onClick}
       aria-haspopup="menu"
     >
-      <Icon name={iconFor(target)} size={18} />
-      <span className={styles.name}>{target.name}</span>
+      <Icon name={icon} size={18} />
+      <span className={styles.name}>{label}</span>
       <Icon name="expand_more" size={18} />
     </button>
   );

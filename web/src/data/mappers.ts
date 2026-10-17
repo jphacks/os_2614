@@ -24,6 +24,7 @@ import type {
   PartyMember,
   PartyPhase,
   Post,
+  PostTarget,
   Profile,
   Reply,
   Settings,
@@ -35,6 +36,7 @@ import type {
   Encounter as EncounterDTO,
   Friend as FriendDTO,
   Group as GroupDTO,
+  Instance as InstanceDTO,
   InstancePost as PostDTO,
   Media as MediaDTO,
   Memory as MemoryDTO,
@@ -232,6 +234,19 @@ export function toReply(dto: Maybe<PostDTO>): Reply {
     createdAt: dto?.createdAt ?? "",
     likeCount: 0,
     likedByMe: false,
+  };
+}
+
+/**
+ * InstanceItem → PostTarget (GET /instances, 13 §2)。type は backend が
+ * "group" / "party" へ正規化した値をそのまま使う (10 §4.1 の投稿先)。
+ */
+export function toPostTarget(dto: Maybe<InstanceDTO>): PostTarget {
+  return {
+    spaceId: dto?.spaceId ?? "",
+    type: dto?.type ?? "",
+    name: dto?.name ?? "",
+    memberCount: num(dto?.memberCount),
   };
 }
 

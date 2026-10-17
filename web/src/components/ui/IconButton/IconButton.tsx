@@ -8,6 +8,7 @@ export type IconButtonProps = {
   label: string;
   variant?: "plain" | "filled" | "surface";
   onClick?: () => void;
+  disabled?: boolean;
   className?: string;
 };
 
@@ -16,9 +17,10 @@ export function IconButton({
   label,
   variant = "plain",
   onClick,
+  disabled = false,
   className,
 }: IconButtonProps) {
-  const classes = [styles.button, styles[variant], className]
+  const classes = [styles.button, styles[variant], disabled && styles.disabled, className]
     .filter(Boolean)
     .join(" ");
 
@@ -28,6 +30,7 @@ export function IconButton({
       className={classes}
       aria-label={label}
       onClick={onClick}
+      disabled={disabled}
     >
       <Icon name={icon} size={20} filled={variant === "filled"} />
     </button>
