@@ -1,0 +1,20 @@
+{
+  "answers": {
+    "safety": {
+      "type": "choice",
+      "choice": "block",
+      "confidence": 0.82,
+      "probabilities": { "ok": 0.08, "warn": 0.10, "block": 0.82 }
+    },
+    "category": {
+      "type": "choice",
+      "choice": "hate",
+      "confidence": 0.90,
+      "probabilities": { "none": 0.04, "hate": 0.90, "spam": 0.06 }
+    },
+    "pin": {
+      "type": "noul",
+      "noul": 0.20
+    }
+  }
+}
