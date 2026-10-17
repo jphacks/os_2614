@@ -353,6 +353,27 @@ export type Consent = {
   consentedAt: string | null;
 };
 
+/** GET /me/areas の 1 件（controller.areaResponse、07 §4.3）。 */
+export type Area = {
+  id: string;
+  label: string;
+  lat: number;
+  lon: number;
+  radiusM: number;
+  createdAt: RFC3339;
+};
+
+/**
+ * POST /me/areas の入力（controller.areaCreateRequest、07 §4.3）。
+ * label は 20 文字まで、radiusM は 50〜5000 m、1 ユーザー 10 個まで。
+ */
+export type AreaCreateRequest = {
+  label: string;
+  lat: number;
+  lon: number;
+  radiusM: number;
+};
+
 // --- ここから下は backend 未実装（spec-only）の形。実装されたら json タグに合わせて直す。 ---
 
 /** GET /me/stats（13 §3）。未実装（spec-only）。 */
@@ -362,15 +383,6 @@ export type Stats = {
   parties: { total: number };
   groups: { member: number };
   posts: { month: number };
-};
-
-/** GET / POST /me/areas（07 §4.3）。未実装（spec-only）。 */
-export type Area = {
-  id: string;
-  label: string;
-  lat: number;
-  lon: number;
-  radiusM: number;
 };
 
 /** GET /groups/graph（09 §7）。未実装（spec-only）。中心座標は返さない。 */

@@ -8,7 +8,11 @@ import type { NotificationType, Settings, WarnDisplay } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { AppShell } from "@/components/layout/AppShell";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
-import { RevealDelaySetting } from "@/components/feature/settings";
+import {
+  AreaManager,
+  RevealDelaySetting,
+  type AreaManagerProps,
+} from "@/components/feature/settings";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
@@ -61,6 +65,8 @@ export type SettingsScreenProps = {
   onRetrySave?: () => void;
   /** error 状態の再取得。useResource の reload を渡す。 */
   onRetry?: () => void;
+  /** エリア管理 (07 §4.3)。未指定なら節を出さない。 */
+  areas?: AreaManagerProps;
 };
 
 export function SettingsScreen({
@@ -70,6 +76,7 @@ export function SettingsScreen({
   saveError,
   onRetrySave,
   onRetry,
+  areas,
 }: SettingsScreenProps) {
   return (
     <AppShell>
@@ -104,6 +111,8 @@ export function SettingsScreen({
             description="この機能はまだ提供されていません。"
           />
         )}
+
+        {areas && <AreaManager {...areas} />}
 
         <AccountSection />
       </div>

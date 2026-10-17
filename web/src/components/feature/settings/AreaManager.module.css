@@ -1,0 +1,148 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sectionTitle {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+}
+
+.sectionDesc {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.rowIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rowLabel {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+}
+
+.rowMeta {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.listState {
+  margin: 0;
+  padding: var(--space-2) 0;
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.listError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.listError > :first-child {
+  align-self: stretch;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-3);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fieldLabel {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font: var(--text-body);
+  color: var(--color-text);
+}
+
+.input:disabled {
+  opacity: 0.5;
+}
+
+.counter {
+  align-self: flex-end;
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.radiusRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.radiusValue {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.limit,
+.hint {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}

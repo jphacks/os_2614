@@ -10,6 +10,7 @@
 //   partyAuto=true, locationPaused=false, warnDisplay='blur', notify={}
 
 import type {
+  Area,
   AvatarTone,
   Encounter,
   EncounterMode,
@@ -33,6 +34,7 @@ import type {
   WarnDisplay,
 } from "@/domain/types";
 import type {
+  Area as AreaDTO,
   Encounter as EncounterDTO,
   Friend as FriendDTO,
   Group as GroupDTO,
@@ -181,6 +183,17 @@ export function toFriend(dto: Maybe<FriendDTO>): Friend {
     ...toUser(dto),
     since: dto?.since ?? "",
     precision: oneOf(dto?.precision, PRECISIONS, "area"),
+  };
+}
+
+/** areaResponse → Area (07 §4.3)。欠損は空文字・0 で埋める。 */
+export function toArea(dto: Maybe<AreaDTO>): Area {
+  return {
+    id: dto?.id ?? "",
+    label: dto?.label ?? "",
+    lat: num(dto?.lat),
+    lon: num(dto?.lon),
+    radiusM: num(dto?.radiusM),
   };
 }
 
