@@ -25,6 +25,7 @@ Android クライアント側の構成（Capacitor + Kotlin native BLE）は `do
 | 16 | [16-implementation-order.md](16-implementation-order.md) | 実装の順番（S0〜S9 と P1） |
 | 17 | [17-feed.md](17-feed.md) | 公開投稿（Bluesky への同時投稿）と、共通のフィード |
 | 18 | [18-code-map.md](18-code-map.md) | 機能とコードのパス、コントローラーとパスの一覧（`make codemap` で生成） |
+| 19 | [19-openness.md](19-openness.md) | ATProto の特長を活かす拡張: Space ごとの moderation 方針、データのエクスポート、Spaces 統合の段階、Bluesky へのつながりの持ち出し、lexicon の公開、データの置き場所 |
 | — | [../android/README.md](../android/README.md) | Android native プラグインと backend の取り決め |
 
 ## 確定した方針
