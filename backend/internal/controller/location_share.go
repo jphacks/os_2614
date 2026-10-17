@@ -75,15 +75,18 @@ type areaLabelResponse struct {
 
 // friendLocationResponse は精度ごとに形が変わるので、含める項目を自分で組み立てる（07 §4.2）。
 type friendLocationResponse struct {
-	DID       string
-	Precision string
-	Lat       float64
-	Lon       float64
-	AccuracyM float64
-	Area      *service.AreaLabel
-	Outside   bool
-	UpdatedAt *time.Time
-	Stale     bool
+	DID            string
+	Precision      string
+	Lat            float64
+	Lon            float64
+	AccuracyM      float64
+	Area           *service.AreaLabel
+	Outside        bool
+	Direction      string
+	DistanceBucket string
+	ViewerStale    bool
+	UpdatedAt      *time.Time
+	Stale          bool
 }
 
 func (r friendLocationResponse) MarshalJSON() ([]byte, error) {
@@ -113,6 +116,13 @@ func (r friendLocationResponse) MarshalJSON() ([]byte, error) {
 			out["area"] = nil
 			out["outside"] = r.Outside
 		}
+	case r.Precision == service.PrecisionDirection:
+		if r.ViewerStale {
+			out["viewerStale"] = true
+		} else {
+			out["direction"] = r.Direction
+			out["distanceBucket"] = r.DistanceBucket
+		}
 	}
 	return json.Marshal(out)
 }
@@ -120,7 +130,8 @@ func (r friendLocationResponse) MarshalJSON() ([]byte, error) {
 func friendLocationResponseFrom(f service.FriendLocation) friendLocationResponse {
 	return friendLocationResponse{
 		DID: f.DID, Precision: f.Precision, Lat: f.Lat, Lon: f.Lon, AccuracyM: f.AccuracyM,
-		Area: f.Area, Outside: f.Outside, UpdatedAt: f.UpdatedAt, Stale: f.Stale,
+		Area: f.Area, Outside: f.Outside, Direction: f.Direction, DistanceBucket: f.DistanceBucket,
+		ViewerStale: f.ViewerStale, UpdatedAt: f.UpdatedAt, Stale: f.Stale,
 	}
 }
 

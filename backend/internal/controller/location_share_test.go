@@ -42,9 +42,12 @@ type friendLocationItem struct {
 	Area      *struct {
 		Label string `json:"label"`
 	} `json:"area"`
-	Outside   bool       `json:"outside"`
-	UpdatedAt *time.Time `json:"updatedAt"`
-	Stale     bool       `json:"stale"`
+	Outside        bool       `json:"outside"`
+	Direction      string     `json:"direction"`
+	DistanceBucket string     `json:"distanceBucket"`
+	ViewerStale    bool       `json:"viewerStale"`
+	UpdatedAt      *time.Time `json:"updatedAt"`
+	Stale          bool       `json:"stale"`
 }
 
 type friendLocationsResponse struct {
@@ -113,6 +116,21 @@ func locationSharePrecision(t *testing.T, env *testutil.Env, owner, viewer strin
 		t.Fatalf("query location_shares: %v", err)
 	}
 	return p, true
+}
+
+func locationShareRow(t *testing.T, env *testutil.Env, owner, viewer string) (string, bool) {
+	t.Helper()
+	var p string
+	var only bool
+	err := env.DB.QueryRowContext(context.Background(),
+		"SELECT precision, areas_only FROM location_shares WHERE owner = ? AND viewer = ?", owner, viewer).Scan(&p, &only)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false
+	}
+	if err != nil {
+		t.Fatalf("query location_shares: %v", err)
+	}
+	return p, only
 }
 
 func createArea(t *testing.T, app *fiber.App, token, label string, lat, lon float64, radiusM int) areaItemResponse {
@@ -319,15 +337,13 @@ func TestLocationShareSetPrecisionErrors(t *testing.T) {
 	if status != http.StatusNotFound {
 		t.Fatalf("self: status = %d, want 404 (body=%s)", status, body)
 	}
-	// direction は P2 なので 400。
-	status, body = setPrecision(t, app, aliceToken, "did:plc:bob", "direction", false)
-	if status != http.StatusBadRequest {
-		t.Fatalf("direction: status = %d, want 400 (body=%s)", status, body)
+	// direction と areasOnly は受け付ける（07 §4.1）。
+	status, body = setPrecision(t, app, aliceToken, "did:plc:bob", "direction", true)
+	if status != http.StatusNoContent {
+		t.Fatalf("direction+areasOnly: status = %d, want 204 (body=%s)", status, body)
 	}
-	// areasOnly: true は P2 なので 400。
-	status, body = setPrecision(t, app, aliceToken, "did:plc:bob", "area", true)
-	if status != http.StatusBadRequest {
-		t.Fatalf("areasOnly: status = %d, want 400 (body=%s)", status, body)
+	if p, only := locationShareRow(t, env, "did:plc:alice", "did:plc:bob"); p != "direction" || !only {
+		t.Fatalf("saved row = %q,%v, want direction,true", p, only)
 	}
 	// 未知の精度も 400。
 	status, body = setPrecision(t, app, aliceToken, "did:plc:bob", "bogus", false)
@@ -465,4 +481,118 @@ func diff(a, b float64) float64 {
 		return a - b
 	}
 	return b - a
+}
+
+// direction は見る側から相手への真方位と距離帯を返し、座標は返さない（07 §4.1）。
+func TestFriendLocationsDirection(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	env.CreateUser(t, "did:plc:alice", "alice.test")
+	env.CreateUser(t, "did:plc:bob", "bob.test")
+	aliceToken := env.Login(t, "did:plc:alice")
+	bobToken := env.Login(t, "did:plc:bob")
+	beFriend(t, app, aliceToken, bobToken)
+
+	if status, body := setPrecision(t, app, bobToken, "did:plc:alice", "direction", false); status != http.StatusNoContent {
+		t.Fatalf("set direction: status = %d (body=%s)", status, body)
+	}
+	putLocation(t, app, bobToken, 35.0, 135.0, 10, env.Clock.Now())
+
+	// 見る側（alice）の位置がなければ viewerStale。方角と距離は返さない。
+	item := findLocation(t, getFriendLocations(t, app, aliceToken).Items, "did:plc:bob")
+	if item.Precision != "direction" || !item.ViewerStale || item.Direction != "" || item.DistanceBucket != "" {
+		t.Fatalf("viewerStale item = %+v", item)
+	}
+
+	// alice を bob の北 55 m に置く。方角は見る側から相手へなので南、距離帯は <100m。
+	putLocation(t, app, aliceToken, 35.0005, 135.0, 10, env.Clock.Now())
+	item = findLocation(t, getFriendLocations(t, app, aliceToken).Items, "did:plc:bob")
+	if item.ViewerStale || item.Direction != "S" || item.DistanceBucket != "<100m" {
+		t.Fatalf("direction item = %+v, want direction S, <100m", item)
+	}
+	if item.Lat != nil || item.Lon != nil {
+		t.Fatalf("direction must not return coordinates: %+v", item)
+	}
+
+	// 見る側の位置が 2 分より古ければ viewerStale（検証を通さず Redis に直接書く）。
+	old := model.Location{DID: "did:plc:alice", Lat: 35.0005, Lon: 135.0, AccuracyM: 10, RecordedAt: env.Clock.Now().Add(-3 * time.Minute), Source: "gps"}
+	if err := model.SaveLocation(context.Background(), env.Redis, old, time.Hour); err != nil {
+		t.Fatalf("save old viewer location: %v", err)
+	}
+	item = findLocation(t, getFriendLocations(t, app, aliceToken).Items, "did:plc:bob")
+	if !item.ViewerStale || item.Direction != "" || item.DistanceBucket != "" {
+		t.Fatalf("stale viewer item = %+v", item)
+	}
+}
+
+// areasOnly は登録エリアの中にいるときだけ設定した精度で見せ、外では off と同じ（07 §4.1）。
+func TestFriendLocationsAreasOnly(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	env.CreateUser(t, "did:plc:alice", "alice.test")
+	env.CreateUser(t, "did:plc:bob", "bob.test")
+	aliceToken := env.Login(t, "did:plc:alice")
+	bobToken := env.Login(t, "did:plc:bob")
+	beFriend(t, app, aliceToken, bobToken)
+	createArea(t, app, bobToken, "大学", 35.0, 135.0, 500)
+
+	// exact + areasOnly: 中は exact、外は off。
+	if status, body := setPrecision(t, app, bobToken, "did:plc:alice", "exact", true); status != http.StatusNoContent {
+		t.Fatalf("set exact+areasOnly: status = %d (body=%s)", status, body)
+	}
+	putLocation(t, app, bobToken, 35.0, 135.0, 10, env.Clock.Now())
+	item := findLocation(t, getFriendLocations(t, app, aliceToken).Items, "did:plc:bob")
+	if item.Precision != "exact" || item.Lat == nil {
+		t.Fatalf("inside item = %+v, want exact", item)
+	}
+	putLocation(t, app, bobToken, 0, 0, 10, env.Clock.Now())
+	item = findLocation(t, getFriendLocations(t, app, aliceToken).Items, "did:plc:bob")
+	if item.Precision != "off" || item.Lat != nil {
+		t.Fatalf("outside item = %+v, want off", item)
+	}
+
+	// area + areasOnly: 中は label、外は off。
+	if status, body := setPrecision(t, app, bobToken, "did:plc:alice", "area", true); status != http.StatusNoContent {
+		t.Fatalf("set area+areasOnly: status = %d (body=%s)", status, body)
+	}
+	putLocation(t, app, bobToken, 35.0, 135.0, 10, env.Clock.Now())
+	item = findLocation(t, getFriendLocations(t, app, aliceToken).Items, "did:plc:bob")
+	if item.Precision != "area" || item.Area == nil || item.Area.Label != "大学" || item.Outside {
+		t.Fatalf("inside area item = %+v", item)
+	}
+	putLocation(t, app, bobToken, 0, 0, 10, env.Clock.Now())
+	item = findLocation(t, getFriendLocations(t, app, aliceToken).Items, "did:plc:bob")
+	if item.Precision != "off" || item.Area != nil {
+		t.Fatalf("outside area item = %+v, want off", item)
+	}
+}
+
+// direction と areasOnly の組み合わせ（07 §4.1）。
+func TestFriendLocationsAreasOnlyDirection(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	env.CreateUser(t, "did:plc:alice", "alice.test")
+	env.CreateUser(t, "did:plc:bob", "bob.test")
+	aliceToken := env.Login(t, "did:plc:alice")
+	bobToken := env.Login(t, "did:plc:bob")
+	beFriend(t, app, aliceToken, bobToken)
+	createArea(t, app, bobToken, "大学", 35.0, 135.0, 500)
+	if status, body := setPrecision(t, app, bobToken, "did:plc:alice", "direction", true); status != http.StatusNoContent {
+		t.Fatalf("set direction+areasOnly: status = %d (body=%s)", status, body)
+	}
+	putLocation(t, app, aliceToken, 35.0005, 135.0, 10, env.Clock.Now())
+
+	// bob はエリア内 → direction。
+	putLocation(t, app, bobToken, 35.0, 135.0, 10, env.Clock.Now())
+	item := findLocation(t, getFriendLocations(t, app, aliceToken).Items, "did:plc:bob")
+	if item.Precision != "direction" || item.Direction != "S" || item.DistanceBucket != "<100m" {
+		t.Fatalf("inside item = %+v, want direction S, <100m", item)
+	}
+
+	// bob はエリア外 → off。
+	putLocation(t, app, bobToken, 0, 0, 10, env.Clock.Now())
+	item = findLocation(t, getFriendLocations(t, app, aliceToken).Items, "did:plc:bob")
+	if item.Precision != "off" || item.Direction != "" {
+		t.Fatalf("outside item = %+v, want off", item)
+	}
 }

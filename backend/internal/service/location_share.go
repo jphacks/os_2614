@@ -14,12 +14,13 @@ import (
 	"github.com/applemango/chain/internal/model"
 )
 
-// 07 §4.1 の共有精度。direction は P2 なので扱わない。
+// 07 §4.1 の共有精度。
 const (
-	PrecisionExact  = "exact"
-	PrecisionApprox = "approx"
-	PrecisionArea   = "area"
-	PrecisionOff    = "off"
+	PrecisionExact     = "exact"
+	PrecisionApprox    = "approx"
+	PrecisionArea      = "area"
+	PrecisionDirection = "direction"
+	PrecisionOff       = "off"
 )
 
 // 07 §4 のパラメータ。
@@ -27,7 +28,23 @@ const (
 	LocationStaleWindow = 30 * time.Minute
 	approxGeohashLen    = 6
 	exactDecimals       = 5
+	// directionViewerFresh は direction で見る側の位置を新しいとみなす窓（07 §4.1「見る側の位置も 2 分以内」）。
+	directionViewerFresh = 2 * time.Minute
 )
+
+// directionBuckets は距離帯の上限（m、この値未満）。順に評価する（07 §4.1）。
+var directionBuckets = []struct {
+	limitM float64
+	label  string
+}{
+	{100, "<100m"},
+	{500, "<500m"},
+	{2000, "<2km"},
+	{10000, "<10km"},
+}
+
+// compassPoints は 8 方位。各方位は 45° の帯の中央（N=0°、NE=45°…）に置く。
+var compassPoints = [8]string{"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
 
 // 07 §4.3 のパラメータ。
 const (
@@ -42,28 +59,23 @@ type LocationShareService struct {
 	Deps
 }
 
-// SetPrecision は owner が viewer に見せる精度を保存する（07 §4.2）。
-// viewer とフレンドでなければ 404。direction と areasOnly は P2 なので 400。
+// SetPrecision は owner が viewer に見せる精度と areasOnly を保存する（07 §4.1、§4.2）。
+// viewer とフレンドでなければ 404。
 func (s *LocationShareService) SetPrecision(ctx context.Context, owner, viewer, precision string, areasOnly bool) error {
 	if viewer == owner {
 		return httpx.ErrNotFound
 	}
-	fields := map[string]string{}
-	if areasOnly {
-		fields["areasOnly"] = "P2 の項目です"
-	}
 	if !validPrecision(precision) {
-		fields["precision"] = "exact / approx / area / off のいずれかを指定してください"
-	}
-	if len(fields) > 0 {
-		return httpx.ErrInvalidRequest.With("fields", fields)
+		return httpx.ErrInvalidRequest.With("fields", map[string]string{
+			"precision": "exact / approx / area / direction / off のいずれかを指定してください",
+		})
 	}
 	if _, err := model.GetFriendship(ctx, s.DB, owner, viewer); errors.Is(err, sql.ErrNoRows) {
 		return httpx.ErrNotFound
 	} else if err != nil {
 		return err
 	}
-	return model.UpsertLocationShare(ctx, s.DB, owner, viewer, precision, false, s.Clock.Now())
+	return model.UpsertLocationShare(ctx, s.DB, owner, viewer, precision, areasOnly, s.Clock.Now())
 }
 
 // SetPaused は全員への共有を一時停止する（07 §4.1、PUT /me/location-sharing）。
@@ -73,7 +85,7 @@ func (s *LocationShareService) SetPaused(ctx context.Context, did string, paused
 
 func validPrecision(p string) bool {
 	switch p {
-	case PrecisionExact, PrecisionApprox, PrecisionArea, PrecisionOff:
+	case PrecisionExact, PrecisionApprox, PrecisionArea, PrecisionDirection, PrecisionOff:
 		return true
 	default:
 		return false
@@ -86,16 +98,20 @@ type AreaLabel struct {
 }
 
 // FriendLocation は GET /friends/locations の 1 件（07 §4.2）。
+// direction のときは Lat/Lon ではなく Direction・DistanceBucket・ViewerStale を使う。
 type FriendLocation struct {
-	DID       string
-	Precision string
-	Lat       float64
-	Lon       float64
-	AccuracyM float64
-	Area      *AreaLabel
-	Outside   bool
-	UpdatedAt *time.Time
-	Stale     bool
+	DID            string
+	Precision      string
+	Lat            float64
+	Lon            float64
+	AccuracyM      float64
+	Area           *AreaLabel
+	Outside        bool
+	Direction      string
+	DistanceBucket string
+	ViewerStale    bool
+	UpdatedAt      *time.Time
+	Stale          bool
 }
 
 // ListLocations は自分のフレンド全員について、相手が自分に設定した精度で位置を計算して返す（07 §4.2）。
@@ -140,12 +156,12 @@ func (s *LocationShareService) locationFor(ctx context.Context, me, peer string,
 		return item, nil
 	}
 
-	precision, err := model.GetLocationPrecision(ctx, s.DB, peer, me)
+	share, err := model.GetLocationShareOrDefault(ctx, s.DB, peer, me)
 	if err != nil {
 		return nil, err
 	}
-	item.Precision = precision
-	if precision == PrecisionOff {
+	item.Precision = share.Precision
+	if share.Precision == PrecisionOff {
 		return item, nil
 	}
 
@@ -162,10 +178,22 @@ func (s *LocationShareService) locationFor(ctx context.Context, me, peer string,
 		return item, nil
 	}
 
+	// areasOnly は登録エリアのどれかの中にいるときだけ見せる。外は off と同じ（07 §4.1）。
+	if share.AreasOnly {
+		_, inside, err := s.areaLabelAt(ctx, peer, loc)
+		if err != nil {
+			return nil, err
+		}
+		if !inside {
+			item.Precision = PrecisionOff
+			return item, nil
+		}
+	}
+
 	at := loc.RecordedAt.Truncate(time.Minute)
 	item.UpdatedAt = &at
 
-	switch precision {
+	switch share.Precision {
 	case PrecisionExact:
 		item.Lat = roundCoord(loc.Lat)
 		item.Lon = roundCoord(loc.Lon)
@@ -182,8 +210,33 @@ func (s *LocationShareService) locationFor(ctx context.Context, me, peer string,
 		} else {
 			item.Outside = true
 		}
+	case PrecisionDirection:
+		if err := s.setDirection(ctx, item, me, loc, now); err != nil {
+			return nil, err
+		}
 	}
 	return item, nil
+}
+
+// setDirection は見る側（me）から相手（peerLoc）への真方位と距離帯を item に埋める（07 §4.1）。
+// 見る側の位置がなければ、または directionViewerFresh より古ければ ViewerStale を立て、
+// 方角と距離は返さない。
+func (s *LocationShareService) setDirection(ctx context.Context, item *FriendLocation, me string, peerLoc *model.Location, now time.Time) error {
+	viewerLoc, err := model.GetLocation(ctx, s.Redis, me)
+	if errors.Is(err, sql.ErrNoRows) {
+		item.ViewerStale = true
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if now.Sub(viewerLoc.RecordedAt) > directionViewerFresh {
+		item.ViewerStale = true
+		return nil
+	}
+	item.Direction = CompassDirection(InitialBearing(viewerLoc.Lat, viewerLoc.Lon, peerLoc.Lat, peerLoc.Lon))
+	item.DistanceBucket = DistanceBucket(Haversine(viewerLoc.Lat, viewerLoc.Lon, peerLoc.Lat, peerLoc.Lon))
+	return nil
 }
 
 func (s *LocationShareService) isPaused(ctx context.Context, did string) (bool, error) {
@@ -222,6 +275,34 @@ func (s *LocationShareService) areaLabelAt(ctx context.Context, did string, loc 
 func roundCoord(v float64) float64 {
 	scale := math.Pow(10, exactDecimals)
 	return math.Round(v*scale) / scale
+}
+
+// InitialBearing は (lat1,lon1) から (lat2,lon2) への真方位を北 0°・東回りの度（[0,360)）で返す（07 §4.1）。
+// 2 点が同じでも 0（北）を返す。
+func InitialBearing(lat1, lon1, lat2, lon2 float64) float64 {
+	const rad = math.Pi / 180
+	phi1, phi2 := lat1*rad, lat2*rad
+	dLambda := (lon2 - lon1) * rad
+	y := math.Sin(dLambda) * math.Cos(phi2)
+	x := math.Cos(phi1)*math.Sin(phi2) - math.Sin(phi1)*math.Cos(phi2)*math.Cos(dLambda)
+	return math.Mod(math.Atan2(y, x)/rad+360, 360)
+}
+
+// CompassDirection は真方位（度）を 8 方位に丸める。各方位は 45° の帯の中央に置き、帯は
+// 中央 ±22.5°（22.5° は NE、337.5° は N のように上の帯に入る）（07 §4.1）。
+func CompassDirection(bearingDeg float64) string {
+	b := math.Mod(math.Mod(bearingDeg, 360)+360, 360)
+	return compassPoints[int(math.Floor((b+22.5)/45))%8]
+}
+
+// DistanceBucket は距離（m）を 07 §4.1 の距離帯に分ける。境界値は上の帯に入る（100 m は <500m）。
+func DistanceBucket(distM float64) string {
+	for _, b := range directionBuckets {
+		if distM < b.limitM {
+			return b.label
+		}
+	}
+	return "far"
 }
 
 // AreaInput は POST /me/areas の入力（07 §4.3）。

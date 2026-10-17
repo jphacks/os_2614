@@ -2,6 +2,8 @@ package model
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
@@ -47,6 +49,19 @@ func GetLocationShare(ctx context.Context, q db.Querier, owner, viewer string) (
 	return db.GetItem(ctx, q,
 		"SELECT "+locationShareColumns+" FROM location_shares WHERE owner = ? AND viewer = ?",
 		[]any{owner, viewer}, scanLocationShare)
+}
+
+// GetLocationShareOrDefault は owner→viewer の共有設定を返す。行がなければ既定
+// （DefaultLocationPrecision、areas_only=0）を返す（07 §4.1「新しくフレンドになった相手への既定は area」）。
+func GetLocationShareOrDefault(ctx context.Context, q db.Querier, owner, viewer string) (*LocationShare, error) {
+	ls, err := GetLocationShare(ctx, q, owner, viewer)
+	if errors.Is(err, sql.ErrNoRows) {
+		return &LocationShare{Owner: owner, Viewer: viewer, Precision: DefaultLocationPrecision}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return ls, nil
 }
 
 // CreateDefaultLocationShares は a と b の双方向に既定 precision（DefaultLocationPrecision）かつ
