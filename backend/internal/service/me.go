@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
+	"github.com/applemango/chain/internal/external/atproto"
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/model"
 )
@@ -14,7 +16,22 @@ import (
 // MeService は自分のプロフィールと設定（13 §1、14「自分」）。
 type MeService struct {
 	Deps
+	Moderator Moderator
+	Writer    RecordWriter
 }
+
+// RecordWriter はユーザーの PDS に record を読み書きする（03 §4）。実装は atproto.Writer、テストでは fake。
+type RecordWriter interface {
+	PutRecord(ctx context.Context, did, atprotoSessionID, collection, rkey string, record any) (uri, cid string, err error)
+	CreateRecord(ctx context.Context, did, atprotoSessionID, collection string, record any) (uri, cid string, err error)
+	DeleteRecord(ctx context.Context, did, atprotoSessionID, collection, rkey string) error
+}
+
+// collectionActorProfile は CHAIN 固有のプロフィール（03 §6）。rkey は literal:self。
+const (
+	collectionActorProfile = "jp.i32.chain.actor.profile"
+	actorProfileRKey       = "self"
+)
 
 type Me struct {
 	User     model.User
@@ -63,6 +80,7 @@ type SettingsUpdate struct {
 	EncounterDelaySec *int
 	FriendBeaconShare *bool
 	PartyAuto         *bool
+	NaturalGroups     *bool
 	WarnDisplay       *string
 	Notify            map[string]bool // nil = 変更なし。{} も「通知設定を変更する」を意味する
 }
@@ -82,6 +100,7 @@ func (s *MeService) UpdateSettings(ctx context.Context, did string, u SettingsUp
 		EncounterDelaySec: u.EncounterDelaySec,
 		FriendBeaconShare: u.FriendBeaconShare,
 		PartyAuto:         u.PartyAuto,
+		NaturalGroups:     u.NaturalGroups,
 		WarnDisplay:       u.WarnDisplay,
 	}
 
@@ -155,4 +174,48 @@ func (s *MeService) UpdateConsent(ctx context.Context, did string, version int) 
 		return nil, err
 	}
 	return &Consent{Version: version, ConsentedAt: &now}, nil
+}
+
+// UpdateStatus はステータスを PDS に書いてから profiles を更新する（13 §1.1）。
+// 空文字ならステータスを消す（record は残し、status を空にする）。
+// PDS のセッションが失効していれば 401 atproto_session_expired、その他のエラーは 502 upstream_error。
+func (s *MeService) UpdateStatus(ctx context.Context, did, sid, status string) (*model.Profile, error) {
+	if s.Moderator != nil {
+		v, err := s.Moderator.Judge(ctx, Content{Kind: ContentKindStatus, Text: status})
+		if err != nil {
+			slog.WarnContext(ctx, "moderation error; treating as ok", "err", err)
+		} else if v.Label == LabelBlock {
+			return nil, httpx.ErrModerationBlocked.With("categories", v.Categories)
+		}
+	}
+	if s.Writer == nil {
+		return nil, httpx.ErrUpstream.With("reason", "PDS への書き込みができません")
+	}
+	sess, err := model.GetAppSession(ctx, s.DB, sid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, httpx.ErrATProtoSession
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	now := s.Clock.Now()
+	record := map[string]any{
+		"$type":     collectionActorProfile,
+		"status":    status,
+		"createdAt": formatDateTime(now),
+	}
+	if _, _, err := s.Writer.PutRecord(ctx, did, sess.ATProtoSessionID, collectionActorProfile, actorProfileRKey, record); err != nil {
+		if errors.Is(err, atproto.ErrSessionExpired) {
+			return nil, httpx.ErrATProtoSession
+		}
+		if errors.Is(err, atproto.ErrReauthRequired) {
+			return nil, httpx.ErrReauthRequired
+		}
+		return nil, httpx.ErrUpstream.With("reason", "PDS への書き込みに失敗しました")
+	}
+	if err := model.SetProfileStatus(ctx, s.DB, did, status, now); err != nil {
+		return nil, err
+	}
+	return model.GetProfile(ctx, s.DB, did)
 }

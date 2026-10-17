@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -20,6 +21,7 @@ func (h *MeController) Register(r fiber.Router) {
 	r.Get("/me", h.get)
 	r.Patch("/me/settings", h.updateSettings)
 	r.Put("/me/consents", h.updateConsent)
+	r.Put("/me/status", h.updateStatus)
 }
 
 type meResponse struct {
@@ -38,6 +40,7 @@ type meSettingsResponse struct {
 	EncounterDelaySec         int             `json:"encounterDelaySec"`
 	FriendBeaconShare         bool            `json:"friendBeaconShare"`
 	PartyAuto                 bool            `json:"partyAuto"`
+	NaturalGroups             bool            `json:"naturalGroups"`
 	LocationPaused            bool            `json:"locationPaused"`
 	WarnDisplay               string          `json:"warnDisplay"`
 	ContentScanConsentVersion *int            `json:"contentScanConsentVersion"`
@@ -68,6 +71,7 @@ func settingsResponse(st model.UserSettings) (meSettingsResponse, error) {
 		EncounterDelaySec:         st.EncounterDelaySec,
 		FriendBeaconShare:         st.FriendBeaconShare,
 		PartyAuto:                 st.PartyAuto,
+		NaturalGroups:             st.NaturalGroups,
 		LocationPaused:            st.LocationPaused,
 		WarnDisplay:               st.WarnDisplay,
 		ContentScanConsentVersion: st.ContentScanConsentVersion,
@@ -102,6 +106,7 @@ type settingsPatchRequest struct {
 	EncounterDelaySec *int            `json:"encounterDelaySec"`
 	FriendBeaconShare *bool           `json:"friendBeaconShare"`
 	PartyAuto         *bool           `json:"partyAuto"`
+	NaturalGroups     *bool           `json:"naturalGroups"`
 	WarnDisplay       *string         `json:"warnDisplay"`
 	Notify            map[string]bool `json:"notify"`
 }
@@ -163,6 +168,7 @@ func (h *MeController) updateSettings(c fiber.Ctx) error {
 		EncounterDelaySec: req.EncounterDelaySec,
 		FriendBeaconShare: req.FriendBeaconShare,
 		PartyAuto:         req.PartyAuto,
+		NaturalGroups:     req.NaturalGroups,
 		WarnDisplay:       req.WarnDisplay,
 		Notify:            req.Notify,
 	})
@@ -205,4 +211,31 @@ func (h *MeController) updateConsent(c fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(consentResponse{ContentScan: res.Version, ConsentedAt: res.ConsentedAt})
+}
+
+type statusRequest struct {
+	Status string `json:"status"`
+}
+
+func (r *statusRequest) Validate() map[string]string {
+	if utf8.RuneCountInString(r.Status) > 40 {
+		return map[string]string{"status": "40 文字までです"}
+	}
+	return nil
+}
+
+type statusResponse struct {
+	Status string `json:"status"`
+}
+
+func (h *MeController) updateStatus(c fiber.Ctx) error {
+	var req statusRequest
+	if err := httpx.Bind(c, &req); err != nil {
+		return err
+	}
+	p, err := h.Me.UpdateStatus(c.Context(), httpx.DID(c), httpx.SessionID(c), req.Status)
+	if err != nil {
+		return err
+	}
+	return c.JSON(statusResponse{Status: p.Status})
 }

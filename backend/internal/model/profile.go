@@ -55,3 +55,12 @@ func nullable(s string) any {
 	}
 	return s
 }
+
+// SetProfileStatus はステータスだけを更新する（13 §1.1）。空文字なら NULL に戻す。
+func SetProfileStatus(ctx context.Context, q db.Querier, did, status string, now time.Time) error {
+	_, err := db.Execute(ctx, q, `
+		INSERT INTO profiles (did, status, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT (did) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`,
+		did, nullable(status), clock.UnixMilli(now))
+	return err
+}
