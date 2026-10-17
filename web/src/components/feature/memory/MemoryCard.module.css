@@ -1,25 +1,16 @@
 .card {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: var(--space-3);
   width: 100%;
 }
 
-.thumbs {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-2);
-}
-
-.overlay {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 1 / 1;
+/* cover は 1 枚だけ (13 §2)。一覧は横並びにして、どの幅でも高さが暴れないようにする。 */
+.cover {
+  flex: none;
+  width: 96px;
+  overflow: hidden;
   border-radius: var(--radius-md);
-  background: var(--color-overlay-count);
-  font: var(--text-heading);
-  color: var(--color-text-on-primary);
 }
 
 .foot {
@@ -27,6 +18,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
 }
 
 .info {
@@ -39,9 +32,17 @@
 .title {
   font: var(--text-heading);
   color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meta {
   font: var(--text-caption);
   color: var(--color-text-muted);
+}
+
+.busy {
+  opacity: 0.5;
+  pointer-events: none;
 }

@@ -16,3 +16,124 @@
   flex-direction: column;
   gap: var(--space-4);
 }
+
+.notice {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font: var(--text-caption);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.notice[data-tone="ok"] {
+  color: var(--color-positive-text);
+}
+
+.notice[data-tone="unavailable"] {
+  color: var(--color-text-secondary);
+}
+
+.notice[data-tone="error"] {
+  color: var(--color-text);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-6) var(--space-4);
+  font: var(--text-body);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-1);
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 280px;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+}
+
+.stateIcon {
+  color: var(--color-text-muted);
+}
+
+.stateTitle {
+  margin: 0;
+  font: var(--text-heading);
+  color: var(--color-text);
+}
+
+.stateDescription {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.skeleton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.skeletonCover {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--radius-md);
+  background: var(--color-placeholder);
+}
+
+.skeletonLines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.skeletonLineShort,
+.skeletonLineLong {
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-placeholder);
+}
+
+.skeletonLineShort {
+  width: 45%;
+}
+
+.skeletonLineLong {
+  width: 70%;
+}
+
+.skeletonCover,
+.skeletonLineShort,
+.skeletonLineLong {
+  animation: memorySkeletonPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes memorySkeletonPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonCover,
+  .skeletonLineShort,
+  .skeletonLineLong {
+    animation: none;
+  }
+}

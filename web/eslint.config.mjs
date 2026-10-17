@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     // Capacitor が out/ をコピーする生成物。バンドル済み JS を lint しない
     "android/**",
     "next-env.d.ts",
+    // Playwright の生成レポート (バンドル済み JS を lint しない)
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 
