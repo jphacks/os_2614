@@ -4,6 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { ChainProximity } from "./index";
 import type { LocationFix, ProximityStatus, SightingEvent } from "./definitions";
+import {
+  LOCATION_FOREGROUND_INTERVAL_MS,
+  isLocationUploadable,
+  locationUploadDue,
+  uploadLocation,
+  type LocationSender,
+} from "./location";
 
 const NEARBY_PRUNE_INTERVAL_MS = 5_000;
 
@@ -189,4 +196,86 @@ export function useLocation(opts: { intervalMs: number; enabled: boolean }): {
   }, [enabled, intervalMs]);
 
   return { fix, error };
+}
+
+/** useLocationUpload が返す状態。 */
+export interface LocationUploadState {
+  /** 位置の現在値 (アップロード可否に関わらず最新の取得値)。 */
+  fix: LocationFix | null;
+  /** 位置の取得が続かない / 権限が無いときの理由。 */
+  error: string | null;
+  /** 直近のアップロード失敗。成功で消える。 */
+  uploadError: string | null;
+  /** 直近にアップロードした時刻 (ms)。未送信は 0。 */
+  lastUploadedAtMs: number;
+}
+
+export interface LocationUploadOptions {
+  /** true の間だけ位置を取り、backend へ送る (前面のみ)。 */
+  enabled: boolean;
+  /** 位置の取得間隔。既定は前面用の 30 秒。 */
+  intervalMs?: number;
+  /** 送信間隔の下限。既定 10 秒 (location 6/分)。 */
+  minIntervalMs?: number;
+  /** 送信の差し替え。テスト用。既定はデータ層の uploadLocation。 */
+  sender?: LocationSender;
+}
+
+/**
+ * 位置を取り、backend の受理条件を満たす値だけを `PUT /me/location` へ送る (05 §4)。
+ *
+ * - 取得は useLocation に任せる (enabled=false で停止、アンマウントで stopLocationUpdates)。
+ * - 送信は minIntervalMs (既定 10 秒) をあけて行い、location 6/分のレート制限を超えない。
+ * - isMock / 精度超過 / 古すぎ・未来すぎの fix は送らない (backend が 400 にするため)。
+ */
+export function useLocationUpload(opts: LocationUploadOptions): LocationUploadState {
+  const { enabled, intervalMs = LOCATION_FOREGROUND_INTERVAL_MS, minIntervalMs, sender } = opts;
+  const { fix, error } = useLocation({ intervalMs, enabled });
+
+  const lastSentAtRef = useRef(0);
+  const [upload, setUpload] = useState<{
+    uploadError: string | null;
+    lastUploadedAtMs: number;
+  }>({ uploadError: null, lastUploadedAtMs: 0 });
+
+  useEffect(() => {
+    if (!enabled || !fix) {
+      return;
+    }
+    const nowMs = Date.now();
+    if (!isLocationUploadable(fix, nowMs)) {
+      return;
+    }
+    if (!locationUploadDue({ lastSentAtMs: lastSentAtRef.current, nowMs, minIntervalMs })) {
+      return;
+    }
+    lastSentAtRef.current = nowMs;
+
+    let active = true;
+    const controller = new AbortController();
+    const send = sender ?? uploadLocation;
+    void send(fix, { signal: controller.signal })
+      .then(() => {
+        if (active) {
+          setUpload({ uploadError: null, lastUploadedAtMs: nowMs });
+        }
+      })
+      .catch((cause) => {
+        if (active) {
+          setUpload({ uploadError: describeError(cause), lastUploadedAtMs: nowMs });
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [enabled, fix, minIntervalMs, sender]);
+
+  return {
+    fix,
+    error,
+    uploadError: upload.uploadError,
+    lastUploadedAtMs: upload.lastUploadedAtMs,
+  };
 }
