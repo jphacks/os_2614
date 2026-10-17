@@ -112,15 +112,27 @@ test.describe("signed in", () => {
   });
 
   test("nearby screen and tab bar render", async ({ page }) => {
+    await mockApi(page, async (route) => {
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
     await page.goto("/");
 
-    await expect(page.getByText("ちかく（準備中）")).toBeVisible();
+    await expect(page.getByText("近くのグループ")).toBeVisible();
     await expect(
       page.getByRole("navigation", { name: "メインナビゲーション" }),
     ).toBeVisible();
   });
 
   test("tab navigation reaches friends screen", async ({ page }) => {
+    await mockApi(page, async (route) => {
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
     await page.goto("/");
 
     await page.getByRole("link", { name: "友達" }).click();
@@ -173,7 +185,7 @@ test.describe("auth", () => {
 
     // 保存された access token は header.payload.signature 形式。
     expect(tokens.accessToken.split(".")).toHaveLength(3);
-    await expect(page.getByText("ちかく（準備中）")).toBeVisible();
+    await expect(page.getByText("近くのグループ")).toBeVisible();
   });
 
   test("expired exchange shows the re-login action", async ({ page }) => {

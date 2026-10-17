@@ -18,15 +18,19 @@ import type {
   FeedPost,
   Friend,
   Group,
+  GroupNearby,
   GroupVisibility,
   LocationPrecision,
   Media,
   Memory,
+  Notification,
+  NotificationType,
   Party,
   PartyMember,
   PartyPhase,
   Pin,
   Post,
+  PostFormat,
   PostTarget,
   Profile,
   Reply,
@@ -41,10 +45,12 @@ import type {
   FeedItem as FeedItemDTO,
   Friend as FriendDTO,
   Group as GroupDTO,
+  GroupNearby as GroupNearbyDTO,
   Instance as InstanceDTO,
   InstancePost as PostDTO,
   Media as MediaDTO,
   Memory as MemoryDTO,
+  Notification as NotificationDTO,
   Party as PartyDTO,
   PartyMember as PartyMemberDTO,
   Pin as PinDTO,
@@ -96,7 +102,20 @@ const RELATIONS: readonly EncounterRelation[] = [
 ];
 const PHASES: readonly PartyPhase[] = ["tentative", "confirmed"];
 const VISIBILITIES: readonly GroupVisibility[] = ["open", "closed"];
+const NOTIFICATION_TYPES: readonly NotificationType[] = [
+  "friend.request",
+  "friend.accepted",
+  "party.confirmed",
+  "group.nearby",
+  "group.invited",
+  "group.suggested",
+  "encounter.daily",
+  "encounter.weekly",
+  "encounter.monthly",
+  "moderation.hidden",
+];
 const PIN_REASONS: readonly Pin["reason"][] = ["auto", "manual"];
+const POST_FORMATS: readonly PostFormat[] = ["plain", "markdown"];
 
 /** 数値でなければ既定値にする。0 や負値は有効な値として通す。 */
 function num(value: unknown, fallback = 0): number {
@@ -238,12 +257,33 @@ export function toGroup(dto: Maybe<GroupDTO>): Group {
   };
 }
 
+/** NearbyResult → GroupNearby (09 §5)。inside は距離を返さず、near は帯だけ返す。 */
+export function toGroupNearby(dto: Maybe<GroupNearbyDTO>): GroupNearby {
+  return {
+    inside: (dto?.inside ?? []).map((item) => ({
+      id: item?.id ?? "",
+      name: item?.name ?? "",
+      memberCount: num(item?.memberCount),
+      isMember: item?.isMember ?? false,
+      persistent: item?.persistent ?? false,
+      radiusM: num(item?.radiusM),
+    })),
+    near: (dto?.near ?? []).map((item) => ({
+      id: item?.id ?? "",
+      name: item?.name ?? "",
+      memberCount: num(item?.memberCount),
+      distanceBucket: item?.distanceBucket ?? "",
+    })),
+  };
+}
+
 /** InstancePost → Post。 */
 export function toPost(dto: Maybe<PostDTO>): Post {
   return {
     id: dto?.uri ?? "",
     author: dto?.author ? toUser(dto.author) : emptyUser(),
     body: dto?.text ?? "",
+    format: oneOf(dto?.format, POST_FORMATS, "plain"),
     createdAt: dto?.createdAt ?? "",
     attachments: (dto?.media ?? []).map(toMedia),
     replyCount: 0,
@@ -346,6 +386,17 @@ export function toStats(dto: Maybe<StatsDTO>): Stats {
     parties: { total: num(dto?.parties?.total) },
     groups: { member: num(dto?.groups?.member) },
     posts: { month: num(dto?.posts?.month) },
+  };
+}
+
+/** notificationResponse → Notification (12 §1)。未知の種類は "friend.request" に寄せる。 */
+export function toNotification(dto: Maybe<NotificationDTO>): Notification {
+  return {
+    id: dto?.id ?? "",
+    type: oneOf(dto?.type, NOTIFICATION_TYPES, "friend.request"),
+    data: (dto?.data ?? {}) as Record<string, unknown>,
+    createdAt: dto?.createdAt ?? "",
+    readAt: dto?.readAt,
   };
 }
 
