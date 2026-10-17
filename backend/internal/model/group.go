@@ -70,6 +70,18 @@ func UpdateGroupAdmin(ctx context.Context, q db.Querier, spaceID, description st
 	return err
 }
 
+// SetGroupVisibility は投票の可決で visibility を変える（09 §8.6）。
+func SetGroupVisibility(ctx context.Context, q db.Querier, spaceID, visibility string) error {
+	_, err := db.Execute(ctx, q, "UPDATE groups SET visibility = ? WHERE space_id = ?", visibility, spaceID)
+	return err
+}
+
+// SetGroupPersistent は投票の可決で persistent を変える（09 §8.6）。
+func SetGroupPersistent(ctx context.Context, q db.Querier, spaceID string, persistent bool) error {
+	_, err := db.Execute(ctx, q, "UPDATE groups SET persistent = ? WHERE space_id = ?", persistent, spaceID)
+	return err
+}
+
 func UpdateGroupParent(ctx context.Context, q db.Querier, spaceID string, parent *string) error {
 	_, err := db.Execute(ctx, q, "UPDATE groups SET parent_space_id = ? WHERE space_id = ?",
 		nullableString(parent), spaceID)
