@@ -23,6 +23,8 @@ import type {
   LocationPrecision,
   Media,
   Memory,
+  ModerationDisplay,
+  ModerationLabel,
   Notification,
   NotificationType,
   Party,
@@ -31,6 +33,7 @@ import type {
   Pin,
   Post,
   PostFormat,
+  PostModeration,
   PostTarget,
   Profile,
   Reply,
@@ -50,6 +53,7 @@ import type {
   InstancePost as PostDTO,
   Media as MediaDTO,
   Memory as MemoryDTO,
+  ModerationInfo as ModerationInfoDTO,
   Notification as NotificationDTO,
   Party as PartyDTO,
   PartyMember as PartyMemberDTO,
@@ -116,6 +120,8 @@ const NOTIFICATION_TYPES: readonly NotificationType[] = [
 ];
 const PIN_REASONS: readonly Pin["reason"][] = ["auto", "manual"];
 const POST_FORMATS: readonly PostFormat[] = ["plain", "markdown"];
+const MODERATION_LABELS: readonly ModerationLabel[] = ["ok", "warn", "block"];
+const MODERATION_DISPLAYS: readonly ModerationDisplay[] = ["show", "blur", "hide"];
 
 /** 数値でなければ既定値にする。0 や負値は有効な値として通す。 */
 function num(value: unknown, fallback = 0): number {
@@ -277,8 +283,23 @@ export function toGroupNearby(dto: Maybe<GroupNearbyDTO>): GroupNearby {
   };
 }
 
-/** InstancePost → Post。 */
+/** service.ModerationInfo → PostModeration (11 §4)。未知の値は ok/show に寄せる。 */
+function toModeration(dto: Maybe<ModerationInfoDTO>): PostModeration | undefined {
+  if (!dto) {
+    return undefined;
+  }
+  return {
+    label: oneOf(dto.label, MODERATION_LABELS, "ok"),
+    display: oneOf(dto.display, MODERATION_DISPLAYS, "show"),
+    categories: (dto.categories ?? []).filter(
+      (category): category is string => typeof category === "string",
+    ),
+  };
+}
+
+/** InstancePost → Post。moderation の表示指示 (11 §4) はそのまま保持する。 */
 export function toPost(dto: Maybe<PostDTO>): Post {
+  const moderation = toModeration(dto?.moderation);
   return {
     id: dto?.uri ?? "",
     author: dto?.author ? toUser(dto.author) : emptyUser(),
@@ -292,6 +313,7 @@ export function toPost(dto: Maybe<PostDTO>): Post {
     // Pin は Space の Pin 一覧 (GET /instances/{spaceId}/pins, 10 §6) が正。
     // タイムラインの投稿は既定で非 Pin とし、呼び出し側が subjects で上書きする。
     pinned: false,
+    ...(moderation ? { moderation } : {}),
   };
 }
 

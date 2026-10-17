@@ -342,6 +342,26 @@ test.describe("toPost", () => {
     ).toBe(false);
   });
 
+  test("keeps the moderation display directive (11 §4)", () => {
+    const post = toPost({
+      kind: "post",
+      uri: "at://x/warn",
+      spaceId: "g1",
+      text: "flagged",
+      createdAt: "2026-10-17T02:30:00Z",
+      moderation: { label: "warn", display: "blur", categories: ["harassment"] },
+    });
+    expect(post.moderation).toEqual({
+      label: "warn",
+      display: "blur",
+      categories: ["harassment"],
+    });
+  });
+
+  test("omits moderation when the API did not send it", () => {
+    expect("moderation" in toPost(null)).toBe(false);
+  });
+
   test("uses an empty author when author is missing (hidden post)", () => {
     const post = toPost({
       kind: "post",

@@ -86,6 +86,19 @@ export type Media = {
 /** 投稿本文の形式 (10 §3)。 */
 export type PostFormat = "plain" | "markdown";
 
+/** moderation の判定 (11 §1)。 */
+export type ModerationLabel = "ok" | "warn" | "block";
+
+/** moderation の表示指示 (11 §4)。backend が label と閲覧者の warnDisplay から決める。 */
+export type ModerationDisplay = "show" | "blur" | "hide";
+
+/** 一覧 API の要素に付く moderation の表示指示 (11 §4)。 */
+export type PostModeration = {
+  label: ModerationLabel;
+  display: ModerationDisplay;
+  categories: string[];
+};
+
 export type Post = {
   id: ID;
   author: User;
@@ -98,6 +111,8 @@ export type Post = {
   likedByMe: boolean;
   /** 自動ピン (moderation 側で判定) */
   pinned: boolean;
+  /** 表示指示。block は hidden で除外され、通常はここに来ない。 */
+  moderation?: PostModeration;
 };
 
 export type Reply = {
