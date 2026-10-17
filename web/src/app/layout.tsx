@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Noto_Sans_JP } from "next/font/google";
 import { AuthProvider } from "@/auth";
 import { AuthGate } from "@/components/feature/auth";
+import { StartupSplash } from "@/components/layout/StartupSplash";
 import { DeviceRegistrar } from "@/device/push/DeviceRegistrar";
 import { RealtimeProvider } from "@/realtime/provider";
 import "material-symbols/rounded.css";
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="ja" className={notoSansJp.variable} suppressHydrationWarning>
       <body>
+        <StartupSplash />
         <AuthProvider>
           <AuthGate>
             <RealtimeProvider>

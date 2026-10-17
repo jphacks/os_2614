@@ -1,0 +1,1 @@
+export { StartupSplash } from "./StartupSplash";
