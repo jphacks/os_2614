@@ -19,6 +19,7 @@ export default function NearbyPage() {
   const { state, reload } = useResource<GroupNearbyDTO>(
     (signal) => getJson<GroupNearbyDTO>("/groups/nearby", { signal }),
     [],
+    { cacheKey: "/groups/nearby" },
   );
   const proximity = useProximityStatus();
 

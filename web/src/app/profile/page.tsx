@@ -47,6 +47,7 @@ export default function ProfilePage() {
   const { state, reload } = useResource<Me>(
     (signal) => getJson<Me>("/me", { signal }),
     [],
+    { cacheKey: "/me" },
   );
 
   const serverKey = state.status === "ok" ? JSON.stringify(state.data) : "";

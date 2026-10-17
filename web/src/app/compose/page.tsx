@@ -105,11 +105,14 @@ function ComposeForm() {
 
   const { state: targetsState, reload: reloadTargets } = useResource<{
     items: InstanceDTO[];
-  }>((signal) => getJson<{ items: InstanceDTO[] }>("/instances", { signal }), []);
+  }>((signal) => getJson<{ items: InstanceDTO[] }>("/instances", { signal }), [], {
+    cacheKey: "/instances",
+  });
 
   const { state: meState } = useResource<MeDTO>(
     (signal) => getJson<MeDTO>("/me", { signal }),
     [],
+    { cacheKey: "/me" },
   );
 
   // archived Space (13 §2 の memory) へは投稿できないので送信先から外す。

@@ -22,12 +22,14 @@ function UserProfile() {
     (signal) =>
       getJson<ProfileDTO>(`/users/${encodeURIComponent(did)}`, { signal }),
     [did],
+    { cacheKey: "/users/:did" },
   );
 
   // 自分自身を開いたときだけ /profile/ への導線を出す。取得できなければ false。
   const { state: meState } = useResource<Me>(
     (signal) => getJson<Me>("/me", { signal }),
     [],
+    { cacheKey: "/me" },
   );
 
   const profileState: ResourceState<Profile> =

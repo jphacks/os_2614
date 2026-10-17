@@ -13,6 +13,7 @@ function ConsentForm() {
   const { state, reload } = useResource<Me>(
     (signal) => getJson<Me>("/me", { signal }),
     [],
+    { cacheKey: "/me" },
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -46,6 +46,7 @@ function GroupReplies() {
   const { state: groupState, reload: reloadGroup } = useResource<GroupDTO>(
     (signal) => getJson<GroupDTO>(`/groups/${id}`, { signal }),
     [id],
+    { cacheKey: "/groups/:id" },
   );
   const {
     state: postsState,
@@ -56,6 +57,7 @@ function GroupReplies() {
   const { state: meState } = useResource<Me>(
     (signal) => getJson<Me>("/me", { signal }),
     [],
+    { cacheKey: "/me" },
   );
 
   const visible = useMemo(() => items.filter(isVisible), [items]);

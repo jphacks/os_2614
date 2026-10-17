@@ -51,6 +51,7 @@ export default function FriendRequestsPage() {
   } = useResource<Page<FriendRequestDTO>>(
     (signal) => getJson<Page<FriendRequestDTO>>("/friends/requests", { query: { box: "incoming" }, signal }),
     [],
+    { cacheKey: "/friends/requests?box=incoming" },
   );
   const {
     state: outgoingState,
@@ -58,6 +59,7 @@ export default function FriendRequestsPage() {
   } = useResource<Page<FriendRequestDTO>>(
     (signal) => getJson<Page<FriendRequestDTO>>("/friends/requests", { query: { box: "outgoing" }, signal }),
     [],
+    { cacheKey: "/friends/requests?box=outgoing" },
   );
   const cache = useRealtimeCache();
 

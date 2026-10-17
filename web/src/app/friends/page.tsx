@@ -27,6 +27,7 @@ export default function FriendsPage() {
     (signal) =>
       getJson<{ items: FriendLocationDTO[] }>("/friends/locations", { signal }),
     [],
+    { cacheKey: "/friends/locations" },
   );
 
   const locations = useMemo(() => {

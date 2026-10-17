@@ -45,6 +45,7 @@ export default function PartyPage() {
   const { state, reload } = useResource<PartyDTO | null>(
     (signal) => getJson<PartyDTO | null>("/party/current", { signal }),
     [],
+    { cacheKey: "/party/current" },
   );
   const cache = useRealtimeCache();
   const realtime = cache.party;
@@ -81,6 +82,7 @@ export default function PartyPage() {
       return page.items.flatMap((post) => (post.media ?? []).map(toMedia));
     },
     [party?.id],
+    { cacheKey: "/party/current/photos" },
   );
 
   const handleLeave = async (target: Party): Promise<PartyActionResult> => {

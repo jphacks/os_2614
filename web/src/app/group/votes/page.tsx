@@ -37,7 +37,7 @@ function GroupVotes() {
           )
         : Promise.resolve({ items: [] }),
     [id],
-    { isEmpty: (data) => data.items.length === 0 },
+    { isEmpty: (data) => data.items.length === 0, cacheKey: "/groups/:id/votes" },
   );
 
   const onPropose = useCallback(

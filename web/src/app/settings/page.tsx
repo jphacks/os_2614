@@ -42,6 +42,7 @@ export default function SettingsPage() {
   const { state, reload } = useResource<Me>(
     (signal) => getJson<Me>("/me", { signal }),
     [],
+    { cacheKey: "/me" },
   );
 
   // ok のときだけ DTO をドメイン Settings に写す。それ以外は状態をそのまま渡す。

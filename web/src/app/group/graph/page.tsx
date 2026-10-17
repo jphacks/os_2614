@@ -6,6 +6,7 @@
 import { getJson } from "@/data/api";
 import type { GroupGraph as GroupGraphDTO } from "@/data/dto";
 import { useResource, type ResourceState } from "@/data/hooks";
+import { useReloadOnLocationUpload } from "@/device/proximity/hooks";
 import { toGroupGraph } from "@/data/mappers";
 import type { GroupGraph } from "@/domain/types";
 import { GroupGraphScreen } from "@/components/screens";
@@ -14,7 +15,12 @@ export default function GroupGraphPage() {
   const { state, reload } = useResource<GroupGraphDTO>(
     (signal) => getJson<GroupGraphDTO>("/groups/graph", { signal }),
     [],
-    { isEmpty: (graph) => (graph.nodes ?? []).length === 0 },
+    { isEmpty: (graph) => (graph.nodes ?? []).length === 0, cacheKey: "/groups/graph" },
+  );
+
+  useReloadOnLocationUpload(
+    state.status === "error" && state.error.code === "location_stale",
+    reload,
   );
 
   const resource: ResourceState<GroupGraph> =

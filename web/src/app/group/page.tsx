@@ -82,6 +82,7 @@ function GroupTimeline() {
   const { state: groupState, reload: reloadGroup } = useResource<GroupDTO>(
     (signal) => getJson<GroupDTO>(`/groups/${id}`, { signal }),
     [id],
+    { cacheKey: "/groups/:id" },
   );
   const {
     state: postsState,
@@ -96,6 +97,7 @@ function GroupTimeline() {
   }>(
     (signal) => getJson<{ items: PinDTO[] }>(`/instances/${id}/pins`, { signal }),
     [id],
+    { cacheKey: "/instances/:id/pins" },
   );
 
   // メンバー一覧はメンバーだけが読める (09 §4)。owner は必ずメンバーなので、
@@ -114,6 +116,7 @@ function GroupTimeline() {
           )
         : Promise.resolve({ items: [] }),
     [id, canReadMembers],
+    { cacheKey: "/groups/:id/members" },
   );
 
   const pins = useMemo(

@@ -16,6 +16,11 @@
 // effect 本体で同期 setState すると react-hooks/set-state-in-effect に触れるため、
 // 「どのリクエストの結果か」を key に持つ state を置き、key が一致しないときは
 // 描画側で loading に倒す (stale なデータを出さない)。
+//
+// ただし画面遷移のたびに loading を挟まないよう、取得に成功した結果はモジュール
+// スコープのキャッシュに残す (stale-while-revalidate)。同じリソースを再び開いたら
+// キャッシュを即座に出しつつ裏で取り直し、レスポンスが返ったら差し替える。
+// キャッシュのキーには DID を含め、別アカウントの結果を出さない。
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth";
@@ -52,6 +57,12 @@ export function deriveState<T>(
 }
 
 /**
+ * 取得に成功した結果 (ok / empty) のキャッシュ。キーは `${did}\u0000${リソース}\u0000${deps}`。
+ * error / unavailable は残さず、該当キーを消す。
+ */
+const resourceCache = new Map<string, unknown>();
+
+/**
  * deps を effect の依存に使える 1 本のキーに畳む。
  * オブジェクトは JSON 化する (画面が渡す deps は ID や文字列などの原始値が主)。
  */
@@ -73,6 +84,11 @@ function depsKey(deps: readonly unknown[]): string {
 export interface ResourceOptions<T> {
   /** ok の data を「空」とみなす条件。未指定なら常に ok のまま。 */
   isEmpty?: (data: T) => boolean;
+  /**
+   * 結果をキャッシュするときのリソース名 (例: "/me")。deps と組み合わせてキーにする。
+   * 指定すると再訪時にキャッシュを即座に出し、裏で取り直す。未指定ならキャッシュしない。
+   */
+  cacheKey?: string;
 }
 
 export interface Resource<T> {
@@ -94,6 +110,10 @@ export function useResource<T>(
   const signedIn = authState.status === "signedIn";
   const [nonce, setNonce] = useState(0);
   const requestKey = signedIn ? `${depsKey(deps)}\u0000${nonce}` : "";
+  const cacheKey =
+    authState.status === "signedIn" && opts.cacheKey !== undefined
+      ? `${authState.did}\u0000${opts.cacheKey}\u0000${depsKey(deps)}`
+      : "";
   const [entry, setEntry] = useState<{ key: string; state: ResourceState<T> }>({
     key: "",
     state: { status: "loading" },
@@ -115,16 +135,28 @@ export function useResource<T>(
       if (!active) {
         return;
       }
-      setEntry({ key: requestKey, state: deriveState(result, latest.current.isEmpty) });
+      const next = deriveState(result, latest.current.isEmpty);
+      if (cacheKey !== "") {
+        if (next.status === "ok" || next.status === "empty") {
+          resourceCache.set(cacheKey, next);
+        } else {
+          resourceCache.delete(cacheKey);
+        }
+      }
+      setEntry({ key: requestKey, state: next });
     });
     return () => {
       active = false;
       controller.abort();
     };
-  }, [requestKey]);
+  }, [requestKey, cacheKey]);
 
+  const cached =
+    cacheKey !== "" ? (resourceCache.get(cacheKey) as ResourceState<T> | undefined) : undefined;
   const state: ResourceState<T> =
-    requestKey !== "" && entry.key === requestKey ? entry.state : { status: "loading" };
+    requestKey !== "" && entry.key === requestKey
+      ? entry.state
+      : (cached ?? { status: "loading" });
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
   return { state, reload };
@@ -156,6 +188,13 @@ interface PagedEntry<T> {
   loadingMore: boolean;
 }
 
+/** usePagedResource がキャッシュする 1 ページ目の結果。loadMore で足した分は含めない。 */
+interface PagedCacheEntry<T> {
+  state: ResourceState<T[]>;
+  items: T[];
+  hasMore: boolean;
+}
+
 function emptyPaged<T>(key: string): PagedEntry<T> {
   return { key, state: { status: "loading" }, items: [], hasMore: false, loadingMore: false };
 }
@@ -174,6 +213,10 @@ export function usePagedResource<T>(
   const [nonce, setNonce] = useState(0);
   // path / deps / reload を 1 本の key に畳む。key が変わると描画側で loading に倒す。
   const requestKey = signedIn ? `${path}\u0000${depsKey(deps)}\u0000${nonce}` : "";
+  const cacheKey =
+    authState.status === "signedIn" && path !== ""
+      ? `${authState.did}\u0000${path}\u0000${depsKey(deps)}`
+      : "";
 
   const [page, setPage] = useState<PagedEntry<T>>(() => emptyPaged<T>(""));
   const cursorRef = useRef<string | undefined>(undefined);
@@ -207,14 +250,19 @@ export function usePagedResource<T>(
       if (result.status === "ok") {
         cursorRef.current = result.data.cursor;
         itemsRef.current = result.data.items;
-        setPage({
-          key: requestKey,
+        const first: PagedCacheEntry<T> = {
           state: deriveState({ status: "ok", data: result.data.items }, latest.current.isEmpty),
           items: result.data.items,
           hasMore: result.data.cursor !== undefined,
-          loadingMore: false,
-        });
+        };
+        if (cacheKey !== "") {
+          resourceCache.set(cacheKey, first);
+        }
+        setPage({ key: requestKey, ...first, loadingMore: false });
       } else {
+        if (cacheKey !== "") {
+          resourceCache.delete(cacheKey);
+        }
         itemsRef.current = [];
         setPage({
           key: requestKey,
@@ -233,7 +281,7 @@ export function usePagedResource<T>(
       controller.abort();
       moreRef.current?.abort();
     };
-  }, [requestKey, path]);
+  }, [requestKey, path, cacheKey]);
 
   const loadMore = useCallback(() => {
     const cursor = cursorRef.current;
@@ -285,7 +333,16 @@ export function usePagedResource<T>(
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
-  const current = requestKey !== "" && page.key === requestKey ? page : emptyPaged<T>(requestKey);
+  // 取り直し中はキャッシュした 1 ページ目を出す。cursor は取り直しが終わるまで持たないので、
+  // その間の loadMore は何もしない (古い cursor で続きを足して一覧が混ざるのを避ける)。
+  const cached =
+    cacheKey !== "" ? (resourceCache.get(cacheKey) as PagedCacheEntry<T> | undefined) : undefined;
+  const current =
+    requestKey !== "" && page.key === requestKey
+      ? page
+      : cached
+        ? { key: requestKey, ...cached, loadingMore: false }
+        : emptyPaged<T>(requestKey);
 
   return {
     state: current.state,

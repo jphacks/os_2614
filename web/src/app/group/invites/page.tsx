@@ -48,6 +48,7 @@ function GroupInvites() {
           )
         : Promise.resolve({ items: [] }),
     [id],
+    { cacheKey: "/groups/:id/invites" },
   );
   const { state: inboxState, reload: reloadInbox } = useResource<{
     items: GroupInviteInboxItemDTO[];
@@ -55,6 +56,7 @@ function GroupInvites() {
     (signal) =>
       getJson<{ items: GroupInviteInboxItemDTO[] }>("/group-invites", { signal }),
     [],
+    { cacheKey: "/group-invites" },
   );
 
   const reloadAll = useCallback(() => {
