@@ -18,14 +18,34 @@ import (
 	"github.com/applemango/chain/internal/clock"
 	"github.com/applemango/chain/internal/config"
 	"github.com/applemango/chain/internal/controller"
+	authctrl "github.com/applemango/chain/internal/controller/auth"
+	contentctrl "github.com/applemango/chain/internal/controller/content"
+	encounterctrl "github.com/applemango/chain/internal/controller/encounter"
+	friendctrl "github.com/applemango/chain/internal/controller/friend"
+	groupctrl "github.com/applemango/chain/internal/controller/group"
+	partyctrl "github.com/applemango/chain/internal/controller/party"
 	"github.com/applemango/chain/internal/db"
 	"github.com/applemango/chain/internal/external/atproto"
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/idgen"
 	"github.com/applemango/chain/internal/kv"
 	"github.com/applemango/chain/internal/model"
+	spacemodel "github.com/applemango/chain/internal/model/space"
 	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service"
+	"github.com/applemango/chain/internal/service/access"
+	authsvc "github.com/applemango/chain/internal/service/auth"
+	"github.com/applemango/chain/internal/service/content"
+	core "github.com/applemango/chain/internal/service/core"
+	encountersvc "github.com/applemango/chain/internal/service/encounter"
+	friendsvc "github.com/applemango/chain/internal/service/friend"
+	groupsvc "github.com/applemango/chain/internal/service/group"
+	mesvc "github.com/applemango/chain/internal/service/me"
+	"github.com/applemango/chain/internal/service/moderation"
+	naturalsvc "github.com/applemango/chain/internal/service/natural"
+	"github.com/applemango/chain/internal/service/notify"
+	partysvc "github.com/applemango/chain/internal/service/party"
+	"github.com/applemango/chain/internal/service/proximity"
 	"github.com/applemango/chain/internal/storage"
 )
 
@@ -34,21 +54,21 @@ var Epoch = time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
 
 // Env は結合テストの環境。service は Deps をそのまま渡して組み立てる。
 type Env struct {
-	service.Deps
+	core.Deps
 	// Clock は手で進められる時計。Deps.Clock と同じ実体を指す。
 	Clock *clock.Fake
 	// Store は instance の record を読み書きする SQLite 実装。
-	Store *model.SQLiteStore
+	Store *spacemodel.SQLiteStore
 	// Zones はグループの位置判定の fake。テストが Set / SetStale で制御する。
 	Zones *FakeZonePresence
 	// Moderator は group の name / description の判定に使う。nil なら Noop。
-	Moderator service.Moderator
+	Moderator moderation.Moderator
 	// Assessor は instance の投稿の判定に使う。nil なら Moderator が PostAssessor を満たせばそれ、でなければ Noop。
-	Assessor service.PostAssessor
+	Assessor moderation.PostAssessor
 	// Writer は PDS への record 書き込み（/me/status）に使う。nil なら空の FakeRecordWriter。
 	Writer *FakeRecordWriter
 	// Embedder は自動グループの embedding（09 §8.3）。nil なら計算しない（テストの既定）。
-	Embedder service.Embedder
+	Embedder naturalsvc.Embedder
 	// RateLimit は NewApp が使うレート制限の設定。nil なら e.Redis と DefaultLimits を使う。
 	// 壊れた Redis や緩めた上限を試すときに差し替える。
 	RateLimit *httpx.RateLimitConfig
@@ -63,8 +83,8 @@ func (e *Env) OAuthLogoutCalls() []string { return e.oauth.logoutCalls() }
 func (e *Env) Storage() *storage.Store { return storage.NewStore(e.Config.MediaDir) }
 
 // Account は main.go と同じ配線のアカウント削除サービス。
-func (e *Env) Account() *service.AccountService {
-	return &service.AccountService{Deps: e.Deps, OAuth: e.oauth, Storage: e.Storage()}
+func (e *Env) Account() *authsvc.AccountService {
+	return &authsvc.AccountService{Deps: e.Deps, OAuth: e.oauth, Storage: e.Storage()}
 }
 
 // Janitor は main.go と同じ配線の掃除サービス。
@@ -73,36 +93,36 @@ func (e *Env) Janitor() *service.Janitor {
 }
 
 // Stats は main.go と同じ配線の統計サービス（13 §3）。
-func (e *Env) Stats() *service.StatsService {
-	return &service.StatsService{Deps: e.Deps, Encounters: &service.EncounterService{Deps: e.Deps}}
+func (e *Env) Stats() *encountersvc.StatsService {
+	return &encountersvc.StatsService{Deps: e.Deps, Encounters: &encountersvc.EncounterService{Deps: e.Deps}}
 }
 
 // Digest は main.go と同じ配線のダイジェスト（12 §5）。
-func (e *Env) Digest() *service.Digest { return &service.Digest{Deps: e.Deps} }
+func (e *Env) Digest() *notify.Digest { return &notify.Digest{Deps: e.Deps} }
 
 // Schedule は main.go と同じ配線の予定サービス（09 §8.2）。
-func (e *Env) Schedule() *service.ScheduleService {
-	return &service.ScheduleService{Deps: e.Deps, Embedder: e.Embedder}
+func (e *Env) Schedule() *naturalsvc.ScheduleService {
+	return &naturalsvc.ScheduleService{Deps: e.Deps, Embedder: e.Embedder}
 }
 
 // NaturalGroups は main.go と同じ配線の自動グループ（09 §8）。Broker は呼び出し側で差し込める。
-func (e *Env) NaturalGroups() *service.NaturalGroupService {
-	return &service.NaturalGroupService{Deps: e.Deps, Moderator: service.ModerationNoop{}}
+func (e *Env) NaturalGroups() *naturalsvc.NaturalGroupService {
+	return &naturalsvc.NaturalGroupService{Deps: e.Deps, Moderator: moderation.ModerationNoop{}}
 }
 
 // PublicPosts は main.go と同じ配線の公開投稿サービス（17 §2）。
-func (e *Env) PublicPosts() *service.PublicPostService {
+func (e *Env) PublicPosts() *content.PublicPostService {
 	moderator := e.Moderator
 	if moderator == nil {
-		moderator = service.ModerationNoop{}
+		moderator = moderation.ModerationNoop{}
 	}
-	return &service.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator}
+	return &content.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator}
 }
 
 // Jetstream は main.go と同じ配線の Jetstream サービス（03 §5、17 §2.5）。
 // posts は初回の読み込みに使う。nil なら listRecords は呼ばれない。
-func (e *Env) Jetstream(posts service.PublicPostLister) *service.JetstreamService {
-	return &service.JetstreamService{Deps: e.Deps, Posts: posts}
+func (e *Env) Jetstream(posts content.PublicPostLister) *content.JetstreamService {
+	return &content.JetstreamService{Deps: e.Deps, Posts: posts}
 }
 
 // NewEnv は Redis と SQLite を用意する。Redis に接続できなければテストを skip する。
@@ -144,12 +164,12 @@ func NewEnv(t *testing.T) *Env {
 		SecretKey:   bytes.Repeat([]byte{1}, 32),
 		JWTKey:      bytes.Repeat([]byte{2}, 32),
 	}
-	deps := service.Deps{Config: cfg, DB: conn, Redis: rdb, Clock: clk, IDs: &idgen.Seq{}}
+	deps := core.Deps{Config: cfg, DB: conn, Redis: rdb, Clock: clk, IDs: &idgen.Seq{}}
 	store := &atproto.Store{DB: conn, Redis: rdb, SecretKey: cfg.SecretKey, Clock: clk}
 	return &Env{
 		Deps:   deps,
 		Clock:  clk,
-		Store:  model.NewSQLiteStore(conn, clk, idgen.NewSeqTID()),
+		Store:  spacemodel.NewSQLiteStore(conn, clk, idgen.NewSeqTID()),
 		Zones:  NewFakeZonePresence(),
 		Writer: NewFakeRecordWriter(),
 		oauth: &fakeOAuth{
@@ -184,7 +204,7 @@ func (e *Env) CreateUser(t *testing.T, did, handle string) {
 // Consent は content_scan_consent を最新版にする（投稿には同意が要る。02 §8）。
 func (e *Env) Consent(t *testing.T, did string) {
 	t.Helper()
-	v := service.ContentScanConsentVersion
+	v := core.ContentScanConsentVersion
 	if err := model.SetContentScanConsent(context.Background(), e.DB, did, &v, e.Clock.Now()); err != nil {
 		t.Fatalf("同意を保存できません (did=%s): %v", did, err)
 	}
@@ -225,59 +245,59 @@ func (e *Env) Login(t *testing.T, did string) string {
 
 // assessorFor は instance の投稿の判定器を選ぶ。Env.Assessor があればそれ、
 // 無ければ Moderator が PostAssessor を満たせばそれ、それも無ければ Noop。
-func assessorFor(e *Env) service.PostAssessor {
+func assessorFor(e *Env) moderation.PostAssessor {
 	if e.Assessor != nil {
 		return e.Assessor
 	}
-	if pa, ok := e.Moderator.(service.PostAssessor); ok {
+	if pa, ok := e.Moderator.(moderation.PostAssessor); ok {
 		return pa
 	}
-	return service.ModerationNoop{}
+	return moderation.ModerationNoop{}
 }
 
 // NewApp は controller まで含めた fiber.App を fake の外部依存で組み立てる。
 // main.go と同じ配線だが、OAuth と identity はテスト用の fake に差し替える。
 func NewApp(e *Env) *fiber.App {
-	authSvc := &service.AuthService{Deps: e.Deps, OAuth: e.oauth, Dir: fakeDir{}, Profiles: &fakeProfiles{}, FirstLoad: fakeFirstLoad{}}
-	sessions := &service.SessionService{Deps: e.Deps}
+	authSvc := &authsvc.AuthService{Deps: e.Deps, OAuth: e.oauth, Dir: fakeDir{}, Profiles: &fakeProfiles{}, FirstLoad: fakeFirstLoad{}}
+	sessions := &authsvc.SessionService{Deps: e.Deps}
 	health := &service.HealthService{Deps: e.Deps}
 	moderator := e.Moderator
 	if moderator == nil {
-		moderator = service.ModerationNoop{}
+		moderator = moderation.ModerationNoop{}
 	}
-	me := &service.MeService{Deps: e.Deps, Moderator: moderator, Writer: e.Writer}
+	me := &mesvc.MeService{Deps: e.Deps, Moderator: moderator, Writer: e.Writer}
 	schedule := e.Schedule()
 	user := &service.UserService{Deps: e.Deps}
-	beacon := &service.BeaconService{Deps: e.Deps}
+	beacon := &proximity.BeaconService{Deps: e.Deps}
 	hub := realtime.NewHub()
-	location := &service.LocationService{Deps: e.Deps, Hooks: &service.GroupEntryService{Deps: e.Deps, Broker: hub}}
-	locationShares := &service.LocationShareService{Deps: e.Deps}
-	encounters := &service.EncounterService{Deps: e.Deps, Proximity: &service.BLEPeerProximity{Deps: e.Deps}, Broker: hub}
-	stats := &service.StatsService{Deps: e.Deps, Encounters: encounters}
+	location := &proximity.LocationService{Deps: e.Deps, Hooks: &groupsvc.GroupEntryService{Deps: e.Deps, Broker: hub}}
+	locationShares := &friendsvc.LocationShareService{Deps: e.Deps}
+	encounters := &encountersvc.EncounterService{Deps: e.Deps, Proximity: &proximity.BLEPeerProximity{Deps: e.Deps}, Broker: hub}
+	stats := &encountersvc.StatsService{Deps: e.Deps, Encounters: encounters}
 	blocks := &service.BlockService{Deps: e.Deps}
-	friends := &service.FriendService{Deps: e.Deps, Broker: hub}
-	notifications := &service.NotificationService{Deps: e.Deps}
+	friends := &friendsvc.FriendService{Deps: e.Deps, Broker: hub}
+	notifications := &notify.NotificationService{Deps: e.Deps}
 
 	mediaStore := e.Storage()
 	signer := storage.NewSigner(e.Config.JWTKey)
-	zones := &service.GPSZonePresence{Deps: e.Deps}
-	access := &service.AccessService{Deps: e.Deps, Zones: zones}
-	realtimeSvc := &service.RealtimeService{Deps: e.Deps, Access: access, Sessions: sessions}
-	mediaSvc := &service.MediaService{Deps: e.Deps, Store: e.Store, Access: access, Broker: hub, Storage: mediaStore, Signer: signer}
-	pins := &service.PinService{Deps: e.Deps, Store: e.Store, Access: access, Broker: hub}
-	publicPosts := &service.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator}
-	instances := &service.InstanceService{Deps: e.Deps, Store: e.Store, Access: access, Assessor: assessorFor(e), Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
-	feed := &service.FeedService{Deps: e.Deps, Access: access, Signer: signer}
-	groups := &service.GroupService{Deps: e.Deps, Zones: zones, Access: access, Moderator: moderator, Broker: hub}
-	groupVotes := &service.GroupVoteService{Deps: e.Deps, Access: access, Broker: hub}
-	groupInvites := &service.GroupInviteService{Deps: e.Deps, Zones: zones, Access: access, Broker: hub}
+	zones := &proximity.GPSZonePresence{Deps: e.Deps}
+	access := &access.AccessService{Deps: e.Deps, Zones: zones}
+	realtimeSvc := &content.RealtimeService{Deps: e.Deps, Access: access, Sessions: sessions}
+	mediaSvc := &content.MediaService{Deps: e.Deps, Store: e.Store, Access: access, Broker: hub, Storage: mediaStore, Signer: signer}
+	pins := &content.PinService{Deps: e.Deps, Store: e.Store, Access: access, Broker: hub}
+	publicPosts := &content.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator}
+	instances := &content.InstanceService{Deps: e.Deps, Store: e.Store, Access: access, Assessor: assessorFor(e), Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
+	feed := &content.FeedService{Deps: e.Deps, Access: access, Signer: signer}
+	groups := &groupsvc.GroupService{Deps: e.Deps, Zones: zones, Access: access, Moderator: moderator, Broker: hub}
+	groupVotes := &groupsvc.GroupVoteService{Deps: e.Deps, Access: access, Broker: hub}
+	groupInvites := &groupsvc.GroupInviteService{Deps: e.Deps, Zones: zones, Access: access, Broker: hub}
 	groups.Invites = groupInvites
-	parties := &service.PartyService{
-		Deps: e.Deps, Proximity: &service.BLEPeerProximity{Deps: e.Deps}, Access: access,
+	parties := &partysvc.PartyService{
+		Deps: e.Deps, Proximity: &proximity.BLEPeerProximity{Deps: e.Deps}, Access: access,
 		Moderator: moderator, Broker: hub, Signer: signer, Beacon: beacon, Store: e.Store,
 	}
-	devices := &service.DeviceService{Deps: e.Deps}
-	account := &service.AccountService{Deps: e.Deps, OAuth: e.oauth, Storage: mediaStore}
+	devices := &notify.DeviceService{Deps: e.Deps}
+	account := &authsvc.AccountService{Deps: e.Deps, OAuth: e.oauth, Storage: mediaStore}
 
 	app := fiber.New(fiber.Config{
 		AppName:      "chain-test",
@@ -292,11 +312,11 @@ func NewApp(e *Env) *fiber.App {
 	controller.Mount(app, httpx.RequireAuth(e.Config.JWTKey, e.Clock, sessions), httpx.RateLimit(rateLimit), controller.Routes{
 		Root: []controller.Registrar{
 			&controller.HealthController{Health: health},
-			&controller.OAuthController{Config: e.Config, Auth: authSvc},
-			&controller.MediaDeliveryController{Media: mediaSvc},
+			&authctrl.OAuthController{Config: e.Config, Auth: authSvc},
+			&contentctrl.MediaDeliveryController{Media: mediaSvc},
 		},
 		Public: []controller.Registrar{
-			&controller.AuthController{Auth: authSvc},
+			&authctrl.AuthController{Auth: authSvc},
 			&controller.WSController{
 				Realtime: realtimeSvc, Hub: hub, Timers: clock.Real{},
 				Config: controller.RealtimeConfig{
@@ -309,29 +329,29 @@ func NewApp(e *Env) *fiber.App {
 			},
 		},
 		Private: []controller.Registrar{
-			&controller.LogoutController{Auth: authSvc},
+			&authctrl.LogoutController{Auth: authSvc},
 			&controller.MeController{Me: me},
 			&controller.ScheduleController{Schedule: schedule},
 			&controller.StatsController{Stats: stats},
 			&controller.UserController{User: user},
 			&controller.DeviceController{Devices: devices},
-			&controller.BeaconController{Beacon: beacon},
-			&controller.LocationController{Location: location},
-			&controller.LocationShareController{Shares: locationShares},
-			&controller.EncounterController{Encounters: encounters},
+			&encounterctrl.BeaconController{Beacon: beacon},
+			&encounterctrl.LocationController{Location: location},
+			&friendctrl.LocationShareController{Shares: locationShares},
+			&encounterctrl.EncounterController{Encounters: encounters},
 			&controller.BlockController{Blocks: blocks},
-			&controller.FriendController{Friends: friends},
+			&friendctrl.FriendController{Friends: friends},
 			&controller.NotificationController{Notifications: notifications},
-			&controller.InstanceController{Instances: instances, Pins: pins, Feed: feed},
-			&controller.FeedPostController{Posts: publicPosts},
-			&controller.FeedController{Feed: feed},
-			&controller.MediaController{Media: mediaSvc},
-			&controller.GroupController{Groups: groups},
-			&controller.GroupVoteController{Votes: groupVotes},
-			&controller.GroupInviteController{Invites: groupInvites},
-			&controller.PartyController{Parties: parties},
-			&controller.MemoryController{Parties: parties},
-			&controller.AccountController{Account: account},
+			&contentctrl.InstanceController{Instances: instances, Pins: pins, Feed: feed},
+			&contentctrl.FeedPostController{Posts: publicPosts},
+			&contentctrl.FeedController{Feed: feed},
+			&contentctrl.MediaController{Media: mediaSvc},
+			&groupctrl.GroupController{Groups: groups},
+			&groupctrl.GroupVoteController{Votes: groupVotes},
+			&groupctrl.GroupInviteController{Invites: groupInvites},
+			&partyctrl.PartyController{Parties: parties},
+			&partyctrl.MemoryController{Parties: parties},
+			&authctrl.AccountController{Account: account},
 		},
 	})
 	return app

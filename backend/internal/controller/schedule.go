@@ -6,12 +6,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/applemango/chain/internal/httpx"
-	"github.com/applemango/chain/internal/service"
+	naturalsvc "github.com/applemango/chain/internal/service/natural"
 )
 
 // ScheduleController は今日・明日の予定（09 §8.2、14「自分」）。
 type ScheduleController struct {
-	Schedule *service.ScheduleService
+	Schedule *naturalsvc.ScheduleService
 }
 
 func (h *ScheduleController) Register(r fiber.Router) {
@@ -44,7 +44,7 @@ type scheduleResponse struct {
 	Entries []scheduleEntryResponse `json:"entries"`
 }
 
-func scheduleEntriesResponse(day *service.ScheduleDay) scheduleResponse {
+func scheduleEntriesResponse(day *naturalsvc.ScheduleDay) scheduleResponse {
 	out := make([]scheduleEntryResponse, 0, len(day.Entries))
 	for _, e := range day.Entries {
 		out = append(out, scheduleEntryResponse{
@@ -65,9 +65,9 @@ func (h *ScheduleController) put(c fiber.Ctx) error {
 	if err := httpx.Bind(c, &req); err != nil {
 		return err
 	}
-	inputs := make([]service.ScheduleInput, len(req.Entries))
+	inputs := make([]naturalsvc.ScheduleInput, len(req.Entries))
 	for i, e := range req.Entries {
-		inputs[i] = service.ScheduleInput{Title: e.Title, Start: e.Start, End: e.End}
+		inputs[i] = naturalsvc.ScheduleInput{Title: e.Title, Start: e.Start, End: e.End}
 	}
 	day, err := h.Schedule.ReplaceToday(c.Context(), httpx.DID(c), req.Date, req.Source, inputs)
 	if err != nil {

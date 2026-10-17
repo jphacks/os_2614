@@ -8,12 +8,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/applemango/chain/internal/httpx"
-	"github.com/applemango/chain/internal/service"
+	notifysvc "github.com/applemango/chain/internal/service/notify"
 )
 
 // NotificationController は通知の一覧と既読化（12 §1、14「memory・通知・その他」）。
 type NotificationController struct {
-	Notifications *service.NotificationService
+	Notifications *notifysvc.NotificationService
 }
 
 func (h *NotificationController) Register(r fiber.Router) {

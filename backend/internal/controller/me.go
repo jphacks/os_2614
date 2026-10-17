@@ -11,12 +11,13 @@ import (
 	"github.com/applemango/chain/internal/external/atproto"
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	mesvc "github.com/applemango/chain/internal/service/me"
 	"github.com/applemango/chain/internal/utils"
 )
 
 type MeController struct {
-	Me *service.MeService
+	Me *mesvc.MeService
 }
 
 func (h *MeController) Register(r fiber.Router) {
@@ -87,7 +88,7 @@ func settingsResponse(st model.UserSettings) (meSettingsResponse, error) {
 }
 
 // meResponse は GET /me と同じ形を組み立てる。プロフィール編集の API もこれで返す（13 §1.3）。
-func (h *MeController) meResponse(me *service.Me) (meResponse, error) {
+func (h *MeController) meResponse(me *mesvc.Me) (meResponse, error) {
 	st, err := settingsResponse(me.Settings)
 	if err != nil {
 		return meResponse{}, err
@@ -179,7 +180,7 @@ func (h *MeController) updateSettings(c fiber.Ctx) error {
 	if err := httpx.Bind(c, &req); err != nil {
 		return err
 	}
-	st, err := h.Me.UpdateSettings(c.Context(), httpx.DID(c), service.SettingsUpdate{
+	st, err := h.Me.UpdateSettings(c.Context(), httpx.DID(c), mesvc.SettingsUpdate{
 		EncounterMode:     req.EncounterMode,
 		EncounterDelaySec: req.EncounterDelaySec,
 		FriendBeaconShare: req.FriendBeaconShare,
@@ -206,7 +207,7 @@ func (r *consentRequest) Validate() map[string]string {
 	if r.ContentScan == nil {
 		return map[string]string{"contentScan": "必須です"}
 	}
-	if *r.ContentScan != 0 && *r.ContentScan != service.ContentScanConsentVersion {
+	if *r.ContentScan != 0 && *r.ContentScan != core.ContentScanConsentVersion {
 		return map[string]string{"contentScan": "0 か 1 を指定してください"}
 	}
 	return nil
@@ -263,10 +264,10 @@ type profilePatchRequest struct {
 
 func (r *profilePatchRequest) Validate() map[string]string {
 	f := map[string]string{}
-	if r.DisplayName != nil && utils.GraphemeCount(*r.DisplayName) > service.MaxDisplayNameGraphemes {
+	if r.DisplayName != nil && utils.GraphemeCount(*r.DisplayName) > mesvc.MaxDisplayNameGraphemes {
 		f["displayName"] = "64 文字までです"
 	}
-	if r.Description != nil && utils.GraphemeCount(*r.Description) > service.MaxProfileDescriptionGraphemes {
+	if r.Description != nil && utils.GraphemeCount(*r.Description) > mesvc.MaxProfileDescriptionGraphemes {
 		f["description"] = "256 文字までです"
 	}
 	if len(f) == 0 {
@@ -280,7 +281,7 @@ func (h *MeController) updateProfile(c fiber.Ctx) error {
 	if err := httpx.Bind(c, &req); err != nil {
 		return err
 	}
-	me, err := h.Me.UpdateProfile(c.Context(), httpx.DID(c), httpx.SessionID(c), service.ProfileUpdate{
+	me, err := h.Me.UpdateProfile(c.Context(), httpx.DID(c), httpx.SessionID(c), mesvc.ProfileUpdate{
 		DisplayName: req.DisplayName,
 		Description: req.Description,
 	})
@@ -306,7 +307,7 @@ func (h *MeController) updateProfileImage(c fiber.Ctx, avatar bool) error {
 	defer file.Close()
 
 	did, sid := httpx.DID(c), httpx.SessionID(c)
-	var me *service.Me
+	var me *mesvc.Me
 	if avatar {
 		me, err = h.Me.UpdateAvatar(c.Context(), did, sid, file, size)
 	} else {
@@ -334,7 +335,7 @@ func (h *MeController) deleteBanner(c fiber.Ctx) error {
 	return h.respondMe(c, me)
 }
 
-func (h *MeController) respondMe(c fiber.Ctx, me *service.Me) error {
+func (h *MeController) respondMe(c fiber.Ctx, me *mesvc.Me) error {
 	resp, err := h.meResponse(me)
 	if err != nil {
 		return err

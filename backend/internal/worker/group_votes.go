@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	groupsvc "github.com/applemango/chain/internal/service/group"
 )
 
 // GroupVotes は期限を過ぎたグループの投票を 1 分ごとに締める（09 §8.6）。
 type GroupVotes struct {
-	service.Deps
-	Votes *service.GroupVoteService
+	core.Deps
+	Votes *groupsvc.GroupVoteService
 }
 
 const (

@@ -12,7 +12,7 @@ import (
 	"github.com/applemango/chain/internal/clock"
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/realtime"
-	"github.com/applemango/chain/internal/service"
+	contentsvc "github.com/applemango/chain/internal/service/content"
 )
 
 // WebSocket の接続・認証・購読（10 §7）。
@@ -37,7 +37,7 @@ func DefaultRealtimeConfig() RealtimeConfig {
 }
 
 type WSController struct {
-	Realtime *service.RealtimeService
+	Realtime *contentsvc.RealtimeService
 	Hub      *realtime.Hub
 	// Timers は ping 間隔や期限のような実時間のタイマーに使う（15 §2）。時計の進め方とは独立。
 	Timers clock.Clock

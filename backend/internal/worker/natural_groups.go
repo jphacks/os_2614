@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	naturalsvc "github.com/applemango/chain/internal/service/natural"
 )
 
 // NaturalGroups は自動グループの照合を 5 分ごとに回す（09 §8.4）。業務ロジックは service にある。
 type NaturalGroups struct {
-	service.Deps
-	Groups *service.NaturalGroupService
+	core.Deps
+	Groups *naturalsvc.NaturalGroupService
 }
 
 const (

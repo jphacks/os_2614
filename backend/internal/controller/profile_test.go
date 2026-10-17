@@ -97,12 +97,12 @@ func TestMeProfilePatchPreservesUnknownFields(t *testing.T) {
 		"pronouns":    "they/them",
 	}, "cid-old")
 
-	status, body := request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
 	if status != http.StatusOK {
 		t.Fatalf("patch: status = %d, want 200 (body=%s)", status, body)
 	}
 	var me meProfileBody
-	mustJSONBody(t, body, &me)
+	testutil.MustJSONBody(t, body, &me)
 	if me.DisplayName != "New" || me.Description != "OldDesc" {
 		t.Fatalf("response = %+v", me)
 	}
@@ -119,12 +119,12 @@ func TestMeProfilePatchPreservesUnknownFields(t *testing.T) {
 		t.Fatalf("unknown field dropped: %+v", rec)
 	}
 
-	status, body = request(t, app, http.MethodGet, "/api/v1/me", "", alice)
+	status, body = testutil.Request(t, app, http.MethodGet, "/api/v1/me", "", alice)
 	if status != http.StatusOK {
 		t.Fatalf("get me: status = %d (body=%s)", status, body)
 	}
 	var got meProfileBody
-	mustJSONBody(t, body, &got)
+	testutil.MustJSONBody(t, body, &got)
 	if got.DisplayName != "New" {
 		t.Fatalf("GET /me displayName = %q, want New", got.DisplayName)
 	}
@@ -139,12 +139,12 @@ func TestMeProfileEmptyClearsField(t *testing.T) {
 		"$type": profileColl, "displayName": "Old", "description": "Keep",
 	}, "cid-old")
 
-	status, body := request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":""}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":""}`, alice)
 	if status != http.StatusOK {
 		t.Fatalf("patch: status = %d, want 200 (body=%s)", status, body)
 	}
 	var me meProfileBody
-	mustJSONBody(t, body, &me)
+	testutil.MustJSONBody(t, body, &me)
 	if me.DisplayName != "" || me.Description != "Keep" {
 		t.Fatalf("response = %+v", me)
 	}
@@ -156,23 +156,23 @@ func TestMeProfileLimits(t *testing.T) {
 	env.CreateUser(t, "did:plc:alice", "alice.test")
 	alice := env.Login(t, "did:plc:alice")
 
-	status, body := request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"`+strings.Repeat("あ", 65)+`"}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"`+strings.Repeat("あ", 65)+`"}`, alice)
 	if status != http.StatusBadRequest {
 		t.Fatalf("65 graphemes: status = %d, want 400 (body=%s)", status, body)
 	}
-	if e := wantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["displayName"] == "" {
+	if e := testutil.WantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["displayName"] == "" {
 		t.Fatalf("details.fields.displayName is empty (body=%s)", body)
 	}
 
-	status, body = request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"description":"`+strings.Repeat("あ", 257)+`"}`, alice)
+	status, body = testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"description":"`+strings.Repeat("あ", 257)+`"}`, alice)
 	if status != http.StatusBadRequest {
 		t.Fatalf("257 graphemes: status = %d, want 400 (body=%s)", status, body)
 	}
-	if e := wantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["description"] == "" {
+	if e := testutil.WantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["description"] == "" {
 		t.Fatalf("details.fields.description is empty (body=%s)", body)
 	}
 
-	status, body = request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"`+strings.Repeat("あ", 64)+`"}`, alice)
+	status, body = testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"`+strings.Repeat("あ", 64)+`"}`, alice)
 	if status != http.StatusOK {
 		t.Fatalf("64 graphemes: status = %d, want 200 (body=%s)", status, body)
 	}
@@ -185,11 +185,11 @@ func TestMeProfileModerationBlocked(t *testing.T) {
 	env.CreateUser(t, "did:plc:alice", "alice.test")
 	alice := env.Login(t, "did:plc:alice")
 
-	status, body := request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"誹謗する名前"}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"誹謗する名前"}`, alice)
 	if status != http.StatusUnprocessableEntity {
 		t.Fatalf("blocked: status = %d, want 422 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "moderation_blocked")
+	testutil.WantErrorCode(t, body, "moderation_blocked")
 	if len(env.Writer.Calls()) != 0 {
 		t.Fatalf("wrote to PDS despite block: %+v", env.Writer.Calls())
 	}
@@ -203,33 +203,33 @@ func TestMeProfileErrors(t *testing.T) {
 
 	env.Writer.SetRecord(profileColl, profileRKey, map[string]any{"$type": profileColl, "displayName": "Old"}, "cid-old")
 	env.Writer.SetSwapConflict(true)
-	status, body := request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
 	if status != http.StatusConflict {
 		t.Fatalf("swap conflict: status = %d, want 409 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "conflict")
+	testutil.WantErrorCode(t, body, "conflict")
 
 	env.Writer.SetSwapConflict(false)
 	env.Writer.SetError(atproto.ErrSessionExpired)
-	status, body = request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
+	status, body = testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
 	if status != http.StatusUnauthorized {
 		t.Fatalf("expired: status = %d, want 401 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "atproto_session_expired")
+	testutil.WantErrorCode(t, body, "atproto_session_expired")
 
 	env.Writer.SetError(atproto.ErrReauthRequired)
-	status, body = request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
+	status, body = testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
 	if status != http.StatusForbidden {
 		t.Fatalf("reauth: status = %d, want 403 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "atproto_reauth_required")
+	testutil.WantErrorCode(t, body, "atproto_reauth_required")
 
 	env.Writer.SetError(errors.New("pds down"))
-	status, body = request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
+	status, body = testutil.Request(t, app, http.MethodPatch, "/api/v1/me/profile", `{"displayName":"New"}`, alice)
 	if status != http.StatusBadGateway {
 		t.Fatalf("upstream: status = %d, want 502 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "upstream_error")
+	testutil.WantErrorCode(t, body, "upstream_error")
 }
 
 func TestMeAvatarUploadAndDelete(t *testing.T) {
@@ -243,7 +243,7 @@ func TestMeAvatarUploadAndDelete(t *testing.T) {
 		t.Fatalf("put avatar: status = %d, want 200 (body=%s)", status, body)
 	}
 	var me meProfileBody
-	mustJSONBody(t, body, &me)
+	testutil.MustJSONBody(t, body, &me)
 	if me.AvatarURL == "" {
 		t.Fatalf("avatarUrl is empty (body=%s)", body)
 	}
@@ -254,12 +254,12 @@ func TestMeAvatarUploadAndDelete(t *testing.T) {
 		t.Fatal("avatar was not written to the record")
 	}
 
-	status, body = request(t, app, http.MethodDelete, "/api/v1/me/avatar", "", alice)
+	status, body = testutil.Request(t, app, http.MethodDelete, "/api/v1/me/avatar", "", alice)
 	if status != http.StatusOK {
 		t.Fatalf("delete avatar: status = %d, want 200 (body=%s)", status, body)
 	}
 	var cleared meProfileBody
-	mustJSONBody(t, body, &cleared)
+	testutil.MustJSONBody(t, body, &cleared)
 	if cleared.AvatarURL != "" {
 		t.Fatalf("avatarUrl = %q, want empty", cleared.AvatarURL)
 	}
@@ -279,7 +279,7 @@ func TestMeAvatarUnsupportedFormat(t *testing.T) {
 	if status != http.StatusBadRequest {
 		t.Fatalf("unsupported: status = %d, want 400 (body=%s)", status, body)
 	}
-	if e := wantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["file"] == "" {
+	if e := testutil.WantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["file"] == "" {
 		t.Fatalf("details.fields.file is empty (body=%s)", body)
 	}
 }
@@ -295,7 +295,7 @@ func TestMeBannerUpload(t *testing.T) {
 		t.Fatalf("put banner: status = %d, want 200 (body=%s)", status, body)
 	}
 	var me meProfileBody
-	mustJSONBody(t, body, &me)
+	testutil.MustJSONBody(t, body, &me)
 	if me.BannerURL == "" {
 		t.Fatalf("bannerUrl is empty (body=%s)", body)
 	}

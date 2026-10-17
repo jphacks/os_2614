@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	"github.com/applemango/chain/internal/service/content"
+	core "github.com/applemango/chain/internal/service/core"
 )
 
 // ModerationRequeue は modq を消費して pending の投稿を再判定する（11 §3）。
 type ModerationRequeue struct {
-	service.Deps
-	Queue *service.ModerationQueueService
+	core.Deps
+	Queue *content.ModerationQueueService
 }
 
 const (

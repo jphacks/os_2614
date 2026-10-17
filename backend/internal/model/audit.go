@@ -22,6 +22,6 @@ func InsertAuditLog(ctx context.Context, q db.Querier, e AuditEntry) error {
 	_, err := db.Execute(ctx, q, `
 		INSERT INTO audit_log (id, actor_did, action, target, detail_json, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		e.ID, nullable(e.ActorDID), e.Action, nullable(e.Target), nullable(e.DetailJSON), clock.UnixMilli(e.CreatedAt))
+		e.ID, Nullable(e.ActorDID), e.Action, Nullable(e.Target), Nullable(e.DetailJSON), clock.UnixMilli(e.CreatedAt))
 	return err
 }

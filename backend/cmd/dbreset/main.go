@@ -16,7 +16,8 @@ import (
 	"github.com/applemango/chain/internal/db"
 	"github.com/applemango/chain/internal/idgen"
 	"github.com/applemango/chain/internal/kv"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	groupsvc "github.com/applemango/chain/internal/service/group"
 )
 
 func main() {
@@ -66,8 +67,8 @@ func run(noSeed bool) error {
 	}
 
 	// seed のグループを geo:groups に載せ直す（09 §5）。
-	deps := service.Deps{Config: cfg, DB: conn, Redis: rdb, Clock: clock.Real{}, IDs: idgen.Real{}}
-	if err := (&service.GroupService{Deps: deps}).RebuildGeoIndex(ctx); err != nil {
+	deps := core.Deps{Config: cfg, DB: conn, Redis: rdb, Clock: clock.Real{}, IDs: idgen.Real{}}
+	if err := (&groupsvc.GroupService{Deps: deps}).RebuildGeoIndex(ctx); err != nil {
 		return fmt.Errorf("geo index: %w", err)
 	}
 

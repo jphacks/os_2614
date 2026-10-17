@@ -8,11 +8,12 @@ import (
 	"github.com/applemango/chain/internal/db"
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/model"
+	"github.com/applemango/chain/internal/service/core"
 )
 
 // BlockService はブロック（13 §4）。
 type BlockService struct {
-	Deps
+	core.Deps
 }
 
 type BlockedUser struct {
@@ -41,7 +42,7 @@ func (s *BlockService) Create(ctx context.Context, blocker, blocked string) erro
 		if err := model.CreateBlock(ctx, tx, blocker, blocked, now); err != nil {
 			return err
 		}
-		a, b := OrderDIDs(blocker, blocked)
+		a, b := core.OrderDIDs(blocker, blocked)
 		if _, err := model.DeleteFriendship(ctx, tx, a, b); err != nil {
 			return err
 		}

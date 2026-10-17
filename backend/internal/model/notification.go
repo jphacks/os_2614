@@ -39,7 +39,7 @@ func CreateNotification(ctx context.Context, q db.Querier, n Notification) error
 	_, err := db.Execute(ctx, q, `
 		INSERT INTO notifications (id, did, type, payload_json, created_at, read_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		n.ID, n.DID, n.Type, n.PayloadJSON, clock.UnixMilli(n.CreatedAt), nullableTime(n.ReadAt))
+		n.ID, n.DID, n.Type, n.PayloadJSON, clock.UnixMilli(n.CreatedAt), NullableTime(n.ReadAt))
 	return err
 }
 
@@ -124,7 +124,7 @@ func MarkNotificationsRead(ctx context.Context, q db.Querier, did string, ids []
 	}
 	res, err := db.Execute(ctx, q,
 		"UPDATE notifications SET read_at = ? WHERE did = ? AND read_at IS NULL AND id IN ("+
-			placeholders(len(ids))+")", args...)
+			Placeholders(len(ids))+")", args...)
 	if err != nil {
 		return 0, err
 	}
@@ -140,18 +140,4 @@ func MarkAllNotificationsRead(ctx context.Context, q db.Querier, did string, now
 		return 0, err
 	}
 	return res.RowsAffected()
-}
-
-func placeholders(n int) string {
-	if n <= 0 {
-		return ""
-	}
-	out := make([]byte, 0, n*2-1)
-	for i := 0; i < n; i++ {
-		if i > 0 {
-			out = append(out, ',')
-		}
-		out = append(out, '?')
-	}
-	return string(out)
 }

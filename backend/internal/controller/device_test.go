@@ -31,7 +31,7 @@ func TestDeviceRegisterAndReassign(t *testing.T) {
 	bob := env.Login(t, "did:plc:bob")
 
 	// 登録。
-	status, body := request(t, app, http.MethodPut, "/api/v1/me/devices",
+	status, body := testutil.Request(t, app, http.MethodPut, "/api/v1/me/devices",
 		`{"fcmToken":"tok-shared","platform":"android"}`, alice)
 	if status != http.StatusNoContent {
 		t.Fatalf("register: status = %d, want 204 (body=%s)", status, body)
@@ -42,7 +42,7 @@ func TestDeviceRegisterAndReassign(t *testing.T) {
 	}
 
 	// 同じトークンを bob が登録すると、alice から bob へ付け替わる（12 §2）。
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/devices",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/devices",
 		`{"fcmToken":"tok-shared","platform":"ios"}`, bob)
 	if status != http.StatusNoContent {
 		t.Fatalf("reassign: status = %d, want 204 (body=%s)", status, body)
@@ -56,7 +56,7 @@ func TestDeviceRegisterAndReassign(t *testing.T) {
 	}
 
 	// 同じユーザーが同じトークンを再登録しても行は増えず、platform が更新される。
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/devices",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/devices",
 		`{"fcmToken":"tok-shared","platform":"android"}`, bob)
 	if status != http.StatusNoContent {
 		t.Fatalf("re-register: status = %d, want 204 (body=%s)", status, body)
@@ -76,7 +76,7 @@ func TestDeviceDelete(t *testing.T) {
 	bob := env.Login(t, "did:plc:bob")
 
 	for _, token := range []string{"tok-a", "tok-b"} {
-		status, body := request(t, app, http.MethodPut, "/api/v1/me/devices",
+		status, body := testutil.Request(t, app, http.MethodPut, "/api/v1/me/devices",
 			`{"fcmToken":"`+token+`","platform":"android"}`, alice)
 		if status != http.StatusNoContent {
 			t.Fatalf("register %s: status = %d, want 204 (body=%s)", token, status, body)
@@ -84,7 +84,7 @@ func TestDeviceDelete(t *testing.T) {
 	}
 
 	// 他人のトークンは消せない。成功として返すが行は残る。
-	status, body := request(t, app, http.MethodDelete, "/api/v1/me/devices/tok-a", "", bob)
+	status, body := testutil.Request(t, app, http.MethodDelete, "/api/v1/me/devices/tok-a", "", bob)
 	if status != http.StatusNoContent {
 		t.Fatalf("bob delete alice token: status = %d, want 204 (body=%s)", status, body)
 	}
@@ -93,7 +93,7 @@ func TestDeviceDelete(t *testing.T) {
 	}
 
 	// 本人は消せる。
-	status, body = request(t, app, http.MethodDelete, "/api/v1/me/devices/tok-a", "", alice)
+	status, body = testutil.Request(t, app, http.MethodDelete, "/api/v1/me/devices/tok-a", "", alice)
 	if status != http.StatusNoContent {
 		t.Fatalf("alice delete: status = %d, want 204 (body=%s)", status, body)
 	}
@@ -103,7 +103,7 @@ func TestDeviceDelete(t *testing.T) {
 	}
 
 	// 無いトークンでも成功（ログアウトを冪等にする）。
-	status, body = request(t, app, http.MethodDelete, "/api/v1/me/devices/tok-a", "", alice)
+	status, body = testutil.Request(t, app, http.MethodDelete, "/api/v1/me/devices/tok-a", "", alice)
 	if status != http.StatusNoContent {
 		t.Fatalf("delete missing: status = %d, want 204 (body=%s)", status, body)
 	}
@@ -114,35 +114,35 @@ func TestDeviceRegisterValidation(t *testing.T) {
 	app := testutil.NewApp(env)
 	env.CreateUser(t, "did:plc:alice", "alice.test")
 
-	status, body := request(t, app, http.MethodPut, "/api/v1/me/devices",
+	status, body := testutil.Request(t, app, http.MethodPut, "/api/v1/me/devices",
 		`{"fcmToken":"tok","platform":"android"}`, "")
 	if status != http.StatusUnauthorized {
 		t.Fatalf("without token: status = %d, want 401 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "unauthenticated")
+	testutil.WantErrorCode(t, body, "unauthenticated")
 
 	alice := env.Login(t, "did:plc:alice")
 
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/devices",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/devices",
 		`{"fcmToken":"","platform":"android"}`, alice)
 	if status != http.StatusBadRequest {
 		t.Fatalf("empty fcmToken: status = %d, want 400 (body=%s)", status, body)
 	}
-	if e := wantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["fcmToken"] == "" {
+	if e := testutil.WantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["fcmToken"] == "" {
 		t.Fatalf("fields.fcmToken missing (body=%s)", body)
 	}
 
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/devices",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/devices",
 		`{"fcmToken":"tok","platform":"web"}`, alice)
 	if status != http.StatusBadRequest {
 		t.Fatalf("bad platform: status = %d, want 400 (body=%s)", status, body)
 	}
-	if e := wantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["platform"] == "" {
+	if e := testutil.WantErrorCode(t, body, "invalid_request"); e.Error.Details.Fields["platform"] == "" {
 		t.Fatalf("fields.platform missing (body=%s)", body)
 	}
 
 	// platform 省略時は android とする（12 §2 は ios / android の 2 つ）。
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/devices",
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/devices",
 		`{"fcmToken":"tok-default"}`, alice)
 	if status != http.StatusNoContent {
 		t.Fatalf("default platform: status = %d, want 204 (body=%s)", status, body)

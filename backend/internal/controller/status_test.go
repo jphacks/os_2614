@@ -21,7 +21,7 @@ func TestMeStatus(t *testing.T) {
 	env.CreateUser(t, "did:plc:alice", "alice.test")
 	alice := env.Login(t, "did:plc:alice")
 
-	status, body := request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"旅の途中"}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"旅の途中"}`, alice)
 	if status != http.StatusOK {
 		t.Fatalf("put status: status = %d, want 200 (body=%s)", status, body)
 	}
@@ -31,30 +31,30 @@ func TestMeStatus(t *testing.T) {
 		t.Fatalf("writer calls = %+v", calls)
 	}
 
-	status, body = request(t, app, http.MethodGet, "/api/v1/me", "", alice)
+	status, body = testutil.Request(t, app, http.MethodGet, "/api/v1/me", "", alice)
 	if status != http.StatusOK {
 		t.Fatalf("get me: status = %d (body=%s)", status, body)
 	}
 	var me struct {
 		Status string `json:"status"`
 	}
-	mustJSONBody(t, body, &me)
+	testutil.MustJSONBody(t, body, &me)
 	if me.Status != "旅の途中" {
 		t.Fatalf("me.status = %q, want 旅の途中", me.Status)
 	}
 
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":""}`, alice)
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":""}`, alice)
 	if status != http.StatusOK {
 		t.Fatalf("clear status: status = %d (body=%s)", status, body)
 	}
-	status, body = request(t, app, http.MethodGet, "/api/v1/me", "", alice)
+	status, body = testutil.Request(t, app, http.MethodGet, "/api/v1/me", "", alice)
 	if status != http.StatusOK {
 		t.Fatalf("get me after clear: status = %d (body=%s)", status, body)
 	}
 	var cleared struct {
 		Status string `json:"status"`
 	}
-	mustJSONBody(t, body, &cleared)
+	testutil.MustJSONBody(t, body, &cleared)
 	if cleared.Status != "" {
 		t.Fatalf("me.status = %q, want empty", cleared.Status)
 	}
@@ -67,11 +67,11 @@ func TestMeStatusTooLong(t *testing.T) {
 	alice := env.Login(t, "did:plc:alice")
 
 	long := strings.Repeat("あ", 41)
-	status, body := request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"`+long+`"}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"`+long+`"}`, alice)
 	if status != http.StatusBadRequest {
 		t.Fatalf("41 chars: status = %d, want 400 (body=%s)", status, body)
 	}
-	e := wantErrorCode(t, body, "invalid_request")
+	e := testutil.WantErrorCode(t, body, "invalid_request")
 	if e.Error.Details.Fields["status"] == "" {
 		t.Fatalf("details.fields.status is empty (body=%s)", body)
 	}
@@ -84,11 +84,11 @@ func TestMeStatusModerationBlocked(t *testing.T) {
 	env.CreateUser(t, "did:plc:alice", "alice.test")
 	alice := env.Login(t, "did:plc:alice")
 
-	status, body := request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"これは誹謗です"}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"これは誹謗です"}`, alice)
 	if status != http.StatusUnprocessableEntity {
 		t.Fatalf("blocked: status = %d, want 422 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "moderation_blocked")
+	testutil.WantErrorCode(t, body, "moderation_blocked")
 }
 
 func TestMeStatusWriterErrors(t *testing.T) {
@@ -98,16 +98,16 @@ func TestMeStatusWriterErrors(t *testing.T) {
 	alice := env.Login(t, "did:plc:alice")
 
 	env.Writer.SetError(atproto.ErrSessionExpired)
-	status, body := request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"x"}`, alice)
+	status, body := testutil.Request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"x"}`, alice)
 	if status != http.StatusUnauthorized {
 		t.Fatalf("expired: status = %d, want 401 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "atproto_session_expired")
+	testutil.WantErrorCode(t, body, "atproto_session_expired")
 
 	env.Writer.SetError(errors.New("pds down"))
-	status, body = request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"x"}`, alice)
+	status, body = testutil.Request(t, app, http.MethodPut, "/api/v1/me/status", `{"status":"x"}`, alice)
 	if status != http.StatusBadGateway {
 		t.Fatalf("upstream: status = %d, want 502 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "upstream_error")
+	testutil.WantErrorCode(t, body, "upstream_error")
 }

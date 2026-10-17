@@ -7,11 +7,12 @@ import (
 
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/model"
+	"github.com/applemango/chain/internal/service/core"
 )
 
 // UserService は他人のプロフィールの閲覧（13 §1.2）。
 type UserService struct {
-	Deps
+	core.Deps
 }
 
 type PublicUser struct {

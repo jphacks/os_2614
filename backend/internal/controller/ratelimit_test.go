@@ -102,7 +102,7 @@ func TestRateLimitPerBucket(t *testing.T) {
 			if status != http.StatusTooManyRequests {
 				t.Fatalf("request %d: status = %d, want 429 (body=%s)", tc.limit+1, status, body)
 			}
-			wantErrorCode(t, body, "rate_limited")
+			testutil.WantErrorCode(t, body, "rate_limited")
 			assertRetryAfter(t, hdr, tc.window)
 
 			env.Clock.Advance(tc.window)
@@ -186,7 +186,7 @@ func TestRateLimitAuthByIP(t *testing.T) {
 	if status != http.StatusTooManyRequests {
 		t.Fatalf("31st auth request: status = %d, want 429 (body=%s)", status, body)
 	}
-	wantErrorCode(t, body, "rate_limited")
+	testutil.WantErrorCode(t, body, "rate_limited")
 	assertRetryAfter(t, hdr, time.Minute)
 
 	// 別の /auth/* も同じ IP バケットを共有する。

@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/applemango/chain/internal/model"
-	"github.com/applemango/chain/internal/service"
+	core "github.com/applemango/chain/internal/service/core"
+	"github.com/applemango/chain/internal/service/notify"
 )
 
 // NotifySender は due な通知を FCM で送る（12 §4）。
 type NotifySender struct {
-	service.Deps
-	Notifier *service.NotifySender
+	core.Deps
+	Notifier *notify.NotifySender
 }
 
 const (

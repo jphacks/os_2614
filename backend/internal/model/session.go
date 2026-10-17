@@ -61,7 +61,7 @@ func CreateAppSession(ctx context.Context, q db.Querier, s AppSession) error {
 		INSERT INTO app_sessions (id, did, atproto_session, family_id, refresh_hash, device_name,
 		                          created_at, last_used_at, expires_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.DID, s.ATProtoSessionID, s.FamilyID, s.RefreshHash, nullable(s.DeviceName),
+		s.ID, s.DID, s.ATProtoSessionID, s.FamilyID, s.RefreshHash, Nullable(s.DeviceName),
 		clock.UnixMilli(s.CreatedAt), clock.UnixMilli(s.LastUsedAt), clock.UnixMilli(s.ExpiresAt))
 	return err
 }

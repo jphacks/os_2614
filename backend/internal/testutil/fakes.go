@@ -16,13 +16,17 @@ import (
 	"github.com/applemango/chain/internal/external/atproto"
 	"github.com/applemango/chain/internal/external/fcm"
 	"github.com/applemango/chain/internal/realtime"
-	"github.com/applemango/chain/internal/service"
+	authsvc "github.com/applemango/chain/internal/service/auth"
+	"github.com/applemango/chain/internal/service/content"
+	core "github.com/applemango/chain/internal/service/core"
+	"github.com/applemango/chain/internal/service/moderation"
+	"github.com/applemango/chain/internal/service/proximity"
 )
 
 var (
-	_ service.OAuthClient       = (*fakeOAuth)(nil)
-	_ service.IdentityDirectory = fakeDir{}
-	_ service.ProfileFetcher    = (*fakeProfiles)(nil)
+	_ authsvc.OAuthClient       = (*fakeOAuth)(nil)
+	_ authsvc.IdentityDirectory = fakeDir{}
+	_ authsvc.ProfileFetcher    = (*fakeProfiles)(nil)
 )
 
 // fakeOAuth は indigo の *oauth.ClientApp を置き換える。ProcessCallback は本物と同じく、
@@ -75,7 +79,7 @@ func (*fakeProfiles) FetchProfile(ctx context.Context, pdsURL, did string) (*atp
 // fakeFirstLoad は初回の読み込みで何もしない（17 §2.5）。NewApp の既定。
 type fakeFirstLoad struct{}
 
-var _ service.PublicPostBackfiller = fakeFirstLoad{}
+var _ content.PublicPostBackfiller = fakeFirstLoad{}
 
 func (fakeFirstLoad) BackfillPublicPosts(context.Context, string, string) error { return nil }
 
@@ -91,9 +95,9 @@ func NewFakeZonePresence() *FakeZonePresence {
 	return &FakeZonePresence{inside: map[string]bool{}, stale: true}
 }
 
-var _ service.ZonePresence = (*FakeZonePresence)(nil)
+var _ proximity.ZonePresence = (*FakeZonePresence)(nil)
 
-func (*FakeZonePresence) Kind() service.Kind { return service.KindGPS }
+func (*FakeZonePresence) Kind() proximity.Kind { return proximity.KindGPS }
 
 // Set は DID の在席を設定する。stale が false のときだけ使われる。
 func (f *FakeZonePresence) Set(did string, inside bool) {
@@ -109,11 +113,11 @@ func (f *FakeZonePresence) SetStale(stale bool) {
 	f.stale = stale
 }
 
-func (f *FakeZonePresence) Inside(_ context.Context, u string, _ service.Zone, _ time.Duration) (bool, error) {
+func (f *FakeZonePresence) Inside(_ context.Context, u string, _ proximity.Zone, _ time.Duration) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.stale {
-		return false, service.ErrStale
+		return false, proximity.ErrStale
 	}
 	return f.inside[u], nil
 }
@@ -167,7 +171,7 @@ func (f *FakeBroker) Reset() {
 	f.events = nil
 }
 
-// FakeRecordWriter は service.RecordWriter の fake。呼び出しの引数を記録し、結果を差し替えられる（03 §4）。
+// FakeRecordWriter は core.RecordWriter の fake。呼び出しの引数を記録し、結果を差し替えられる（03 §4）。
 type FakeRecordWriter struct {
 	mu          sync.Mutex
 	calls       []PutRecordCall
@@ -235,7 +239,7 @@ func NewFakeRecordWriter() *FakeRecordWriter {
 	}
 }
 
-var _ service.RecordWriter = (*FakeRecordWriter)(nil)
+var _ core.RecordWriter = (*FakeRecordWriter)(nil)
 
 // SetRecord は PDS に既にある record を用意する（GetRecord が返す）。
 func (f *FakeRecordWriter) SetRecord(collection, rkey string, value map[string]any, cid string) {
@@ -410,15 +414,15 @@ func (f *FakeRecordWriter) SetDeleteError(collection string, err error) {
 // BlockingModerator は指定した語を含む本文を block にする（11 §3 のテスト用）。
 type BlockingModerator struct{ Words []string }
 
-var _ service.Moderator = (*BlockingModerator)(nil)
+var _ moderation.Moderator = (*BlockingModerator)(nil)
 
-func (m *BlockingModerator) Judge(_ context.Context, c service.Content) (service.Verdict, error) {
+func (m *BlockingModerator) Judge(_ context.Context, c moderation.Content) (moderation.Verdict, error) {
 	for _, w := range m.Words {
 		if w != "" && strings.Contains(c.Text, w) {
-			return service.Verdict{Label: service.LabelBlock, Categories: []string{"harassment"}}, nil
+			return moderation.Verdict{Label: moderation.LabelBlock, Categories: []string{"harassment"}}, nil
 		}
 	}
-	return service.Verdict{Label: service.LabelOK}, nil
+	return moderation.Verdict{Label: moderation.LabelOK}, nil
 }
 
 // FakeAssessor は投稿・グループ名の判定をテストから制御する（11 §3）。Moderator と
@@ -431,37 +435,37 @@ type FakeAssessor struct {
 }
 
 var (
-	_ service.Moderator    = (*FakeAssessor)(nil)
-	_ service.PostAssessor = (*FakeAssessor)(nil)
+	_ moderation.Moderator    = (*FakeAssessor)(nil)
+	_ moderation.PostAssessor = (*FakeAssessor)(nil)
 )
 
-func (m *FakeAssessor) Judge(_ context.Context, c service.Content) (service.Verdict, error) {
+func (m *FakeAssessor) Judge(_ context.Context, c moderation.Content) (moderation.Verdict, error) {
 	v, _, err := m.judge(c.Text)
 	return v, err
 }
 
-func (m *FakeAssessor) Assess(_ context.Context, c service.Content) (service.Verdict, bool, error) {
+func (m *FakeAssessor) Assess(_ context.Context, c moderation.Content) (moderation.Verdict, bool, error) {
 	v, pin, err := m.judge(c.Text)
 	return v, pin, err
 }
 
-func (m *FakeAssessor) judge(text string) (service.Verdict, bool, error) {
+func (m *FakeAssessor) judge(text string) (moderation.Verdict, bool, error) {
 	for _, w := range m.FailWords {
 		if w != "" && strings.Contains(text, w) {
-			return service.Verdict{}, false, errors.New("fake moderation failure")
+			return moderation.Verdict{}, false, errors.New("fake moderation failure")
 		}
 	}
 	for _, w := range m.BlockWords {
 		if w != "" && strings.Contains(text, w) {
-			return service.Verdict{Label: service.LabelBlock, Categories: []string{"harassment"}, Score: 0.9}, false, nil
+			return moderation.Verdict{Label: moderation.LabelBlock, Categories: []string{"harassment"}, Score: 0.9}, false, nil
 		}
 	}
 	for _, w := range m.WarnWords {
 		if w != "" && strings.Contains(text, w) {
-			return service.Verdict{Label: service.LabelWarn, Categories: []string{"spam"}, Score: 0.65}, m.Pin, nil
+			return moderation.Verdict{Label: moderation.LabelWarn, Categories: []string{"spam"}, Score: 0.65}, m.Pin, nil
 		}
 	}
-	return service.Verdict{Label: service.LabelOK}, m.Pin, nil
+	return moderation.Verdict{Label: moderation.LabelOK}, m.Pin, nil
 }
 
 // FakeFCM は fcm.Sender の fake。送ったメッセージを記録し、トークンごとに結果を差し替える（12 §4）。

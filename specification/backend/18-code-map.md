@@ -2,76 +2,97 @@
 
 機能とコードのパス、コントローラーとそのパスの一覧。
 **このファイルは `backend/scripts/codemap.py` が生成する。手で直さず、コードを変えたら作り直す**（`backend/` で `make codemap`）。
+フォルダーの分け方の規則は 01 §3 と、各層の `doc.go`。
 
 ## 1. 機能とコードのパス
 
-パスは `backend/` からの相対。テスト（`*_test.go`）と `doc.go` は省く。
+各層の機能フォルダーと、層の直下に残っている 1 ファイルの機能。パスは `backend/` からの相対。テスト（`*_test.go`）と `doc.go` は省く。
 
-| 機能 | 仕様 | controller | service | model | worker | external | realtime | storage |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 認証・アプリセッション | 03 §2・§3 | `internal/controller/account.go`<br>`internal/controller/auth.go` | `internal/service/account.go`<br>`internal/service/auth.go`<br>`internal/service/session.go` | `internal/model/account.go`<br>`internal/model/oauth.go`<br>`internal/model/session.go` | — | `internal/external/atproto/oauth.go`<br>`internal/external/atproto/store.go` | — | — |
-| 自分（設定・同意） | 13 §1、02 §8 | `internal/controller/me.go` | `internal/service/me.go` | `internal/model/settings.go` | — | — | — | — |
-| プロフィール | 13 §1 | `internal/controller/user.go` | `internal/service/profile_image.go`<br>`internal/service/user.go` | `internal/model/profile.go`<br>`internal/model/user.go`<br>`internal/model/user_handle.go` | — | `internal/external/atproto/profile.go` | — | — |
-| 近接判定の共通部分 | 05 | `internal/controller/beacon.go` | `internal/service/beacon.go`<br>`internal/service/beacon_payload.go`<br>`internal/service/geohash.go`<br>`internal/service/params.go`<br>`internal/service/proximity.go` | `internal/model/beacon.go`<br>`internal/model/proximity.go` | — | — | — | — |
-| 位置 | 05 §4 | `internal/controller/location.go` | `internal/service/location.go` | `internal/model/location.go` | — | — | — | — |
-| すれ違い | 06 | `internal/controller/encounter.go` | `internal/service/encounter.go`<br>`internal/service/encounter_summary.go` | `internal/model/encounter.go`<br>`internal/model/encounter_feed.go` | `internal/worker/encounter_revealer.go` | — | — | — |
-| ブロック | 13 §4 | `internal/controller/block.go` | `internal/service/block.go` | `internal/model/block.go`<br>`internal/model/relationship.go` | — | — | — | — |
-| フレンド | 07 §1〜§3 | `internal/controller/friend.go` | `internal/service/friend.go` | `internal/model/friend.go` | — | — | — | — |
-| 位置共有 | 07 §4 | `internal/controller/location_share.go` | `internal/service/location_share.go` | `internal/model/location_share.go` | — | — | — | — |
-| Party | 08 | `internal/controller/memory.go`<br>`internal/controller/party.go` | `internal/service/party.go` | `internal/model/memory.go`<br>`internal/model/party.go` | `internal/worker/party_engine.go` | — | — | — |
-| グループ | 09 §1〜§5・§9 | `internal/controller/group.go` | `internal/service/group.go`<br>`internal/service/group_circle.go`<br>`internal/service/schedule.go` | `internal/model/group.go` | — | — | — | — |
-| closed グループの招待 | 09 §6 | `internal/controller/group_invite.go` | `internal/service/group_invite.go` | `internal/model/group_invite.go` | — | — | — | — |
-| 入場通知・グラフ | 09 §6.1・§7 | — | `internal/service/group_entry.go`<br>`internal/service/group_graph.go` | — | — | — | — | — |
-| 自動グループ | 09 §8 | `internal/controller/schedule.go` | `internal/service/embedder.go`<br>`internal/service/natural_cluster.go`<br>`internal/service/natural_groups.go`<br>`internal/service/schedule_entries.go` | `internal/model/schedule.go`<br>`internal/model/schedule_match.go` | `internal/worker/embed_backfill.go`<br>`internal/worker/natural_groups.go` | `internal/external/embed/client.go` | — | — |
-| 投票 | 09 §8.6 | `internal/controller/group_vote.go` | `internal/service/group_vote.go` | `internal/model/group_vote.go` | `internal/worker/group_votes.go` | — | — | — |
-| instance（Space の投稿） | 10 §1〜§5 | `internal/controller/instance.go` | `internal/service/access.go`<br>`internal/service/instance.go` | `internal/model/instance.go`<br>`internal/model/record.go`<br>`internal/model/space.go` | — | — | — | — |
-| Pin | 10 §6 | — | `internal/service/pin.go` | `internal/model/pin.go` | — | — | — | — |
-| メディア | 10 §4.4 | `internal/controller/media.go`<br>`internal/controller/media_serve.go` | `internal/service/media.go` | `internal/model/media.go` | — | — | — | `internal/storage/media.go`<br>`internal/storage/sign.go` |
-| WebSocket | 10 §7 | `internal/controller/ws.go` | `internal/service/realtime.go` | — | — | — | `internal/realtime/hub.go` | — |
-| 公開投稿・Jetstream | 17 §2、03 §4・§5 | `internal/controller/public_post.go` | `internal/service/jetstream.go`<br>`internal/service/public_post.go` | `internal/model/jetstream.go`<br>`internal/model/public_post.go` | `internal/worker/jetstream.go` | `internal/external/atproto/firstload.go`<br>`internal/external/atproto/jetstream.go`<br>`internal/external/atproto/writer.go` | — | — |
-| フィード | 17 §3 | `internal/controller/feed.go` | `internal/service/feed.go` | — | — | — | — | — |
-| moderation | 11 | — | `internal/service/moderation.go`<br>`internal/service/moderation_jev.go`<br>`internal/service/moderation_prompts.go`<br>`internal/service/moderation_queue.go` | `internal/model/modq.go` | `internal/worker/moderation_requeue.go` | `internal/external/nanogpt/client.go` | — | — |
-| 通知 | 12 | `internal/controller/device.go`<br>`internal/controller/notification.go` | `internal/service/device.go`<br>`internal/service/digest.go`<br>`internal/service/notification.go`<br>`internal/service/notify_sender.go` | `internal/model/device.go`<br>`internal/model/notification.go` | `internal/worker/digest.go`<br>`internal/worker/notify_sender.go` | `internal/external/fcm/client.go`<br>`internal/external/fcm/credentials.go`<br>`internal/external/fcm/wire.go` | — | — |
-| 統計 | 13 §3 | `internal/controller/stats.go` | `internal/service/stats.go` | `internal/model/stats.go` | — | — | — | — |
-| 掃除・排他 | 04 §4 | — | `internal/service/janitor.go` | `internal/model/audit.go`<br>`internal/model/janitor.go`<br>`internal/model/lock.go` | `internal/worker/janitor.go` | — | — | — |
-| ヘルスチェック | — | `internal/controller/health.go` | `internal/service/health.go` | — | — | — | — | — |
+| 機能 | 仕様 | controller | service | model |
+| --- | --- | --- | --- | --- |
+| service の共通部分（Deps・定数・共通の型）（`core`） | 01 §3 | — | `internal/service/core/common.go`<br>`internal/service/core/geohash.go`<br>`internal/service/core/image.go`<br>`internal/service/core/params.go` | — |
+| 層の共通部分（`helpers`） | 01 §3 | `internal/controller/helpers.go` | — | `internal/model/helpers.go` |
+| ルートの登録（`routes`） | 01 §3 | `internal/controller/routes.go` | — | — |
+| 認証・アプリセッション・アカウント削除（`auth`） | 03 §2・§3、13 §5 | `internal/controller/auth/account.go`<br>`internal/controller/auth/auth.go` | `internal/service/auth/account.go`<br>`internal/service/auth/auth.go`<br>`internal/service/auth/session.go` | — |
+| ATProto OAuth のセッション（`oauth`） | 03 §2.2 | — | — | `internal/model/oauth.go` |
+| アプリセッション（`session`） | 03 §3 | — | — | `internal/model/session.go` |
+| 自分（設定・同意・ステータス・プロフィール編集）（`me`） | 13 §1、02 §8 | `internal/controller/me.go` | `internal/service/me/me.go`<br>`internal/service/me/profile_image.go` | — |
+| ユーザー設定（`settings`） | 13 §1 | — | — | `internal/model/settings.go` |
+| ユーザーとプロフィールの取得（`user`） | 13 §1.2 | `internal/controller/user.go` | `internal/service/user.go` | `internal/model/user.go` |
+| handle の更新（`user_handle`） | 03 §5 | — | — | `internal/model/user_handle.go` |
+| プロフィール（`profile`） | 13 §1 | — | — | `internal/model/profile.go` |
+| 近接判定・beacon token・位置（`proximity`） | 05 | — | `internal/service/proximity/beacon.go`<br>`internal/service/proximity/beacon_payload.go`<br>`internal/service/proximity/location.go`<br>`internal/service/proximity/proximity.go` | `internal/model/proximity.go` |
+| beacon token（`beacon`） | 05 §2 | — | — | `internal/model/beacon.go` |
+| 位置（`location`） | 05 §4 | — | — | `internal/model/location.go` |
+| すれ違い・統計（`encounter`） | 06、13 §3 | `internal/controller/encounter/beacon.go`<br>`internal/controller/encounter/encounter.go`<br>`internal/controller/encounter/location.go` | `internal/service/encounter/encounter.go`<br>`internal/service/encounter/stats.go`<br>`internal/service/encounter/summary.go` | `internal/model/encounter/encounter.go`<br>`internal/model/encounter/feed.go` |
+| 統計（`stats`） | 13 §3 | `internal/controller/stats.go` | — | `internal/model/stats.go` |
+| ブロック（`block`） | 13 §4 | `internal/controller/block.go` | `internal/service/block.go` | `internal/model/block.go` |
+| 関係の判定（ブロック・フレンドなど）（`relationship`） | 13 §1.2・§4 | — | — | `internal/model/relationship.go` |
+| フレンド・位置共有（`friend`） | 07 | `internal/controller/friend/friend.go`<br>`internal/controller/friend/location_share.go` | `internal/service/friend/friend.go`<br>`internal/service/friend/location_share.go` | `internal/model/friend/friend.go`<br>`internal/model/friend/location_share.go` |
+| Party・memory（`party`） | 08、13 §2 | `internal/controller/party/memory.go`<br>`internal/controller/party/party.go` | `internal/service/party/party.go` | `internal/model/party.go` |
+| グループ（作成・参加・招待・投票・入場通知・グラフ）（`group`） | 09 §1〜§7 | `internal/controller/group/group.go`<br>`internal/controller/group/invite.go`<br>`internal/controller/group/vote.go` | `internal/service/group/circle.go`<br>`internal/service/group/entry.go`<br>`internal/service/group/graph.go`<br>`internal/service/group/group.go`<br>`internal/service/group/invite.go`<br>`internal/service/group/vote.go` | `internal/model/group/group.go`<br>`internal/model/group/invite.go`<br>`internal/model/group/vote.go` |
+| グループの時間帯 / 予定（自動グループ）（`schedule`） | 09 §3、09 §8.2 | `internal/controller/schedule.go` | `internal/service/schedule/schedule.go`<br>`internal/service/schedule/validate.go`<br>`internal/service/schedule/window.go` | `internal/model/schedule/match.go`<br>`internal/model/schedule/schedule.go` |
+| 自動グループ（`natural`） | 09 §8 | — | `internal/service/natural/cluster.go`<br>`internal/service/natural/embedder.go`<br>`internal/service/natural/groups.go`<br>`internal/service/natural/schedule.go` | — |
+| アクセス判定（`access`） | 10 §5 | — | `internal/service/access/access.go` | — |
+| instance・Pin・メディア・フィード・公開投稿・Jetstream・WebSocket（`content`） | 10、17 | `internal/controller/content/feed.go`<br>`internal/controller/content/instance.go`<br>`internal/controller/content/media.go`<br>`internal/controller/content/media_serve.go`<br>`internal/controller/content/public_post.go` | `internal/service/content/feed.go`<br>`internal/service/content/instance.go`<br>`internal/service/content/jetstream.go`<br>`internal/service/content/media.go`<br>`internal/service/content/pin.go`<br>`internal/service/content/public_post.go`<br>`internal/service/content/realtime.go`<br>`internal/service/content/requeue.go` | — |
+| Space・record・メディア・memory（`space`） | 04 §2.4、10 | — | — | `internal/model/space/instance.go`<br>`internal/model/space/media.go`<br>`internal/model/space/memory.go`<br>`internal/model/space/pin.go`<br>`internal/model/space/record.go`<br>`internal/model/space/space.go` |
+| moderation（`moderation`） | 11 | — | `internal/service/moderation/jev.go`<br>`internal/service/moderation/moderation.go`<br>`internal/service/moderation/prompts.go` | — |
+| moderation の再判定キュー（`modq`） | 11 §3 | — | — | `internal/model/modq.go` |
+| 通知（積む・送る・端末・ダイジェスト）（`notify`） | 12 | — | `internal/service/notify/device.go`<br>`internal/service/notify/digest.go`<br>`internal/service/notify/notification.go`<br>`internal/service/notify/sender.go` | — |
+| 通知（`notification`） | 12 | `internal/controller/notification.go` | — | `internal/model/notification.go` |
+| 端末の登録（`device`） | 12 §2 | `internal/controller/device.go` | — | `internal/model/device.go` |
+| 公開投稿（`public_post`） | 17 §2 | — | — | `internal/model/public_post.go` |
+| Jetstream のカーソル（`jetstream`） | 03 §5 | — | — | `internal/model/jetstream.go` |
+| アカウント削除と掃除（`maintenance`） | 13 §5、04 §4 | — | — | `internal/model/maintenance/account.go`<br>`internal/model/maintenance/janitor.go` |
+| 掃除（`janitor`） | 04 §4 | — | `internal/service/janitor.go` | — |
+| 監査ログ（`audit`） | 02 §7 | — | — | `internal/model/audit.go` |
+| 排他（lock:）（`lock`） | 04 §3 | — | — | `internal/model/lock.go` |
+| ヘルスチェック（`health`） | — | `internal/controller/health.go` | `internal/service/health.go` | — |
+| WebSocket（`ws`） | 10 §7 | `internal/controller/ws.go` | — | — |
 
-未分類のファイルはない。
+層に属さないもの:
 
-共通の部品（機能に属さないもの）: `internal/controller/routes.go`（ルートの登録）、`internal/httpx/`（エラー・認証・レート制限・Bind）、`internal/auth/`（JWT・暗号化）、`internal/db/`、`internal/kv/`、`internal/config/`、`internal/clock/`、`internal/idgen/`、`internal/utils/`、`internal/testutil/`、`cmd/dbreset/`、`cmd/keygen/`
+| フォルダー | ファイル |
+| --- | --- |
+| `internal/worker/` | `internal/worker/digest.go`<br>`internal/worker/embed_backfill.go`<br>`internal/worker/encounter_revealer.go`<br>`internal/worker/group_votes.go`<br>`internal/worker/janitor.go`<br>`internal/worker/jetstream.go`<br>`internal/worker/moderation_requeue.go`<br>`internal/worker/natural_groups.go`<br>`internal/worker/notify_sender.go`<br>`internal/worker/party_engine.go` |
+| `internal/external/` | `internal/external/atproto/firstload.go`<br>`internal/external/atproto/jetstream.go`<br>`internal/external/atproto/oauth.go`<br>`internal/external/atproto/profile.go`<br>`internal/external/atproto/store.go`<br>`internal/external/atproto/writer.go`<br>`internal/external/embed/client.go`<br>`internal/external/fcm/client.go`<br>`internal/external/fcm/credentials.go`<br>`internal/external/fcm/wire.go`<br>`internal/external/nanogpt/client.go` |
+| `internal/realtime/` | `internal/realtime/hub.go` |
+| `internal/storage/` | `internal/storage/media.go`<br>`internal/storage/sign.go` |
+
+共通の部品: `internal/httpx/`（エラー・認証・レート制限・Bind）、`internal/auth/`（JWT・暗号化）、`internal/db/`、`internal/kv/`、`internal/config/`、`internal/clock/`、`internal/idgen/`、`internal/utils/`、`internal/testutil/`、`cmd/dbreset/`、`cmd/keygen/`
 
 ## 2. コントローラー一覧
 
 | コントローラー | ファイル | 登録先 | パスの数 |
 | --- | --- | --- | --- |
 | `HealthController` | `internal/controller/health.go` | ルート（`/api/v1` の外、認証なし） | 1 |
-| `OAuthController` | `internal/controller/auth.go` | ルート（`/api/v1` の外、認証なし） | 5 |
-| `MediaDeliveryController` | `internal/controller/media_serve.go` | ルート（`/api/v1` の外、認証なし） | 1 |
-| `AuthController` | `internal/controller/auth.go` | `/api/v1`（認証なし） | 2 |
+| `OAuthController` | `internal/controller/auth/auth.go` | ルート（`/api/v1` の外、認証なし） | 5 |
+| `MediaDeliveryController` | `internal/controller/content/media_serve.go` | ルート（`/api/v1` の外、認証なし） | 1 |
+| `AuthController` | `internal/controller/auth/auth.go` | `/api/v1`（認証なし） | 2 |
 | `WSController` | `internal/controller/ws.go` | `/api/v1`（認証なし） | 1 |
-| `LogoutController` | `internal/controller/auth.go` | `/api/v1`（認証あり） | 1 |
+| `LogoutController` | `internal/controller/auth/auth.go` | `/api/v1`（認証あり） | 1 |
 | `MeController` | `internal/controller/me.go` | `/api/v1`（認証あり） | 9 |
 | `ScheduleController` | `internal/controller/schedule.go` | `/api/v1`（認証あり） | 3 |
 | `StatsController` | `internal/controller/stats.go` | `/api/v1`（認証あり） | 1 |
 | `UserController` | `internal/controller/user.go` | `/api/v1`（認証あり） | 1 |
 | `DeviceController` | `internal/controller/device.go` | `/api/v1`（認証あり） | 2 |
-| `BeaconController` | `internal/controller/beacon.go` | `/api/v1`（認証あり） | 1 |
-| `LocationController` | `internal/controller/location.go` | `/api/v1`（認証あり） | 1 |
-| `LocationShareController` | `internal/controller/location_share.go` | `/api/v1`（認証あり） | 7 |
-| `EncounterController` | `internal/controller/encounter.go` | `/api/v1`（認証あり） | 3 |
+| `BeaconController` | `internal/controller/encounter/beacon.go` | `/api/v1`（認証あり） | 1 |
+| `LocationController` | `internal/controller/encounter/location.go` | `/api/v1`（認証あり） | 1 |
+| `LocationShareController` | `internal/controller/friend/location_share.go` | `/api/v1`（認証あり） | 7 |
+| `EncounterController` | `internal/controller/encounter/encounter.go` | `/api/v1`（認証あり） | 3 |
 | `BlockController` | `internal/controller/block.go` | `/api/v1`（認証あり） | 3 |
-| `FriendController` | `internal/controller/friend.go` | `/api/v1`（認証あり） | 9 |
+| `FriendController` | `internal/controller/friend/friend.go` | `/api/v1`（認証あり） | 9 |
 | `NotificationController` | `internal/controller/notification.go` | `/api/v1`（認証あり） | 2 |
-| `InstanceController` | `internal/controller/instance.go` | `/api/v1`（認証あり） | 7 |
-| `FeedPostController` | `internal/controller/public_post.go` | `/api/v1`（認証あり） | 2 |
-| `FeedController` | `internal/controller/feed.go` | `/api/v1`（認証あり） | 1 |
-| `MediaController` | `internal/controller/media.go` | `/api/v1`（認証あり） | 2 |
-| `GroupController` | `internal/controller/group.go` | `/api/v1`（認証あり） | 8 |
-| `GroupVoteController` | `internal/controller/group_vote.go` | `/api/v1`（認証あり） | 3 |
-| `GroupInviteController` | `internal/controller/group_invite.go` | `/api/v1`（認証あり） | 7 |
-| `PartyController` | `internal/controller/party.go` | `/api/v1`（認証あり） | 7 |
-| `MemoryController` | `internal/controller/memory.go` | `/api/v1`（認証あり） | 2 |
-| `AccountController` | `internal/controller/account.go` | `/api/v1`（認証あり） | 1 |
+| `InstanceController` | `internal/controller/content/instance.go` | `/api/v1`（認証あり） | 7 |
+| `FeedPostController` | `internal/controller/content/public_post.go` | `/api/v1`（認証あり） | 2 |
+| `FeedController` | `internal/controller/content/feed.go` | `/api/v1`（認証あり） | 1 |
+| `MediaController` | `internal/controller/content/media.go` | `/api/v1`（認証あり） | 2 |
+| `GroupController` | `internal/controller/group/group.go` | `/api/v1`（認証あり） | 8 |
+| `GroupVoteController` | `internal/controller/group/vote.go` | `/api/v1`（認証あり） | 3 |
+| `GroupInviteController` | `internal/controller/group/invite.go` | `/api/v1`（認証あり） | 7 |
+| `PartyController` | `internal/controller/party/party.go` | `/api/v1`（認証あり） | 7 |
+| `MemoryController` | `internal/controller/party/memory.go` | `/api/v1`（認証あり） | 2 |
+| `AccountController` | `internal/controller/auth/account.go` | `/api/v1`（認証あり） | 1 |
 
 ## 3. パスの一覧
 
