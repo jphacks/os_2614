@@ -15,12 +15,15 @@ import (
 
 // 12 §3 の通知の種類のうち、S4 で作るもの。本文の組み立ては送信側（friend）が行う。
 const (
-	NotificationFriendRequest    = "friend.request"
-	NotificationFriendAccepted   = "friend.accepted"
-	NotificationPartyConfirmed   = "party.confirmed"
-	NotificationModerationHidden = "moderation.hidden"
-	NotificationGroupAutoJoined  = "group.auto_joined"
-	NotificationGroupVotePassed  = "group.vote_passed"
+	NotificationFriendRequest       = "friend.request"
+	NotificationFriendAccepted      = "friend.accepted"
+	NotificationPartyConfirmed      = "party.confirmed"
+	NotificationModerationHidden    = "moderation.hidden"
+	NotificationGroupNearby         = "group.nearby"
+	NotificationGroupAutoJoined     = "group.auto_joined"
+	NotificationGroupVotePassed     = "group.vote_passed"
+	NotificationGroupInvited        = "group.invited"
+	NotificationGroupInviteApproval = "group.invite_approval"
 )
 
 // moderationHiddenPayload は moderation.hidden の payload（12 §3）。遷移先は Space。

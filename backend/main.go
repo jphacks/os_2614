@@ -90,7 +90,7 @@ func run() error {
 	schedule := &service.ScheduleService{Deps: deps, Embedder: embedderFor(cfg)}
 	user := &service.UserService{Deps: deps}
 	beacon := &service.BeaconService{Deps: deps}
-	location := &service.LocationService{Deps: deps, Hooks: service.NoopLocationHooks{}}
+	location := &service.LocationService{Deps: deps, Hooks: &service.GroupEntryService{Deps: deps, Broker: hub}}
 	locationShares := &service.LocationShareService{Deps: deps}
 	encounters := &service.EncounterService{Deps: deps, Proximity: &service.BLEPeerProximity{Deps: deps}, Broker: hub}
 	stats := &service.StatsService{Deps: deps, Encounters: encounters}

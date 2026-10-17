@@ -249,9 +249,9 @@ func NewApp(e *Env) *fiber.App {
 	schedule := e.Schedule()
 	user := &service.UserService{Deps: e.Deps}
 	beacon := &service.BeaconService{Deps: e.Deps}
-	location := &service.LocationService{Deps: e.Deps, Hooks: service.NoopLocationHooks{}}
-	locationShares := &service.LocationShareService{Deps: e.Deps}
 	hub := realtime.NewHub()
+	location := &service.LocationService{Deps: e.Deps, Hooks: &service.GroupEntryService{Deps: e.Deps, Broker: hub}}
+	locationShares := &service.LocationShareService{Deps: e.Deps}
 	encounters := &service.EncounterService{Deps: e.Deps, Proximity: &service.BLEPeerProximity{Deps: e.Deps}, Broker: hub}
 	stats := &service.StatsService{Deps: e.Deps, Encounters: encounters}
 	blocks := &service.BlockService{Deps: e.Deps}

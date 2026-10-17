@@ -17,12 +17,13 @@ type LocationService struct {
 	Hooks LocationHooks
 }
 
-// LocationHooks は位置の保存後に呼ぶフック。S3 では Noop で、
-// 07 の位置共有と 09 §6 のエリア入場通知が入ったら差し替える。
+// LocationHooks は位置の保存後に非同期で呼ぶフック。09 §6.1 のエリア入場通知を
+// GroupEntryService が実装する。位置共有（07）は要求時に読むのでフックを持たない。
 type LocationHooks interface {
 	LocationUpdated(ctx context.Context, did string, loc model.Location)
 }
 
+// NoopLocationHooks はフックを使わない配線のための空実装。
 type NoopLocationHooks struct{}
 
 func (NoopLocationHooks) LocationUpdated(context.Context, string, model.Location) {}
