@@ -270,6 +270,8 @@ func NewApp(e *Env) *fiber.App {
 	feed := &service.FeedService{Deps: e.Deps, Access: access, Signer: signer}
 	groups := &service.GroupService{Deps: e.Deps, Zones: zones, Access: access, Moderator: moderator, Broker: hub}
 	groupVotes := &service.GroupVoteService{Deps: e.Deps, Access: access, Broker: hub}
+	groupInvites := &service.GroupInviteService{Deps: e.Deps, Zones: zones, Access: access, Broker: hub}
+	groups.Invites = groupInvites
 	parties := &service.PartyService{
 		Deps: e.Deps, Proximity: &service.BLEPeerProximity{Deps: e.Deps}, Access: access,
 		Moderator: moderator, Broker: hub, Signer: signer, Beacon: beacon, Store: e.Store,
@@ -326,6 +328,7 @@ func NewApp(e *Env) *fiber.App {
 			&controller.MediaController{Media: mediaSvc},
 			&controller.GroupController{Groups: groups},
 			&controller.GroupVoteController{Votes: groupVotes},
+			&controller.GroupInviteController{Invites: groupInvites},
 			&controller.PartyController{Parties: parties},
 			&controller.MemoryController{Parties: parties},
 			&controller.AccountController{Account: account},

@@ -116,6 +116,8 @@ func run() error {
 	groups := &service.GroupService{Deps: deps, Zones: &service.GPSZonePresence{Deps: deps}, Access: access, Moderator: moderator, Broker: hub}
 	naturalGroups := &service.NaturalGroupService{Deps: deps, Moderator: moderator, Broker: hub}
 	groupVotes := &service.GroupVoteService{Deps: deps, Access: access, Broker: hub}
+	groupInvites := &service.GroupInviteService{Deps: deps, Zones: &service.GPSZonePresence{Deps: deps}, Access: access, Broker: hub}
+	groups.Invites = groupInvites
 	parties := &service.PartyService{
 		Deps: deps, Proximity: &service.BLEPeerProximity{Deps: deps}, Access: access,
 		Moderator: moderator, Broker: hub, Signer: signer, Beacon: beacon, Store: store,
@@ -183,6 +185,7 @@ func run() error {
 			&controller.MediaController{Media: mediaSvc},
 			&controller.GroupController{Groups: groups},
 			&controller.GroupVoteController{Votes: groupVotes},
+			&controller.GroupInviteController{Invites: groupInvites},
 			&controller.PartyController{Parties: parties},
 			&controller.MemoryController{Parties: parties},
 			&controller.AccountController{Account: account},

@@ -28,6 +28,8 @@ type GroupService struct {
 	Access    *AccessService
 	Moderator Moderator
 	Broker    realtime.Broker
+	// Invites は closed グループの招待（09 §6）。メンバーの退出で必要承認数が下がったときの再判定に使う。
+	Invites *GroupInviteService
 }
 
 // GroupSchedule は 09 §3 の有効な時間帯。slots（曜日ごと）か dates（一回限り）の
@@ -69,6 +71,7 @@ type UpdateGroupInput struct {
 	Description  *string
 	Schedule     *GroupSchedule
 	InviteQuorum *int
+	Visibility   *string
 }
 
 // GroupDetail は GET /groups/{id}。中心座標などは member のときだけ埋める（09 §4）。
@@ -264,6 +267,9 @@ func (s *GroupService) Update(ctx context.Context, did, id string, in UpdateGrou
 	if in.InviteQuorum != nil && *in.InviteQuorum < 1 {
 		fields["inviteQuorum"] = "1 以上で指定してください"
 	}
+	if in.Visibility != nil && *in.Visibility != "open" && *in.Visibility != "closed" {
+		fields["visibility"] = "open / closed のいずれかです"
+	}
 	for k, v := range validateGroupSchedule(in.Schedule) {
 		fields[k] = v
 	}
@@ -308,6 +314,10 @@ func (s *GroupService) Update(ctx context.Context, did, id string, in UpdateGrou
 	if in.InviteQuorum != nil {
 		quorum = *in.InviteQuorum
 	}
+	newVisibility := group.Visibility
+	if in.Visibility != nil {
+		newVisibility = *in.Visibility
+	}
 
 	if err := db.Transaction(ctx, s.DB, func(tx *sql.Tx) error {
 		if newName != sp.Name {
@@ -315,7 +325,13 @@ func (s *GroupService) Update(ctx context.Context, did, id string, in UpdateGrou
 				return err
 			}
 		}
-		return model.UpdateGroupAdmin(ctx, tx, id, newDesc, newSchedule, quorum, label)
+		if err := model.UpdateGroupAdmin(ctx, tx, id, newDesc, newSchedule, quorum, label); err != nil {
+			return err
+		}
+		if newVisibility != group.Visibility {
+			return model.SetGroupVisibility(ctx, tx, id, newVisibility)
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}
@@ -327,6 +343,7 @@ func (s *GroupService) Update(ctx context.Context, did, id string, in UpdateGrou
 	group.Description = newDesc
 	group.ScheduleJSON = newSchedule
 	group.InviteQuorum = quorum
+	group.Visibility = newVisibility
 	group.ModLabel = label
 	count, err := model.CountActiveMembers(ctx, s.DB, id)
 	if err != nil {
@@ -509,6 +526,12 @@ func (s *GroupService) Leave(ctx context.Context, did, id string) error {
 	s.publish(ctx, realtime.Event{Name: "member.left", Space: id, Data: map[string]string{"did": did}})
 	if archive {
 		s.publish(ctx, realtime.Event{Name: "space.archived", Space: id})
+	}
+	// メンバーが減ると必要承認数が下がり、collecting の招待が offered になりうる（09 §6）。
+	if !archive && s.Invites != nil {
+		if err := s.Invites.ReconsiderOnLeave(ctx, id); err != nil {
+			slog.WarnContext(ctx, "group invite reconsider failed", "err", err)
+		}
 	}
 	return nil
 }

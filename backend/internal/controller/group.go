@@ -76,6 +76,7 @@ type updateGroupRequest struct {
 	Description  *string                `json:"description"`
 	Schedule     *service.GroupSchedule `json:"schedule"`
 	InviteQuorum *int                   `json:"inviteQuorum"`
+	Visibility   *string                `json:"visibility"`
 	Geofence     *geofenceRequest       `json:"geofence"`
 }
 
@@ -88,7 +89,8 @@ func (h *GroupController) update(c fiber.Ctx) error {
 		return httpx.ErrInvalidRequest.With("fields", map[string]string{"geofence": "変更できません。作り直してください"})
 	}
 	detail, err := h.Groups.Update(c.Context(), httpx.DID(c), c.Params("id"), service.UpdateGroupInput{
-		Name: req.Name, Description: req.Description, Schedule: req.Schedule, InviteQuorum: req.InviteQuorum,
+		Name: req.Name, Description: req.Description, Schedule: req.Schedule,
+		InviteQuorum: req.InviteQuorum, Visibility: req.Visibility,
 	})
 	if err != nil {
 		return err
