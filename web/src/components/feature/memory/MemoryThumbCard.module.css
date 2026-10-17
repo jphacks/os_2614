@@ -1,0 +1,27 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: none;
+  width: 150px;
+}
+
+.thumb {
+  margin-bottom: var(--space-1);
+}
+
+.title {
+  font: var(--text-body-strong);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
