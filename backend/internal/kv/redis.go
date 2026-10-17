@@ -35,6 +35,11 @@ func RateLimitKey(bucket, did string, window int64) string {
 	return "rl:" + bucket + ":" + did + ":" + strconv.FormatInt(window, 10)
 }
 
+// RateLimitAuthKey は /auth/* の IP 単位のレート制限カウンタ（02 §5、04 §3）。
+func RateLimitAuthKey(ip string, window int64) string {
+	return "rl:auth:" + ip + ":" + strconv.FormatInt(window, 10)
+}
+
 // 05 §2.1: beacon token の逆引き。hashHex は SHA-256(token) の hex。
 func BeaconTokenKey(hashHex string) string { return "bt:" + hashHex }
 
