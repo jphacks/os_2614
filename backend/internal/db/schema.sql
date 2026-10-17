@@ -29,6 +29,7 @@ CREATE TABLE user_settings (
   party_auto           INTEGER NOT NULL DEFAULT 1,        -- 08 §2
   location_paused      INTEGER NOT NULL DEFAULT 0,        -- 07 §4
   warn_display         TEXT NOT NULL DEFAULT 'blur' CHECK (warn_display IN ('show','blur','hide')),
+  natural_groups       INTEGER NOT NULL DEFAULT 1,        -- 09 §8。0 なら自動グループの照合に使わない
   notify_json          TEXT NOT NULL DEFAULT '{}',        -- 12 §3。種別ごとの on/off
   content_scan_consent_version INTEGER,                    -- 02 §8。NULL なら未同意
   content_scan_consent_at      INTEGER,
@@ -280,6 +281,22 @@ CREATE TABLE public_posts (
   mod_state   TEXT NOT NULL DEFAULT 'pending'
 );
 CREATE INDEX public_posts_author ON public_posts(author_did, created_at);
+
+CREATE TABLE schedule_entries (               -- 09 §8.2。今日と明日の分だけを持つ
+  id           TEXT PRIMARY KEY,
+  did          TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,
+  date         TEXT NOT NULL,                  -- Asia/Tokyo の YYYY-MM-DD
+  source       TEXT NOT NULL CHECK (source IN ('calendar','manual')),  -- 09 §8.2。同じ source だけを置き換える
+  start_min    INTEGER NOT NULL,               -- 0:00 からの分
+  end_min      INTEGER NOT NULL,
+  title        TEXT NOT NULL,                  -- 平文（README L8）
+  embedding    BLOB,                           -- float32 リトルエンディアン。未計算なら NULL
+  embed_model  TEXT,
+  created_at   INTEGER NOT NULL,
+  CHECK (start_min < end_min)
+);
+CREATE INDEX schedule_entries_did_date ON schedule_entries(did, date, source);
+CREATE INDEX schedule_entries_date ON schedule_entries(date, start_min);
 
 CREATE TABLE jetstream_cursor (
   id         INTEGER PRIMARY KEY CHECK (id = 1),
