@@ -119,6 +119,89 @@ func MutualSighting(ctx context.Context, r *redis.Client, a, b string, at time.T
 	return false, nil
 }
 
+// PeerEdgeTTL は pe:{a}:{b} の寿命（04 §3）。
+const PeerEdgeTTL = 30 * time.Minute
+
+// PeerEdge はフレンド近接の連続性（08 §3）。
+type PeerEdge struct {
+	A     string
+	B     string
+	Since time.Time
+	Last  time.Time
+}
+
+// ObservePeerEdge は pe:{a}:{b} の since / last を更新し、pe:active に載せる（08 §3）。
+// t - last > gapReset なら since を t に戻す。last は大きい方を保つ。
+func ObservePeerEdge(ctx context.Context, r *redis.Client, a, b string, t time.Time, gapReset time.Duration) error {
+	if a > b {
+		a, b = b, a
+	}
+	key := kv.PeerEdgeKey(a, b)
+	since, last, ok, err := readPeerEdge(ctx, r, key)
+	if err != nil {
+		return err
+	}
+	if ok {
+		if t.Sub(last) > gapReset {
+			since = t
+		}
+		if t.After(last) {
+			last = t
+		}
+	} else {
+		since, last = t, t
+	}
+	if err := r.HSet(ctx, key, "since", since.UnixMilli(), "last", last.UnixMilli()).Err(); err != nil {
+		return err
+	}
+	if err := r.Expire(ctx, key, PeerEdgeTTL).Err(); err != nil {
+		return err
+	}
+	return r.ZAdd(ctx, kv.PeerActiveKey(), redis.Z{Score: float64(last.UnixMilli()), Member: a + "|" + b}).Err()
+}
+
+func readPeerEdge(ctx context.Context, r *redis.Client, key string) (since, last time.Time, ok bool, err error) {
+	vals, err := r.HGetAll(ctx, key).Result()
+	if err != nil {
+		return time.Time{}, time.Time{}, false, err
+	}
+	if len(vals) == 0 {
+		return time.Time{}, time.Time{}, false, nil
+	}
+	s, err1 := strconv.ParseInt(vals["since"], 10, 64)
+	l, err2 := strconv.ParseInt(vals["last"], 10, 64)
+	if err1 != nil || err2 != nil {
+		return time.Time{}, time.Time{}, false, nil
+	}
+	return time.UnixMilli(s).UTC(), time.UnixMilli(l).UTC(), true, nil
+}
+
+// LivePeerEdges は now-alive 以降に観測されたエッジ（pe:active の score）を返す（08 §4.1 step1）。
+// since は pe の hash から読む。
+func LivePeerEdges(ctx context.Context, r *redis.Client, now time.Time, alive time.Duration) ([]PeerEdge, error) {
+	lo := strconv.FormatInt(now.Add(-alive).UnixMilli(), 10)
+	members, err := r.ZRangeByScore(ctx, kv.PeerActiveKey(), &redis.ZRangeBy{Min: lo, Max: "+inf"}).Result()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PeerEdge, 0, len(members))
+	for _, m := range members {
+		a, b, found := strings.Cut(m, "|")
+		if !found {
+			continue
+		}
+		since, last, ok, err := readPeerEdge(ctx, r, kv.PeerEdgeKey(a, b))
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		out = append(out, PeerEdge{A: a, B: b, Since: since, Last: last})
+	}
+	return out, nil
+}
+
 // RecentNeighbor は Neighbors が返す 1 件。
 type RecentNeighbor struct {
 	DID      string

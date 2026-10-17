@@ -32,6 +32,54 @@ const (
 // SightingMax は 1 リクエストで受け付ける sighting の上限（06 §2）。
 const SightingMax = 500
 
+// 09 §8.6 のパラメータ。
+const (
+	GroupVoteDuration   = 48 * time.Hour
+	GroupVoteListWindow = 7 * 24 * time.Hour
+)
+
+// 08 §7 のパラメータ。
+const (
+	PresenceInterval    = 15 * time.Second
+	EdgeAlive           = 45 * time.Second
+	EdgeGapReset        = 60 * time.Second
+	TentativeAfter      = 30 * time.Second
+	ConfirmAfter        = 5 * time.Minute
+	TentativeDissolve   = 60 * time.Second
+	LeaveAfter          = 10 * time.Minute
+	LockedIdleEnd       = 72 * time.Hour
+	MaxDuration         = 7 * 24 * time.Hour
+	MaxMembers          = 50
+	FriendBeaconHorizon = 6 * time.Hour
+)
+
+// 09 §8.7 のパラメータ（自動グループの照合）。
+const (
+	// NaturalSimilarity は同じ予定とみなす cos 類似度。
+	NaturalSimilarity = 0.80
+	// NaturalOverlap は時間の重なり（短い方に対する割合）。
+	NaturalOverlap = 0.5
+	// NaturalClusterEps は位置で塊にする距離（m）。
+	NaturalClusterEps = 50.0
+	// NaturalMinSize は作成に要る人数。
+	NaturalMinSize = 3
+	// NaturalConfirmTicks は作成までに続けて見つかる回数（5 分ごとなので 10 分）。
+	NaturalConfirmTicks = 3
+	// NaturalLocationFresh は照合に使う位置の鮮度。
+	NaturalLocationFresh = 5 * time.Minute
+	// NaturalLeadTime は予定の開始の何分前から対象にするか。
+	NaturalLeadTime = 10 * time.Minute
+	// NaturalEndGrace は時間帯の終了から archived までの猶予。
+	NaturalEndGrace = 30 * time.Minute
+	// NaturalRadiusMin, NaturalRadiusMax は自動グループの半径の範囲（m）。
+	NaturalRadiusMin = 30
+	NaturalRadiusMax = 300
+	// naturalRadiusMargin は外接円に足す余裕（m）。
+	naturalRadiusMargin = 20.0
+	// naturalCandidateTTL は候補（ng:cand:*）の保持時間。
+	naturalCandidateTTL = 30 * time.Minute
+)
+
 var jst = time.FixedZone("JST", 9*60*60)
 
 // windowStart は t を含む beacon の窓の開始（unix 秒、900 の倍数）を返す（05 §2.1）。

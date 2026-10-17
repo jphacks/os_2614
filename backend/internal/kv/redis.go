@@ -60,6 +60,12 @@ func BleRecentKey(did string) string { return "ble:recent:" + did }
 func PeerEdgeKey(a, b string) string { return "pe:" + a + ":" + b }
 func PeerActiveKey() string          { return "pe:active" }
 
+// 08 §4: 所属中の party の索引（party:of）、在席の目印（pp）、明示退出（pleft）。
+func PartyOfKey(did string) string           { return "party:of:" + did }
+func PartyOfPrefix() string                  { return "party:of:" }
+func PartyPresenceKey(spaceID string) string { return "pp:" + spaceID }
+func PartyLeftKey(spaceID string) string     { return "pleft:" + spaceID }
+
 // AccessKey はアクセス判定の結果（04 §3 acc:{space}:{did}:{mode}、10 §5）のキー。
 func AccessKey(spaceID, did, mode string) string {
 	return "acc:" + spaceID + ":" + did + ":" + mode

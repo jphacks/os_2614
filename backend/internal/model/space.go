@@ -152,6 +152,12 @@ func SetSpaceMemberRole(ctx context.Context, q db.Querier, spaceID, did, role st
 	return err
 }
 
+// DeleteSpace は Space の行を物理削除する。members / parties / records / media は FK の CASCADE で消える（08 §4.2）。
+func DeleteSpace(ctx context.Context, q db.Querier, id string) error {
+	_, err := db.Execute(ctx, q, "DELETE FROM spaces WHERE id = ?", id)
+	return err
+}
+
 // SpaceListItem は GET /instances の要素（13 §2）。最終投稿の新しい順に並べる。
 type SpaceListItem struct {
 	Space       Space
