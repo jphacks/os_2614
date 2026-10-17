@@ -1,0 +1,15 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font: var(--text-caption);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.positive {
+  background: var(--color-positive-bg);
+  color: var(--color-positive-text);
+}
