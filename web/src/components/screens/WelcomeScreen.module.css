@@ -114,11 +114,6 @@
   color: var(--color-text-on-primary);
 }
 
-.email {
-  background: var(--color-placeholder-strong);
-  color: var(--color-text-on-primary);
-}
-
 .buttonIcon {
   position: absolute;
   left: var(--space-6);
