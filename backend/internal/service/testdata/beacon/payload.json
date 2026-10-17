@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "token": "000102030405060708090a0b0c0d0e0f",
+      "payload": "02010616ffffff434801000102030405060708090a0b0c0d0e0f"
+    },
+    {
+      "token": "ffeeddccbbaa99887766554433221100",
+      "payload": "02010616ffffff434801ffeeddccbbaa99887766554433221100"
+    },
+    {
+      "token": "0123456789abcdef0123456789abcdef",
+      "payload": "02010616ffffff4348010123456789abcdef0123456789abcdef"
+    }
+  ]
+}
