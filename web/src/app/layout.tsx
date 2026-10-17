@@ -3,6 +3,8 @@ import { Noto_Sans_JP } from "next/font/google";
 import { AuthProvider } from "@/auth";
 import { AuthGate } from "@/components/feature/auth";
 import { StartupSplash } from "@/components/layout/StartupSplash";
+import { NotificationToast } from "@/components/feature/notification";
+import { PushBootstrap } from "@/device/push/PushBootstrap";
 import { DeviceRegistrar } from "@/device/push/DeviceRegistrar";
 import { RealtimeProvider } from "@/realtime/provider";
 import "material-symbols/rounded.css";
@@ -34,7 +36,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <AuthProvider>
           <AuthGate>
             <RealtimeProvider>
+              <PushBootstrap />
               <DeviceRegistrar />
+              <NotificationToast />
               {children}
             </RealtimeProvider>
           </AuthGate>

@@ -281,6 +281,7 @@ export type NotificationType =
   | "encounter.daily"
   | "encounter.weekly"
   | "encounter.monthly"
+  | "post.new"
   | "moderation.hidden";
 
 /** GET /notifications の 1 件 (controller.notificationResponse、12 §1)。 */

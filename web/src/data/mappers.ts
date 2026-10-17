@@ -142,6 +142,7 @@ const NOTIFICATION_TYPES: readonly NotificationType[] = [
   "encounter.daily",
   "encounter.weekly",
   "encounter.monthly",
+  "post.new",
   "moderation.hidden",
 ];
 const PIN_REASONS: readonly Pin["reason"][] = ["auto", "manual"];

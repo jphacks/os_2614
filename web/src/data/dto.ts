@@ -20,6 +20,7 @@ export type NotificationType =
   | "encounter.daily"
   | "encounter.weekly"
   | "encounter.monthly"
+  | "post.new"
   | "moderation.hidden";
 
 /** 通知の ON/OFF。既定から変えた種類だけを持つ（12 §3）。 */

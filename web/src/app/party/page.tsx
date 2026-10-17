@@ -31,11 +31,12 @@ function classify(result: ResourceResult<unknown>): PartyActionResult {
   return result.status === "ok" ? { status: "ok" } : { status: result.status };
 }
 
-/** リアルタイムの party.updated を、取得済みの party へ重ねる (phase / 固定 / 在席)。 */
+/** リアルタイムの party.updated を、取得済みの party へ重ねる (名前 / phase / 固定 / 在席)。 */
 function withRealtimeUpdate(party: Party, update: PartyUpdatedData): Party {
   const present = new Set(update.present);
   return {
     ...party,
+    name: update.name || party.name,
     phase: update.phase,
     locked: update.locked,
     members: party.members.map((member) => ({
@@ -94,7 +95,7 @@ export default function PartyPage() {
     }
   });
   useRealtimeEvent("party.updated", (update) => {
-    const key = `${update.id}:${update.phase}:${update.locked}:${update.present.join(",")}`;
+    const key = `${update.id}:${update.name}:${update.phase}:${update.locked}:${update.present.join(",")}`;
     if (handledUpdate.current === key) {
       return;
     }

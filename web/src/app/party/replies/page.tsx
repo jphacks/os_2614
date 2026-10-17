@@ -58,6 +58,9 @@ function PartyReplies() {
   useRealtimeEvent("post.created", (post) => {
     if (post.spaceId === id) reloadPosts();
   });
+  useRealtimeEvent("post.deleted", (_data, frame) => {
+    if (frame.space === id) reloadPosts();
+  });
 
   const submitReply = useCallback(async (post: Post, text: string) => {
     await postJson<{ items: CreatedPost[] }>("/posts", {

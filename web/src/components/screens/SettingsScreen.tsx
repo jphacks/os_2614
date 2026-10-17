@@ -43,6 +43,7 @@ const NOTIFY_ITEMS: { type: NotificationType; label: string }[] = [
   { type: "encounter.daily", label: "すれ違い（毎日）" },
   { type: "encounter.weekly", label: "すれ違い（毎週）" },
   { type: "encounter.monthly", label: "すれ違い（毎月）" },
+  { type: "post.new", label: "新しい投稿" },
   { type: "moderation.hidden", label: "投稿の非表示" },
 ];
 

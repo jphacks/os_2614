@@ -100,7 +100,8 @@ const SAMPLE: { [K in RealtimeEventName]: RealtimeEventDataMap[K] } = {
   "member.joined": { did: "did:plc:peer" },
   "member.left": { did: "did:plc:peer" },
   "space.archived": undefined,
-	"party.updated": { id: "party-1", phase: "confirmed", locked: true, present: ["did:plc:peer"] },
+  "group.updated": { id: "space-1", name: "グループ" },
+  "party.updated": { id: "party-1", name: "パーティー", phase: "confirmed", locked: true, present: ["did:plc:peer"] },
   "encounter.revealed": {
     id: "enc-1",
     peer: { did: "did:plc:peer", handle: "peer.example.com" },
@@ -118,6 +119,7 @@ const SAMPLE: { [K in RealtimeEventName]: RealtimeEventDataMap[K] } = {
     data: { from: "did:plc:peer" },
     createdAt: "2026-10-17T00:00:00Z",
   },
+  "feed.updated": { source: "home" },
 };
 
 function eventFrame<K extends RealtimeEventName>(
@@ -129,9 +131,9 @@ function eventFrame<K extends RealtimeEventName>(
 
 test.describe("REALTIME_EVENT_NAMES", () => {
   test("covers the 10 §7.3 table", () => {
-    // 表の 14 種別 (pin.* / member.* は展開)。抜け・重複が無いこと。
-    expect(REALTIME_EVENT_NAMES).toHaveLength(14);
-    expect(new Set(REALTIME_EVENT_NAMES).size).toBe(14);
+    // 表の 16 種別 (pin.* / member.* / group.updated 等は展開)。抜け・重複が無いこと。
+    expect(REALTIME_EVENT_NAMES).toHaveLength(16);
+    expect(new Set(REALTIME_EVENT_NAMES).size).toBe(16);
     for (const name of REALTIME_EVENT_NAMES) {
       expect(isKnownEvent(name)).toBe(true);
     }
