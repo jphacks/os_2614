@@ -70,3 +70,13 @@ func AccessPrefix(spaceID string) string { return "acc:" + spaceID + ":" }
 
 // ModerationQueueKey は moderation の再判定待ち（11 §3）。
 func ModerationQueueKey() string { return "modq" }
+
+// 09 §8.4: 自動グループの候補と、続けて見つかった回数。
+func NaturalCandidateKey(geohash7, slot string) string {
+	return "ng:cand:" + geohash7 + ":" + slot
+}
+
+func NaturalCandidatePrefix() string { return "ng:cand:" }
+
+// 13 §3: 個人の統計のキャッシュ（TTL 5 分）。
+func StatsKey(did string) string { return "stats:" + did }
