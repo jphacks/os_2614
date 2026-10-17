@@ -255,6 +255,28 @@ func TestEncounterScenarios(t *testing.T) {
 				t.Fatalf("List(%s) items = %d, want 0 (hidden)", viewer, len(page.Items))
 			}
 		}
+
+		// 成立から 1 時間以内は summary にも入らない。1 時間後に回数にだけ入る（06 §6、15 §4.1 E7）。
+		h.env.Clock.Set(base.Add(5 * time.Minute))
+		sum, err := h.enc.Summary(context.Background(), alice)
+		if err != nil {
+			t.Fatalf("Summary within holdback: %v", err)
+		}
+		if sum.Today != 0 || sum.Total != 0 || sum.UniquePeople != 0 {
+			t.Fatalf("summary within holdback = %+v, want all 0", sum)
+		}
+
+		h.env.Clock.Set(base.Add(5*time.Minute + time.Hour))
+		sum, err = h.enc.Summary(context.Background(), alice)
+		if err != nil {
+			t.Fatalf("Summary after holdback: %v", err)
+		}
+		if sum.Today != 1 || sum.Total != 1 || sum.UniquePeople != 1 {
+			t.Fatalf("summary after holdback = %+v, want today/total/unique = 1", sum)
+		}
+		if page, err := h.enc.List(context.Background(), alice, "", 0); err != nil || len(page.Items) != 0 {
+			t.Fatalf("List(alice) after holdback = %v, %v; want still hidden", page, err)
+		}
 	})
 
 	t.Run("E8 pending becomes hidden on strict change", func(t *testing.T) {

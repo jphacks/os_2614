@@ -101,6 +101,35 @@ func CountEncountersForUserBetween(ctx context.Context, q db.Querier, did string
 	return n, err
 }
 
+// EncounterSummaryCounts は summary の集計値（06 §6）。
+type EncounterSummaryCounts struct {
+	Today        int
+	Week         int
+	Month        int
+	Total        int
+	UniquePeople int
+}
+
+// CountEncounterSummary は did の encounter を数える（06 §6）。revealed に加えて
+// pending / hidden も数え、established_at が cutoff より後のものは数えない。
+// todayStart / weekStart / monthStart は Asia/Tokyo の区切りの開始。
+func CountEncounterSummary(ctx context.Context, q db.Querier, did string, todayStart, weekStart, monthStart, cutoff time.Time) (EncounterSummaryCounts, error) {
+	var c EncounterSummaryCounts
+	err := q.QueryRowContext(ctx, `
+		SELECT
+		  count(*),
+		  coalesce(sum(CASE WHEN established_at >= ? THEN 1 ELSE 0 END), 0),
+		  coalesce(sum(CASE WHEN established_at >= ? THEN 1 ELSE 0 END), 0),
+		  coalesce(sum(CASE WHEN established_at >= ? THEN 1 ELSE 0 END), 0),
+		  count(DISTINCT CASE WHEN user_a = ? THEN user_b ELSE user_a END)
+		FROM encounters
+		WHERE (user_a = ? OR user_b = ?) AND established_at <= ?`,
+		clock.UnixMilli(todayStart), clock.UnixMilli(weekStart), clock.UnixMilli(monthStart),
+		did, did, did, clock.UnixMilli(cutoff)).
+		Scan(&c.Total, &c.Today, &c.Week, &c.Month, &c.UniquePeople)
+	return c, err
+}
+
 func CountRevealedWithPeer(ctx context.Context, q db.Querier, a, b string) (int, error) {
 	var n int
 	err := q.QueryRowContext(ctx,

@@ -17,6 +17,7 @@ type EncounterController struct {
 func (h *EncounterController) Register(r fiber.Router) {
 	r.Post("/encounters/sightings", h.sightings)
 	r.Get("/encounters", h.list)
+	r.Get("/encounters/summary", h.summary)
 }
 
 type sightingsRequest struct {
@@ -71,4 +72,12 @@ func (h *EncounterController) list(c fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(page)
+}
+
+func (h *EncounterController) summary(c fiber.Ctx) error {
+	sum, err := h.Encounters.Summary(c.Context(), httpx.DID(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(sum)
 }
