@@ -8,8 +8,21 @@
 import { registerPlugin } from "@capacitor/core";
 import type { ChainProximityPlugin } from "./definitions";
 
+// Capacitor の loadPluginImplementation は「web 実装のファクトリ」を呼び出しごとに
+// 実行しうる。useLocation のように addListener と startLocationUpdates を続けて呼ぶと
+// 初回だけファクトリが並行に走り、リスナー登録と emit が別インスタンスになって
+// location イベントが hook に届かない (StrictMode の二重マウントで顕著)。
+// ファクトリが返す Promise を 1 度だけ作って共有し、常に同一インスタンスを使う。
+type WebImplementation = import("./web").ChainProximityWeb;
+
+let webImplementation: Promise<WebImplementation> | undefined;
+function loadWebImplementation(): Promise<WebImplementation> {
+  webImplementation ??= import("./web").then((m) => new m.ChainProximityWeb());
+  return webImplementation;
+}
+
 export const ChainProximity = registerPlugin<ChainProximityPlugin>("ChainProximity", {
-  web: () => import("./web").then((m) => new m.ChainProximityWeb()),
+  web: loadWebImplementation,
 });
 
 export * from "./definitions";
