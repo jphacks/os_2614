@@ -1,0 +1,123 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font: var(--text-body);
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.heading {
+  margin: 0;
+  font: var(--text-heading);
+  color: var(--color-text);
+}
+
+.root h1.heading {
+  font: var(--text-title);
+}
+
+.paragraph {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.listItem {
+  margin: 0;
+}
+
+.blockquote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--color-placeholder-strong);
+  color: var(--color-text-secondary);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--text-body);
+}
+
+.tableHeaderCell,
+.tableCell {
+  border: 1px solid var(--color-divider);
+  padding: var(--space-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.tableHeaderCell {
+  background: var(--color-surface-muted);
+  font: var(--text-body-strong);
+}
+
+.codeInline {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.codeBlock {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.math {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-bg);
+  color: var(--color-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.mathBlock {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-bg);
+  overflow-x: auto;
+}
+
+.mathBlock code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.hr {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+.link {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.em {
+  font-style: normal;
+  color: var(--color-text-secondary);
+}

@@ -83,10 +83,14 @@ export type Media = {
   height: number;
 };
 
+/** 投稿本文の形式 (10 §3)。 */
+export type PostFormat = "plain" | "markdown";
+
 export type Post = {
   id: ID;
   author: User;
   body: string;
+  format: PostFormat;
   createdAt: Timestamp;
   attachments: Media[];
   replyCount: number;

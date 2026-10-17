@@ -310,6 +310,7 @@ test.describe("toPost", () => {
         tone: avatarToneFor("did:plc:kenta"),
       },
       body: "明日の集合は10時、正門前で！",
+      format: "plain",
       createdAt: "2026-10-17T02:30:00Z",
       attachments: [
         {
@@ -364,6 +365,7 @@ test.describe("toPost", () => {
       id: "",
       author: { did: "", handle: "", name: "", tone: "peach" },
       body: "",
+      format: "plain",
       createdAt: "",
       attachments: [],
       replyCount: 0,

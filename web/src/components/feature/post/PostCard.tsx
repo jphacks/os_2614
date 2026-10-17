@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 import { clockTime } from "@/data/format";
+import { MarkdownBody } from "./MarkdownBody";
 import styles from "./PostCard.module.css";
 
 export type PostCardProps = {
@@ -35,7 +36,11 @@ export function PostCard({ post, onReply, onToggleLike }: PostCardProps) {
             <span className={styles.name}>{post.author.name}</span>
             <span className={styles.time}>{clockTime(post.createdAt)}</span>
           </div>
-          <p className={styles.body}>{post.body}</p>
+          {post.format === "markdown" ? (
+            <MarkdownBody source={post.body} />
+          ) : (
+            <p className={styles.body}>{post.body}</p>
+          )}
           {post.attachments.length > 0 && (
             <div className={styles.media}>
               {post.attachments.map((attachment) => (
