@@ -9,6 +9,7 @@ import type {
   BeaconToken,
   ChainProximityPlugin,
   DevicePermission,
+  LocationAccuracySettings,
   LocationFix,
   PermissionStatus,
   ProximityError,
@@ -134,7 +135,12 @@ export class ChainProximityWeb extends WebPlugin implements ChainProximityPlugin
 
   // ---- 位置 (前面のみ) ----
 
-  async getCurrentLocation(opts?: { timeoutMs?: number; maxAgeMs?: number }): Promise<LocationFix> {
+  async getCurrentLocation(opts?: {
+    timeoutMs?: number;
+    maxAgeMs?: number;
+    desiredAccuracyM?: number;
+  }): Promise<LocationFix> {
+    // desiredAccuracyM は使わない。ブラウザの geolocation は精度を待たずに 1 回で返す。
     const geolocation = this.getGeolocation();
     const timeoutMs = opts?.timeoutMs;
     return new Promise<LocationFix>((resolve, reject) => {
@@ -160,6 +166,15 @@ export class ChainProximityWeb extends WebPlugin implements ChainProximityPlugin
 
   async stopLocationUpdates(): Promise<void> {
     this.stopLocationLoop();
+  }
+
+  async getLocationAccuracySettings(): Promise<LocationAccuracySettings> {
+    // ブラウザからは端末設定を読めないので、案内を出さない値を返す。
+    return { locationEnabled: true, wifiScanAvailable: true };
+  }
+
+  async openLocationSettings(): Promise<void> {
+    // ブラウザには開く先が無い。
   }
 
   async removeAllListeners(): Promise<void> {

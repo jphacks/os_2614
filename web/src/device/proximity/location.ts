@@ -24,6 +24,66 @@ export const LOCATION_FOREGROUND_INTERVAL_MS = 30_000;
 /** backend 05 §4 の source。native の LocationFix は種別を持たないので gps 固定。 */
 export const LOCATION_SOURCE = "gps";
 
+/**
+ * 平滑化で想定する移動の速さ (m/s)。速歩き程度。これより速く動くと位置が遅れて付いてくるが、
+ * 誤差の範囲を超えた移動は下のリセットで即座に追いつく。
+ */
+export const LOCATION_SMOOTHING_SPEED_MPS = 3;
+/** 前の値からこれ以上あいたら平滑化せず、新しい値をそのまま使う。 */
+export const LOCATION_SMOOTHING_RESET_MS = LOCATION_MAX_AGE_MS;
+/** 前の値と新しい値の差が、2 つの誤差を合わせた標準偏差の何倍を超えたら移動とみなすか。 */
+const LOCATION_SMOOTHING_JUMP_SIGMA = 3;
+
+const EARTH_RADIUS_M = 6_371_000;
+
+/** 近い 2 点の距離 (m)。平滑化の判定にしか使わないので正距円筒で近似する。 */
+function approxDistanceM(a: LocationFix, b: LocationFix): number {
+  const toRad = Math.PI / 180;
+  const x = (b.lon - a.lon) * toRad * Math.cos(((a.lat + b.lat) / 2) * toRad);
+  const y = (b.lat - a.lat) * toRad;
+  return Math.hypot(x, y) * EARTH_RADIUS_M;
+}
+
+/**
+ * 連続する fix を 1 次元の Kalman フィルタで平滑化する (緯度・経度を同じ重みで混ぜる)。
+ * prev は前回の戻り値。accuracyM を分散 (accuracyM²) とみなし、経過時間ぶん
+ * LOCATION_SMOOTHING_SPEED_MPS で不確かさを広げてから新しい値と精度で重み付けする。
+ * 精度の悪い fix ほど効きが弱くなり、ビル反射などで一瞬だけ飛んだ値に引っ張られにくい。
+ *
+ * - 前回が無い / 古すぎる / モックの有無が変わった / 誤差の範囲を超えて動いた → next をそのまま返す
+ * - next が prev より古い → prev を返す
+ * - 戻り値の accuracyM は混ぜた後の推定誤差 (どちらの精度よりも小さくなる)
+ */
+export function smoothLocationFix(prev: LocationFix | null, next: LocationFix): LocationFix {
+  if (prev === null || prev.isMock !== next.isMock) {
+    return next;
+  }
+  if (!Number.isFinite(prev.accuracyM) || !Number.isFinite(next.accuracyM) || next.accuracyM <= 0) {
+    return next;
+  }
+  const dtMs = Date.parse(next.recordedAt) - Date.parse(prev.recordedAt);
+  if (!Number.isFinite(dtMs) || dtMs > LOCATION_SMOOTHING_RESET_MS) {
+    return next;
+  }
+  if (dtMs < 0) {
+    return prev;
+  }
+  const spreadM = (LOCATION_SMOOTHING_SPEED_MPS * dtMs) / 1_000;
+  const prevVariance = prev.accuracyM ** 2 + spreadM ** 2;
+  const nextVariance = next.accuracyM ** 2;
+  if (approxDistanceM(prev, next) > LOCATION_SMOOTHING_JUMP_SIGMA * Math.sqrt(prevVariance + nextVariance)) {
+    return next;
+  }
+  const gain = prevVariance / (prevVariance + nextVariance);
+  return {
+    lat: prev.lat + gain * (next.lat - prev.lat),
+    lon: prev.lon + gain * (next.lon - prev.lon),
+    accuracyM: Math.sqrt((prevVariance * nextVariance) / (prevVariance + nextVariance)),
+    recordedAt: next.recordedAt,
+    isMock: next.isMock,
+  };
+}
+
 /** 送らない理由。null なら送ってよい。 */
 export type LocationSkipReason = "mock" | "low_accuracy" | "stale" | "future";
 

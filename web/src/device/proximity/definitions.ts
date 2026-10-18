@@ -72,6 +72,14 @@ export interface LocationFix {
   isMock: boolean;
 }
 
+/** 屋内の位置精度を左右する端末設定 */
+export interface LocationAccuracySettings {
+  /** 端末の位置情報が ON */
+  locationEnabled: boolean;
+  /** Wi-Fi が ON か「Wi-Fi スキャン」が ON。false だと屋内の精度が大きく落ちる */
+  wifiScanAvailable: boolean;
+}
+
 export interface ChainProximityPlugin {
   // ---- 権限 ----
   checkPermissions(): Promise<PermissionStatus>;
@@ -91,11 +99,22 @@ export interface ChainProximityPlugin {
   drainSightings(): Promise<{ items: Sighting[] }>;
 
   // ---- 位置 (前面のみ) ----
-  /** 1 回だけ取得する。権限が無い / 取得できない場合は reject (code: "denied" | "unavailable" | "timeout") */
-  getCurrentLocation(opts?: { timeoutMs?: number; maxAgeMs?: number }): Promise<LocationFix>;
+  /**
+   * 1 回だけ取得する。timeoutMs (既定 10 秒) の間は更新を受け続け、精度が desiredAccuracyM
+   * (既定 20 m) 以下になった時点で返す。届かなければその間で最も精度の良い fix を返す。
+   * 権限が無い / 1 つも取れない場合は reject (code: "denied" | "unavailable" | "timeout")
+   */
+  getCurrentLocation(opts?: {
+    timeoutMs?: number;
+    maxAgeMs?: number;
+    desiredAccuracyM?: number;
+  }): Promise<LocationFix>;
   /** intervalMs ごとに "location" イベントを出す。アプリが背面に回ると止まる */
   startLocationUpdates(opts: { intervalMs: number }): Promise<void>;
   stopLocationUpdates(): Promise<void>;
+  getLocationAccuracySettings(): Promise<LocationAccuracySettings>;
+  /** 端末の位置情報の設定画面を開く (「Wi-Fi スキャン」はこの中にある) */
+  openLocationSettings(): Promise<void>;
 
   addListener(
     eventName: "statusChange",

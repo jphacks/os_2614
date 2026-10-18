@@ -39,8 +39,13 @@ function BubbleBody({ bubble, focused }: NearbyBubbleProps) {
   switch (bubble.kind) {
     case "plus":
       return (
-        <span className={`${styles.shape} ${styles.plus}`} data-focused={focus} aria-label="グループを作る">
-          <Icon name="add" size={30} />
+        <span className={styles.wrap}>
+          <span className={`${styles.shape} ${styles.plus}`} data-focused={focus} aria-label="グループを作る">
+            <Icon name="group_add" size={28} />
+          </span>
+          <span className={styles.label} aria-hidden>
+            グループを作る
+          </span>
         </span>
       );
     case "party":

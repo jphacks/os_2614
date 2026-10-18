@@ -4,13 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { ApiError } from "@/auth/errors";
 import { ChainProximity } from "./index";
-import type { LocationFix, ProximityStatus, SightingEvent } from "./definitions";
+import type {
+  LocationAccuracySettings,
+  LocationFix,
+  ProximityStatus,
+  SightingEvent,
+} from "./definitions";
 import {
   LOCATION_FOREGROUND_INTERVAL_MS,
   locationSkipReason,
   describeSkipReason,
   locationUploadDue,
   onLocationUploaded,
+  smoothLocationFix,
   uploadLocation,
   type LocationSender,
 } from "./location";
@@ -226,7 +232,7 @@ function joinLocationUpdates(
 
 /**
  * 位置の現在値。enabled の間だけ startLocationUpdates を回し、
- * "location" イベントの最新値を返す。アンマウントで止める。
+ * "location" イベントを平滑化した値 (smoothLocationFix) を返す。アンマウントで止める。
  */
 export function useLocation(opts: { intervalMs: number; enabled: boolean }): {
   fix: LocationFix | null;
@@ -245,7 +251,7 @@ export function useLocation(opts: { intervalMs: number; enabled: boolean }): {
     let disposed = false;
 
     ChainProximity.addListener("location", (next) => {
-      setFix(next);
+      setFix((prev) => smoothLocationFix(prev, next));
       setError(null);
     })
       .then((registered) => {
@@ -270,7 +276,8 @@ export function useLocation(opts: { intervalMs: number; enabled: boolean }): {
     ChainProximity.getCurrentLocation({ maxAgeMs: 0 })
       .then((next) => {
         if (!disposed) {
-          setFix((prev) => prev ?? next);
+          // 定期取得の値が先に届いていれば、それより古いこの値は smoothLocationFix が捨てる
+          setFix((prev) => smoothLocationFix(prev, next));
           setError(null);
         }
       })
@@ -288,6 +295,40 @@ export function useLocation(opts: { intervalMs: number; enabled: boolean }): {
   }, [enabled, intervalMs]);
 
   return { fix, error };
+}
+
+/**
+ * 屋内の精度を左右する端末設定 (Wi-Fi スキャンなど)。設定画面から戻ったときに
+ * 反映されるよう、前面に戻るたびに読み直す。読めない環境では null。
+ */
+export function useLocationAccuracySettings(): LocationAccuracySettings | null {
+  const [settings, setSettings] = useState<LocationAccuracySettings | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const read = () => {
+      if (document.hidden) {
+        return;
+      }
+      ChainProximity.getLocationAccuracySettings()
+        .then((next) => {
+          if (active) {
+            setSettings(next);
+          }
+        })
+        .catch(() => {
+          // 読めない環境では案内を出さない。
+        });
+    };
+    read();
+    document.addEventListener("visibilitychange", read);
+    return () => {
+      active = false;
+      document.removeEventListener("visibilitychange", read);
+    };
+  }, []);
+
+  return settings;
 }
 
 /** useLocationUpload が返す状態。 */

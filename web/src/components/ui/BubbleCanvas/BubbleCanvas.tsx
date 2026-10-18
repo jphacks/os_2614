@@ -101,6 +101,8 @@ type Sim = {
   focusedId: string | null;
   /** いま描いている回転角 (度)。config.rotation へ寄せていく */
   angle: number;
+  /** いま描いている各アイテムの位置 (回転前)。座標が変わると、ここから新しい位置へ寄せていく */
+  shown: Map<string, { x: number; y: number }>;
   raf: number;
   prevT: number;
 };
@@ -111,6 +113,8 @@ const FRICTION_PER_MS = 0.995;
 const MIN_VELOCITY = 0.01;
 /** 回転を目標へ寄せる 1 フレームあたりの割合 */
 const ROTATION_EASE = 0.08;
+/** アイテムの座標が変わったとき、新しい位置へ寄せる 1 フレームあたりの割合 */
+const MOVE_EASE = 0.07;
 
 /** a から b への最短の角度差 (-180〜180) */
 function angleDelta(a: number, b: number) {
@@ -206,6 +210,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     lens: lens === "always" ? 1 : 0,
     focusedId: null,
     angle: rotation,
+    shown: new Map(),
     raf: 0,
     prevT: 0,
   });
@@ -223,7 +228,8 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     for (const item of c.items) {
       const el = itemEls.current.get(item.id);
       if (!el) continue;
-      const pos = rotated(item, s.angle);
+      const at = s.shown.get(item.id);
+      const pos = rotated(at ? { ...item, x: at.x, y: at.y } : item, s.angle);
       const px = pos.x + s.ox;
       const py = pos.y + s.oy;
       const d = Math.hypot(px, py);
@@ -299,6 +305,24 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
         active = true;
       }
     }
+
+    // 並びが入れ替わったアイテムは、前の位置から新しい位置へ動かす。初めて出るものはその場に置く
+    const live = new Set<string>();
+    for (const item of c.items) {
+      live.add(item.id);
+      const at = s.shown.get(item.id);
+      if (!at) {
+        s.shown.set(item.id, { x: item.x, y: item.y });
+      } else if (Math.hypot(item.x - at.x, item.y - at.y) > 0.3) {
+        at.x += (item.x - at.x) * MOVE_EASE;
+        at.y += (item.y - at.y) * MOVE_EASE;
+        active = true;
+      } else {
+        at.x = item.x;
+        at.y = item.y;
+      }
+    }
+    for (const id of s.shown.keys()) if (!live.has(id)) s.shown.delete(id);
 
     const turn = angleDelta(s.angle, c.rotation);
     if (Math.abs(turn) > 0.05) {

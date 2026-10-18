@@ -69,6 +69,15 @@ export const SIZE_PLUS = 64;
 export const SIZE_PARTY = 84;
 export const SIZE_PERSON = 68;
 
+/** BLE で見えている相手の説明。GPS より確かなので距離より優先する。 */
+const BLE_NEARBY_DETAIL = "すぐそば";
+
+/**
+ * パーティーのメンバーを方角に置く最小の距離 (m)。これより近いと GPS の誤差で
+ * 方角が当てにならないので、自分に接して並べる。
+ */
+const PARTY_DIRECTION_MIN_M = 10;
+
 /** メンバー数に応じたグループの円の直径。 */
 export function groupSize(memberCount: number): number {
   return Math.round(Math.min(136, 76 + 8 * Math.sqrt(Math.max(0, memberCount))));
@@ -139,12 +148,19 @@ export function buildNearbyModel(input: {
   party: Party | null;
   groups: GroupNearby | null;
   groupAreas: ReadonlyMap<string, GroupArea>;
+  /**
+   * 直近に BLE で見えたフレンドの DID。GPS の位置より優先して自分に接して並べる
+   * (屋内や近距離では GPS の誤差の方が実際の距離より大きい)。
+   */
+  bleNearby?: ReadonlySet<string>;
 }): NearbyModel {
   const { me, myLocation, groupAreas } = input;
+  const bleNearby = input.bleNearby ?? new Set<string>();
   const ring: NearbyBubble[] = [];
   const shown = new Set<string>([me.did]);
 
   const party = input.party;
+  let partyMembers: Party["members"] = [];
   if (party && party.phase !== "ended" && party.phase !== "dissolved") {
     const members = party.members.filter((m) => !m.left && m.did !== me.did);
     ring.push({
@@ -154,24 +170,7 @@ export function buildNearbyModel(input: {
       name: party.name || "パーティー",
       memberCount: members.length + 1,
     });
-    for (const member of members) {
-      shown.add(member.did);
-      const name = member.displayName || member.handle || "メンバー";
-      ring.push({
-        kind: "person",
-        id: `user:${member.did}`,
-        size: SIZE_PERSON,
-        user: {
-          did: member.did,
-          handle: member.handle ?? "",
-          name,
-          avatarUrl: member.avatarUrl,
-          tone: avatarToneFor(member.did || name),
-        },
-        source: "party",
-        detail: member.present ? "パーティー" : "パーティー (離席中)",
-      });
-    }
+    partyMembers = members;
   }
 
   // GET /encounters は新しい順なので、相手ごとに最初の 1 件が最新のすれ違い
@@ -195,7 +194,11 @@ export function buildNearbyModel(input: {
   };
 
   const nodes: NearbyModel["nodes"] = [];
-  const pushPerson = (user: User, source: "friend" | "encounter", resolved: Resolved) => {
+  const pushPerson = (
+    user: User,
+    source: "friend" | "encounter" | "party",
+    resolved: Resolved,
+  ) => {
     shown.add(user.did);
     const color = groupColor(resolved.point);
     nodes.push({
@@ -213,8 +216,69 @@ export function buildNearbyModel(input: {
     });
   };
 
+  // パーティーのメンバーは自分に接して並べる。ただし位置が分かって少し離れている人は、
+  // 方角が分かるよう他のフレンドと同じく方角へ置いて端末の向きで回す
+  for (const member of partyMembers) {
+    const name = member.displayName || member.handle || "メンバー";
+    const user: User = {
+      did: member.did,
+      handle: member.handle ?? "",
+      name,
+      avatarUrl: member.avatarUrl,
+      tone: avatarToneFor(member.did || name),
+    };
+    const status = member.present ? "パーティー" : "パーティー (離席中)";
+    if (bleNearby.has(member.did)) {
+      shown.add(member.did);
+      ring.push({
+        kind: "person",
+        id: `user:${member.did}`,
+        size: SIZE_PERSON,
+        user,
+        source: "party",
+        detail: `${status}・${BLE_NEARBY_DETAIL}`,
+      });
+      continue;
+    }
+    const resolved = resolveFriend(
+      myLocation,
+      input.friendLocations.get(member.did),
+      latestEncounter.get(member.did),
+    );
+    const placement = resolved.placement;
+    if (
+      placement.kind === "known" &&
+      placement.bearingDeg !== undefined &&
+      placement.distanceM >= PARTY_DIRECTION_MIN_M
+    ) {
+      pushPerson(user, "party", { ...resolved, detail: `${status}・${resolved.detail}` });
+      continue;
+    }
+    shown.add(member.did);
+    ring.push({
+      kind: "person",
+      id: `user:${member.did}`,
+      size: SIZE_PERSON,
+      user,
+      source: "party",
+      detail: status,
+    });
+  }
+
   for (const friend of input.friends) {
     if (shown.has(friend.did)) continue;
+    if (bleNearby.has(friend.did)) {
+      shown.add(friend.did);
+      ring.push({
+        kind: "person",
+        id: `user:${friend.did}`,
+        size: SIZE_PERSON,
+        user: friend,
+        source: "friend",
+        detail: BLE_NEARBY_DETAIL,
+      });
+      continue;
+    }
     pushPerson(
       friend,
       "friend",

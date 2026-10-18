@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import type {
   Encounter,
   Friend,
@@ -47,6 +47,8 @@ export type NearbyScreenProps = {
   groups: ResourceState<GroupNearby>;
   /** 中心が分かっているグループ (GET /groups/{id}、メンバーのときだけ返る)。 */
   groupAreas: ReadonlyMap<string, GroupArea>;
+  /** 直近に BLE で見えたフレンドの DID。位置より優先して自分に接して並べる。 */
+  bleNearby?: ReadonlySet<string>;
   /** POST /groups/{id}/join (09 §5)。成功しなければ reject する。 */
   onJoin: (id: string) => Promise<void>;
   /** POST /groups/{id}/leave (09 §5)。成功しなければ reject する。 */
@@ -55,6 +57,8 @@ export type NearbyScreenProps = {
   onRetry?: () => void;
   /** 403 location_stale のときの位置要求 (権限要求 → 再取得)。 */
   onEnableLocation?: () => void;
+  /** 渡されたときだけ「Wi-Fi スキャン」を ON にする案内を出し、押すと端末の位置情報の設定を開く。 */
+  onOpenLocationSettings?: () => void;
 };
 
 type Item = {
@@ -100,14 +104,20 @@ export function NearbyScreen({
   party,
   groups,
   groupAreas,
+  bleNearby,
   onJoin,
   onLeave,
   onRetry,
   onEnableLocation,
+  onOpenLocationSettings,
 }: NearbyScreenProps) {
   const router = useRouter();
   const splashDone = useSplashDone();
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  /** 参加の確認を出しているグループ (メンバーでないグループをタップしたとき)。 */
+  const [confirming, setConfirming] = useState<GroupBubble | null>(null);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const [pending, setPending] = useState<Record<string, "join" | "leave">>({});
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -124,8 +134,9 @@ export function NearbyScreen({
         party,
         groups: groupData,
         groupAreas,
+        bleNearby,
       }),
-    [me, myLocation, friends, friendLocations, encounters, party, groupData, groupAreas],
+    [me, myLocation, friends, friendLocations, encounters, party, groupData, groupAreas, bleNearby],
   );
 
   // 重なりの解消は重いので、データが変わったときだけやり直す。向きは毎回回すだけ
@@ -155,7 +166,8 @@ export function NearbyScreen({
   const items = useMemo(() => {
     const list: Item[] = [];
     const nodes = [
-      ...layout.inner.map((node) => ({ node, fixed: true })),
+      // 回さないのは中心の自分だけ。+ やパーティーも周りと一緒に自分の周りを回る
+      ...layout.inner.map((node) => ({ node, fixed: node.id === model.me.id })),
       ...layout.outer.map((node) => ({ node, fixed: false })),
     ];
     nodes.forEach(({ node, fixed }, index) => {
@@ -165,7 +177,7 @@ export function NearbyScreen({
       list.push({ ...node, fixed, delay, bubble });
     });
     return list;
-  }, [layout, bubbles]);
+  }, [layout, bubbles, model.me.id]);
 
   const run = useCallback(
     async (id: string, kind: "join" | "leave") => {
@@ -228,8 +240,14 @@ export function NearbyScreen({
           rotation={-(heading ?? 0)}
           ariaLabel="近くの人とグループ"
           onFocusChange={setFocusedId}
-          focusOnPress={(item) => item.bubble.kind !== "plus"}
+          // + と、まだ入っていないグループはタップしたらすぐ反応させる (作成 / 参加の確認)
+          focusOnPress={(item) => item.bubble.kind !== "plus" && !isJoinable(item.bubble)}
           onItemPress={(item) => {
+            if (isJoinable(item.bubble)) {
+              setJoinError(null);
+              setConfirming(item.bubble);
+              return;
+            }
             const href = hrefOf(item.bubble);
             if (href) router.push(href);
           }}
@@ -272,6 +290,16 @@ export function NearbyScreen({
               )}
             </div>
           )}
+          {!locationStale && onOpenLocationSettings && (
+            <div className={styles.banner} data-testid="wifi-scan-hint">
+              <Notice tone="info" icon="wifi">
+                位置の精度が低くなっています。位置情報の設定で「Wi-Fi スキャン」を ON にすると、屋内でも正確になります
+              </Notice>
+              <Button variant="secondary" size="sm" onClick={onOpenLocationSettings}>
+                設定を開く
+              </Button>
+            </div>
+          )}
           {groupsFailed && (
             <div className={styles.banner}>
               <Notice tone="warning" icon="cloud_off">
@@ -292,7 +320,107 @@ export function NearbyScreen({
         </div>
 
       </div>
+
+      {confirming && (
+        <JoinConfirm
+          group={confirming}
+          joining={joining}
+          error={joinError}
+          onCancel={() => setConfirming(null)}
+          onOpen={() => {
+            setConfirming(null);
+            router.push(`/group/?id=${encodeURIComponent(confirming.groupId)}`);
+          }}
+          onJoin={async () => {
+            setJoining(true);
+            setJoinError(null);
+            try {
+              await onJoin(confirming.groupId);
+              setConfirming(null);
+              router.push(`/group/?id=${encodeURIComponent(confirming.groupId)}`);
+            } catch {
+              setJoinError("参加できませんでした。もう一度お試しください。");
+            } finally {
+              setJoining(false);
+            }
+          }}
+        />
+      )}
     </AppShell>
+  );
+}
+
+type GroupBubble = Extract<NearbyBubbleModel, { kind: "group" }>;
+
+/** タップで参加の確認を出すグループの泡 (まだメンバーでないもの)。 */
+function isJoinable(bubble: NearbyBubbleModel): bubble is GroupBubble {
+  return bubble.kind === "group" && !bubble.isMember;
+}
+
+type JoinConfirmProps = {
+  group: GroupBubble;
+  joining: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onOpen: () => void;
+  onJoin: () => void;
+};
+
+/** まだ入っていないグループをタップしたときの参加の確認。エリアの外なら参加できない理由を出す。 */
+function JoinConfirm({ group, joining, error, onCancel, onOpen, onJoin }: JoinConfirmProps) {
+  return (
+    <div className={styles.sheetOverlay} onClick={joining ? undefined : onCancel}>
+      <div
+        className={styles.sheet}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="join-confirm-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <span
+          className={styles.sheetIcon}
+          style={{ "--bubble-tone": `var(--tone-${group.tone})` } as CSSProperties}
+          aria-hidden
+        >
+          <Icon name="groups" size={28} />
+        </span>
+        <p id="join-confirm-title" className={styles.sheetTitle}>
+          {group.inside ? `「${group.name}」に参加しますか？` : `「${group.name}」`}
+        </p>
+        <p className={styles.sheetDetail}>
+          メンバー {group.memberCount}人・{group.detail}
+        </p>
+        {!group.inside && (
+          <p className={styles.sheetNote}>このグループのエリアに入ると参加できます</p>
+        )}
+        {error && (
+          <p className={styles.sheetError} role="alert">
+            {error}
+          </p>
+        )}
+        <div className={styles.sheetActions}>
+          {group.inside ? (
+            <>
+              <Button variant="secondary" disabled={joining} onClick={onCancel}>
+                キャンセル
+              </Button>
+              <Button variant="primary" disabled={joining} onClick={onJoin}>
+                {joining ? "参加中…" : "参加する"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={onCancel}>
+                閉じる
+              </Button>
+              <Button variant="primary" onClick={onOpen}>
+                グループを見る
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
