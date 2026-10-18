@@ -1,6 +1,6 @@
 # CHAIN
 
-[![IMAGE ALT TEXT HERE](https://jphacks.com/wp-content/uploads/2026/07/IMG_5316.png)](https://www.youtube.com/watch?v=piaNsc6ilBI)
+[![クリックしてスライドを表示](https://pub-64789ce940c149c9a267731997ad2d23.r2.dev/slide_1.png)](https://pub-64789ce940c149c9a267731997ad2d23.r2.dev/CHAIN%20slide.pdf)
 
 > [動画リンク](https://pub-64789ce940c149c9a267731997ad2d23.r2.dev/chain-demo.mp4)
 
@@ -10,88 +10,91 @@
 ### 背景(製品開発のきっかけ、課題等）
 SNS で毎日目にするのは、どこにいるのかわからない人や会ったこともない人の投稿です。一方で、同じ教室や同じイベント会場にいて、顔は知っているのに一度も話したことがない人がいます。近くにいるのに、つながるきっかけがありません。
 
-いまの SNS は、全世界とつながる巨大なものか、すでに知り合いの人だけの閉じたものかのどちらかです。私たちは、**大きくも小さくもない、気軽に入れる中くらいの SNS** を作りたいと考えました。SNS が一番役に立つのは、遠くの出来事より身近な出来事のはずだからです。
+いまの SNS は、全世界とつながる巨大なものか、すでに知り合いの人だけの閉じたものかのどちらかです。私たちは、**大きくも小さくもない、気軽に入れる中くらいの SNS** を作りたいと考えました。SNSには遠くの人とオンラインコミュニケーションをするだけでなく、近くの人たちと仲良くするためのオフラインコミュニケーションにつなげる力があると考えています。
 
-### 製品説明（具体的な製品の説明）
+### 製品説明
 CHAIN は Android アプリです。Bluesky のアカウントでログインし、スマートフォンの Bluetooth（BLE）と GPS で「いま、まわりに誰がいるか」を判定して、次の機能を提供します。
 
-| 機能 | 内容 |
-| --- | --- |
-| ちかく | アプリを開くと、自分を中心に、近くの友達・近くにいる知らない人の数・近くのグループが泡のグラフで並びます。地図は使いません |
-| すれ違い | BLE で互いを検出すると「すれ違い」が成立します。相手が誰かを見られるまでの時間（すぐ / 遅らせる / 見せない）を自分で選べます |
-| 友達 | 友達＝Bluesky の相互フォロー。友達とは位置を「エリア名だけ」などの粒度で共有できます |
-| Party | 友達と一緒にいると、30 秒で仮 Party、5 分で本 Party が自動で始まります。 |
-| グループ | その場所にいる人だけが参加できるグループ。open（近くの人がリストから参加）と closed（招待制）を選べます。グループ同士の包含関係はグラフで表示します |
-| 公開投稿 | 自分の PDS に投稿します。投稿ごとに Bluesky にも同時に出せます |
-| memory・統計 | 終わった Party の写真と投稿、すれ違いの回数や友達の数を振り返れます |
+| 機能        | 内容                                                                              |
+| --------- | ------------------------------------------------------------------------------- |
+| ちかく       | アプリを開くと、自分を中心に、近くの友達・近くにいる知らない人の数・近くのグループが泡のグラフで並びます。地図は使いません                   |
+| すれ違い      | BLE で互いを検出すると「すれ違い」が成立します。相手が誰かを見られるまでの時間（すぐ / 遅らせる / 見せない）を自分で選べます             |
+| 友達        | 友達＝Bluesky の相互フォロー。友達とは位置を「エリア名だけ」などの粒度で共有できます                                  |
+| Party     | 友達と一緒にいると、30 秒で仮 Party、5 分で本 Party が自動で始まります。                                   |
+| グループ      | その場所にいる人だけが参加できるグループ。open（近くの人がリストから参加）と closed（招待制）を選べます。グループ同士の包含関係はグラフで表示します |
+| 投稿        | テキスト/画像データを自分の PDS に投稿できます。公開投稿ではBlueskyと同期して出すことができます。                         |
+| memory・統計 | 終わった Party の写真と投稿、すれ違いの回数や友達の数を振り返れます                                           |
+| プロフィール    | 名前、自己紹介、ステータスメッセージ、アイコン、ヘッダーを好きに設定できます。これもATProtocolと互換性があるためBlueskyと同期されます。    |
 
 ### 特長
-#### 1. 現実世界を可視化
-現実世界で近くにいる人が表示されるので、自然と「この人も同じ場所にいるんだ」と気づき、画面の中の交流が目の前の人との会話につながります。アプリを開くと、自分を中心に、近くの友達・近くにいる知らない人・その場所のグループが大きさの違う泡として並びます（ちかく 画面）。その場にいれば周りは見えるので、地図には投影しません。グループも地図上の円ではなく、大小の包含関係のグラフとして表し、「いま、ここに誰がいるか」だけを一目で伝えます。
+#### 中くらいのSNS
+前述の通り、CHAINでは大規模すぎず小規模すぎず、ちょうどいい大きさのSNSです。
+#### 現実世界を可視化
+現実世界で近くにいる人を、ホーム画面で確認できます。アプリを開くと、自分を中心に、近くの友達・すれ違った人・その場所のグループが大きさの違う泡として並びます。
+#### 自動で作成  
+友達と一緒にいると、30秒で仮 Party、5分で本 Party が始まります。その間に撮った写真は自動で Party に共有され、離れると Party は終わって memory に残ります。現在は実装できていませんが、グループの自動作成も実装される予定です。
+#### BLE で「本当に近くにいる」ことを確かめる
+Bluetooth で送るのはユーザー ID ではありません。サーバーが15分ごとに発行し直す使い捨ての token です。お互いの端末が相手を検出できたときだけ「すれ違い」になります。相手が誰か見えるまでの時間も、「すぐ / 遅らせる / 見せない」から自分で選べます。
+#### Bluesky(AtProtocol)との互換性
+新しくアカウントを作らず、Bluesky でログインします。友達は Bluesky の相互フォローで、公開投稿は自分の PDS に書かれます。名前の変更も自己紹介の変更も、アイコンの変更も全てAtProtocolを用いBlueskyと同期されます 。そのため CHAIN をやめても、アカウントやつながりは失われません。
 
-#### 2. Bluetooth で「本当に近くにいる」ことを確かめ、プライバシーは端末とサーバーで守る
-BLE で配るのはユーザー ID ではなく、サーバーが発行する 15 分ごとに変わる使い捨ての token です。token から本人は割り出せず、すれ違いは**双方向に検出できたときだけ**成立します。相手が見えるまでの遅延は、2 人の設定のうち長い方を使います。位置や生のすれ違いデータは公開の場所に書かず、Redis の TTL で自然に消えます。
-
-#### 3. Bluesky（AT Protocol）のアカウントとつながりをそのまま使う
-新しいアカウントを作らず、Bluesky でログインします。プロフィールは `app.bsky.actor.profile`、友達は Bluesky の相互フォロー、公開投稿はユーザー自身の PDS に書くので、CHAIN で生まれたつながりは CHAIN の外にも持ち出せます。自分のデータがどこ（どの PDS、CHAIN のサーバー）に置かれているかを画面で確かめられます。
 
 ### 解決出来ること
-- **近くにいるのに話せない**: すれ違いと「ちかく」画面で、同じ場所にいる人の存在に気づけ、グループで気軽に声をかけられます
-- **思い出が散らばる**: 友達と一緒にいるだけで Party が始ます。終われば memory にまとまります。そのため旅行の際には記録を保存して後で見返すことができます。
-- **大きな SNS は疲れる、小さな SNS は入りにくい**: その場にいる人だけの、中くらいの空間を提供します
-- **ロックイン**: アカウント・関係・公開投稿は Bluesky / ATProto の上にあるので、CHAIN をやめても失われません
+- **近くにいるのに話せない**: 同じ空間にいるはずなのにいつも同じ人と話していたり、誰かと話すきっかけがないという問題を解決します。CHAINを使って投稿をすることで周囲の人とつながるきっかけをつくれます。
+- **思い出が散らばる**: 友達と一緒にいるだけで Party が始ます。あの時の出会い、思い出を忘れないように自動的に記録できます。
+- **大きな SNS は疲れる、小さな SNS は入りにくい**: 全世界に公開するSNSは1投稿から非常に大きな話題を呼ぶことがありますが、逆にそれが重荷になっている人もいます。とはいえ小規模SNSではずっと同じ人とのみとしか交流できず、出会いの場を考えた場合にもそこにある可能性に気づけません。CHAINでは全ユーザー数という点では大規模であっても、実際にふれあい、関わる人は身近にいる人に限定されます。
+	- 同様に、近年では精神の発達段階においてもSNSを用いますが、現代のSNSはあまりにも広すぎて子供の発達過程に影響を及ぼしかねません。そういう観点においても、中くらいのSNSは必要とされていると考えます。
+- **ロックイン**: アカウント・関係・公開投稿は Bluesky / ATProto の上にあるので、CHAIN をやめても失われません。
+
 
 ### 今後の展望
-- party内で写真の自動共有を正常に動作させる(直前に実装を試みたが、クラッシュが多発したため(sample=1)直前に削除した。)
-- ATProto Spaces（限定公開のデータ）の正式版に合わせて、グループ / Party の投稿を Spaces に移す（いまは Spaces と同じ形のモデルで SQLite に保存しています）
-- バックグラウンドでの Party の成立、iOS 対応(CapitatorがIOSに対応しているため、実装難易度は低いと考えている)
+#### 大きな展望
+- iOS 対応
+	- CapitatorがIOSに対応しているため、Kotlin/Swift実装に比べてフロントエンドの実装を省ける。そのため必要なのはネイティブAPIをportすることだけ
+- ATProtocolとの親和性について見直し、互換性を高めたり分散ネットワークを形成できるようにする。
+#### 既存機能/想定機能の実装
+- party内で写真の自動共有を正常に動作させる
+	- 自動共有がうまくいっていないからか、クラッシュが多発した事案があった。原因究明をして修正しないといけない。
+- ATProto Spaces（限定公開のデータ）の正式版に合わせて、グループ / Party の投稿を Spaces に移す
+	- 現在はSpaces互換データをsqilteに保存している。
+- グループの自動作成を完成させる。
+	- カレンダー(読み込み/手動設定)を用いて予定の意味の近さ（embedding）からグループを自動で作成します。
+- 招待制グループの実装を完全に
+- バックグラウンドでの Party の成立
 - Space（コミュニティ）ごとに moderation の方針を選べるようにする、外部ラベラーの購読
 - データのエクスポート、すれ違った人の投稿を集めた Bluesky のカスタムフィード
-- 予定の意味の近さ（embedding）から自然にできるグループ、投票による招待制への移行
-- 電気通信事業法の届出を済ませたうえでの公開
 
 ### 注力したこと（こだわり等）
-* **プライバシーを設計の中心に置いたこと。** 使い捨ての beacon token、双方向での成立、公開の遅延、位置共有の粒度（エリア名だけ等）、写真の EXIF の削除、Party のメンバーでない人に投稿や写真が漏れないための所属の不変条件などを、仕様書に書いてから実装しました
-* **実機で止まらないこと。** BLE の常駐サービス、再起動後の復帰、権限の取り消し、端末とサーバーの時刻のずれなどを、Android の実機で落ちないように作り込みました
-* **ATProto の考え方（credible exit、データを自分で持つ）に沿うこと。** 独自の関係表を作らず Bluesky のフォローを使い、lexicon を公開し、データの置き場所を見せています
+* **プライバシーを設計の中心に置いたこと。** 使い捨ての beacon token、双方向の検出でだけ成立するすれ違い、公開の遅延、位置共有の粒度（エリア名だけ等）、写真の EXIF の削除、Party のメンバー以外に投稿や写真が漏れないための所属の不変条件などを厳密に実装しました。
+* **実機で止まらないこと。** BLE の常駐サービス、再起動後の復帰、権限の取り消し、端末とサーバーの時刻のずれなどに対応し、Android の実機で落ちないように作り込みました
+* **ATProto の考え方（credible exit、データを自分で持つ）に沿うこと。** 独自の関係表を作らずに Bluesky のフォローを使い、lexicon を公開し、データの置き場所を画面で確かめられるようにしました
+* **backend を先に固めたこと。** 必要な機能を最初に洗い出し、backend の実装とテストを先に済ませました。おかげでフロントエンドの開発中は、画面側のデバッグに集中できました
+* **AI でコードを書いても、設計は雑にしないこと。** 実装の前に仕様を何度も確かめ合って仕様書にまとめ、細かい挙動まで決めてから AI に書かせました
+* **自分たちで使って、細かいところまで磨いたこと。** 実際に使ってみて困った点を優先して直しました。小さな工夫で使い心地は大きく変わると考え、起動時のアニメーションや、ホーム画面で端末の向きに合わせてユーザーの位置を調整する機能/アニメーションなど、細部まで手を入れました
 
 ## 開発技術
 ### 活用した技術
 #### API・データ
-* AT Protocol / Bluesky（OAuth + DPoP、PDS への書き込み、Jetstream、`app.bsky.*`）
-* NanoGPT Decisions API（`typesafe/jev-1.13`）による投稿の moderation と自動 Pin
-* Firebase Cloud Messaging（通知）
+* **AT Protocol / Bluesky**: OAuth + DPoP によるログイン、ユーザーの PDS への投稿の書き込み、Jetstream による Bluesky 上の変更の受信、`app.bsky.*` のプロフィールとフォローの利用
+* **NanoGPT Decisions API**（`typesafe/jev-1.13`）: 投稿の moderation と自動 Pin
+* **Firebase Cloud Messaging**: プッシュ通知
 
 #### フレームワーク・ライブラリ・モジュール
-* フロントエンド: Next.js 16（App Router、static export）、React 19、TypeScript
-* モバイル: Capacitor 8 と Kotlin の native プラグイン（BLE、位置、写真、触覚）、Room、Android Keystore
-* バックエンド: Go、Fiber v3（REST / WebSocket）、[indigo](https://github.com/bluesky-social/indigo)、SQLite（WAL）、Redis（GEO、TTL、pub/sub）
-* テスト: Go の単体・結合テスト、Playwright、Puppeteer（WebView の E2E）、GitHub Actions
-* インフラ: Cloudflare Tunnel
-
+* **フロントエンド**: Next.js 16（App Router、static export）、React 19、TypeScript
+* **モバイル**: Capacitor 8 の上に、Kotlin で native プラグイン（BLE、位置、写真、触覚）を実装。すれ違いの記録は Room に保存し、token などの秘密情報は Android Keystore で暗号化
+* **バックエンド**: Go と Fiber v3 で REST / WebSocket の API を提供。ATProto との通信には [indigo](https://github.com/bluesky-social/indigo) を使用。永続データは SQLite（WAL）に、位置やすれ違いなどの一時データは Redis（GEO、TTL、pub/sub）に置く
+* **テスト**: Go の単体・結合テスト、Playwright、Puppeteer による WebView の E2E テスト、GitHub Actions での CI
+* **インフラ**: Cloudflare Tunnel でバックエンドを公開
 #### デバイス
-* Android スマートフォン（BLE の advertise / scan、GPS、カメラ）
+* Android スマートフォン（BLE の advertise / scan、GPS）
 
-### 独自技術
-**全て。**
-#### ハッカソンで開発した独自機能・技術
-* **BLE によるすれ違いと近接判定**: 15 分ごとに変わる使い捨て token を advertise / scan し、受信を Room に貯めて backend に報告する。token と時刻のずれは暗号化して保存し、再起動後も常駐サービスを復帰する
-  * [web/android/app/src/main/java/jp/i32/chain/proximity/](web/android/app/src/main/java/jp/i32/chain/proximity/)、[web/src/device/proximity/](web/src/device/proximity/)
-  * 8c226df（sighting の Room 保存）、f6e8fa1（token と時刻ずれの暗号化保存）、41d6809（時刻ずれの推定）、3ed2de4（再起動後の復帰）
-* **BLE と GPS を切り替えられる近接判定の共通 interface**: すれ違い・Party（`PeerProximity`）とグループ（`ZonePresence`）を、BLE / GPS のどちらでも実装できる形に分けた
-  * [specification/backend/05-proximity.md](specification/backend/05-proximity.md)、[backend/internal/service/proximity/](backend/internal/service/proximity/)
-  * [backend/internal/service/party/](backend/internal/service/party/)、[web/src/device/proximity/party.ts](web/src/device/proximity/party.ts)、[web/src/device/photos/uploadQueue.ts](web/src/device/photos/uploadQueue.ts)
-  * b302078（presence の報告）、6b3fa94・87b8766（写真の監視とアップロードの待ち行列）
-* **「ちかく」画面の泡のグラフ**: 自分を中心に、友達・知らない人・グループを泡で配置する
-  * [web/src/app/page.tsx](web/src/app/page.tsx)、120f448（BubbleCanvas）
-* **ATProto との統合**: 友達＝相互フォロー、lexicon の検証と公開投稿の self-label、PDS とデータの置き場所の表示
-  * [backend/lexicons/](backend/lexicons/)、52755f8（O5）、8c2c608（O2・O3）、08ca84d（O1・O4）
 
-## リポジトリの構成
+#### 特に力を入れた場所
+* **BLE によるすれ違いの判定**: 15 分ごとに変わる使い捨て token を advertise / scan し、受信を Room に貯めて backend に報告する。token と時刻のずれは暗号化して保存し、再起動後も常駐サービスを復帰する。近接の判定は interface（`PeerProximity` / `ZonePresence`）で分け、BLE と GPS のどちらでも実装できるようにした
+  * [web/android/app/src/main/java/jp/i32/chain/proximity/](web/android/app/src/main/java/jp/i32/chain/proximity/)、[backend/internal/service/proximity/](backend/internal/service/proximity/)
+  * 8c226df（Room 保存）、f6e8fa1（暗号化保存）、41d6809（時刻ずれの推定）、3ed2de4（再起動後の復帰）
+* **ATProto との統合**: 友達＝相互フォロー、lexicon の検証、公開投稿の self-label、PDS とデータの置き場所の表示。グループ / Party のデータは ATProto Spaces と同じ形で持ち、正式版が出たら保存先を差し替えるだけで移せるようにした
+  * [backend/lexicons/](backend/lexicons/)、[backend/internal/model/space/](backend/internal/model/space/)、52755f8（O5）、8c2c608（O2・O3）、08ca84d（O1・O4）
+* **「ちかく」画面の泡のグラフ**: 自分を中心に、友達・すれ違った人・グループを泡で配置する。位置共有の粒度に合わせて、座標か方角と距離から配置を決める
+  * [web/src/app/page.tsx](web/src/app/page.tsx)、[web/src/components/feature/nearby/](web/src/components/feature/nearby/)、120f448（BubbleCanvas）
 
-| パス | 内容 |
-| --- | --- |
-| [web/](web/) | Next.js のフロントエンドと Android アプリ（Capacitor）。起動方法は [web/README.md](web/README.md) |
-| [backend/](backend/) | Go のバックエンド（`make` でテスト・起動） |
-| [specification/](specification/) | backend の仕様書と Android native プラグインの取り決め |
-| [docs/](docs/) | 企画の草案、技術調査、画面仕様、実装メモ |
