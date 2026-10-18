@@ -133,7 +133,7 @@
 .editButton {
   position: absolute;
   right: 0;
-  bottom: -34px;
+  top: calc(100% + var(--space-2));
 }
 
 .name {

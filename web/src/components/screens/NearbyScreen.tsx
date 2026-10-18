@@ -19,6 +19,7 @@ import {
   type LatLon,
   type NearbyBubbleModel,
 } from "@/components/feature/nearby";
+import { ApiError } from "@/auth";
 import { AppShell } from "@/components/layout/AppShell";
 import { useSplashDone } from "@/components/layout/StartupSplash";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
@@ -47,6 +48,8 @@ export type NearbyScreenProps = {
   groups: ResourceState<GroupNearby>;
   /** 中心が分かっているグループ (GET /groups/{id}、メンバーのときだけ返る)。 */
   groupAreas: ReadonlyMap<string, GroupArea>;
+  /** 自分が入っているグループ (GET /groups/{id} の isMember)。near のグループの参加判定に使う。 */
+  joinedGroupIds?: ReadonlySet<string>;
   /** 直近に BLE で見えたフレンドの DID。位置より優先して自分に接して並べる。 */
   bleNearby?: ReadonlySet<string>;
   /** POST /groups/{id}/join (09 §5)。成功しなければ reject する。 */
@@ -104,6 +107,7 @@ export function NearbyScreen({
   party,
   groups,
   groupAreas,
+  joinedGroupIds,
   bleNearby,
   onJoin,
   onLeave,
@@ -134,9 +138,10 @@ export function NearbyScreen({
         party,
         groups: groupData,
         groupAreas,
+        joinedGroupIds,
         bleNearby,
       }),
-    [me, myLocation, friends, friendLocations, encounters, party, groupData, groupAreas, bleNearby],
+    [me, myLocation, friends, friendLocations, encounters, party, groupData, groupAreas, joinedGroupIds, bleNearby],
   );
 
   // 重なりの解消は重いので、データが変わったときだけやり直す。向きは毎回回すだけ
@@ -327,10 +332,6 @@ export function NearbyScreen({
           joining={joining}
           error={joinError}
           onCancel={() => setConfirming(null)}
-          onOpen={() => {
-            setConfirming(null);
-            router.push(`/group/?id=${encodeURIComponent(confirming.groupId)}`);
-          }}
           onJoin={async () => {
             setJoining(true);
             setJoinError(null);
@@ -338,8 +339,14 @@ export function NearbyScreen({
               await onJoin(confirming.groupId);
               setConfirming(null);
               router.push(`/group/?id=${encodeURIComponent(confirming.groupId)}`);
-            } catch {
-              setJoinError("参加できませんでした。もう一度お試しください。");
+            } catch (cause) {
+              // すでに入っていた (409) なら、そのままグループへ移る
+              if (cause instanceof ApiError && cause.status === 409) {
+                setConfirming(null);
+                router.push(`/group/?id=${encodeURIComponent(confirming.groupId)}`);
+                return;
+              }
+              setJoinError(joinErrorMessage(cause));
             } finally {
               setJoining(false);
             }
@@ -352,6 +359,19 @@ export function NearbyScreen({
 
 type GroupBubble = Extract<NearbyBubbleModel, { kind: "group" }>;
 
+/** POST /groups/{id}/join (09 §5) の失敗を、参加の確認に出す文にする。 */
+function joinErrorMessage(cause: unknown): string {
+  if (cause instanceof ApiError) {
+    if (cause.code === "not_in_geofence") {
+      return "グループのエリアの外にいるため参加できませんでした。エリアに入ってからもう一度お試しください。";
+    }
+    if (cause.code === "location_stale") {
+      return "位置情報が古いため参加できませんでした。少し待ってからもう一度お試しください。";
+    }
+  }
+  return "参加できませんでした。もう一度お試しください。";
+}
+
 /** タップで参加の確認を出すグループの泡 (まだメンバーでないもの)。 */
 function isJoinable(bubble: NearbyBubbleModel): bubble is GroupBubble {
   return bubble.kind === "group" && !bubble.isMember;
@@ -362,12 +382,14 @@ type JoinConfirmProps = {
   joining: boolean;
   error: string | null;
   onCancel: () => void;
-  onOpen: () => void;
   onJoin: () => void;
 };
 
-/** まだ入っていないグループをタップしたときの参加の確認。エリアの外なら参加できない理由を出す。 */
-function JoinConfirm({ group, joining, error, onCancel, onOpen, onJoin }: JoinConfirmProps) {
+/**
+ * まだ入っていないグループをタップしたときの参加の確認。参加はエリアの中にいるときだけ
+ * 通る (backend が判定する) ので、外にいるらしいときはその旨を添えて、押せば試せるようにする。
+ */
+function JoinConfirm({ group, joining, error, onCancel, onJoin }: JoinConfirmProps) {
   return (
     <div className={styles.sheetOverlay} onClick={joining ? undefined : onCancel}>
       <div
@@ -385,13 +407,13 @@ function JoinConfirm({ group, joining, error, onCancel, onOpen, onJoin }: JoinCo
           <Icon name="groups" size={28} />
         </span>
         <p id="join-confirm-title" className={styles.sheetTitle}>
-          {group.inside ? `「${group.name}」に参加しますか？` : `「${group.name}」`}
+          「{group.name}」に参加しますか？
         </p>
         <p className={styles.sheetDetail}>
           メンバー {group.memberCount}人・{group.detail}
         </p>
         {!group.inside && (
-          <p className={styles.sheetNote}>このグループのエリアに入ると参加できます</p>
+          <p className={styles.sheetNote}>参加できるのは、このグループのエリアの中にいるときです</p>
         )}
         {error && (
           <p className={styles.sheetError} role="alert">
@@ -399,25 +421,12 @@ function JoinConfirm({ group, joining, error, onCancel, onOpen, onJoin }: JoinCo
           </p>
         )}
         <div className={styles.sheetActions}>
-          {group.inside ? (
-            <>
-              <Button variant="secondary" disabled={joining} onClick={onCancel}>
-                キャンセル
-              </Button>
-              <Button variant="primary" disabled={joining} onClick={onJoin}>
-                {joining ? "参加中…" : "参加する"}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="secondary" onClick={onCancel}>
-                閉じる
-              </Button>
-              <Button variant="primary" onClick={onOpen}>
-                グループを見る
-              </Button>
-            </>
-          )}
+          <Button variant="secondary" disabled={joining} onClick={onCancel}>
+            キャンセル
+          </Button>
+          <Button variant="primary" disabled={joining} onClick={onJoin}>
+            {joining ? "参加中…" : "参加する"}
+          </Button>
         </div>
       </div>
     </div>

@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import type { Notification, NotificationType } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { clockTime } from "@/data/format";
+import { destinationOf } from "@/components/feature/notification/destination";
 import { AppShell } from "@/components/layout/AppShell";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Button } from "@/components/ui/Button";
@@ -19,6 +21,9 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   "group.nearby": "近くにグループがあります",
   "group.invited": "グループに招待されました",
   "group.suggested": "グループを提案されました",
+  "group.auto_joined": "グループに参加しました",
+  "group.vote_passed": "グループの投票が可決されました",
+  "group.invite_approval": "招待の承認依頼が届きました",
   "encounter.daily": "今日のすれ違い",
   "encounter.weekly": "今週のすれ違い",
   "encounter.monthly": "今月のすれ違い",
@@ -33,6 +38,9 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   "group.nearby": "hub",
   "group.invited": "mail",
   "group.suggested": "lightbulb",
+  "group.auto_joined": "group_add",
+  "group.vote_passed": "how_to_vote",
+  "group.invite_approval": "approval",
   "encounter.daily": "near_me",
   "encounter.weekly": "near_me",
   "encounter.monthly": "near_me",
@@ -62,6 +70,7 @@ export function NotificationsScreen({
   onMarkRead,
   onMarkAllRead,
 }: NotificationsScreenProps) {
+  const router = useRouter();
   const [readIds, setReadIds] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +89,17 @@ export function NotificationsScreen({
       }
     },
     [onMarkRead],
+  );
+
+  // 未読なら既読にしつつ、内容に応じた画面へ遷移する。既読化の完了は待たない。
+  const open = useCallback(
+    (item: Notification, unread: boolean) => {
+      if (unread) {
+        void markRead(item.id);
+      }
+      router.push(destinationOf(item.type, item.data));
+    },
+    [markRead, router],
   );
 
   const markAll = useCallback(async () => {
@@ -124,7 +144,7 @@ export function NotificationsScreen({
                   return (
                     <ListItem
                       key={item.id}
-                      onClick={unread ? () => void markRead(item.id) : undefined}
+                      onClick={() => open(item, unread)}
                       leading={
                         <span className={styles.iconCircle} aria-hidden>
                           <Icon name={TYPE_ICONS[item.type]} size={20} />
