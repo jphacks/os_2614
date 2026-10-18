@@ -104,14 +104,29 @@ party 中の写真の自動共有（backend 08 §5）のうち、端末の Media
 
 | API | 内容 |
 | --- | --- |
-| `checkPermissions()` / `requestPermissions()` | `{ photos }` を返す。値は `granted` / `denied` / `prompt` に加え、Android 14 以降で「選んだ写真だけ」を許可された状態（`READ_MEDIA_VISUAL_USER_SELECTED` のみ）の `limited`。`limited` では自動共有を使えない（WebView が案内する） |
-| `startWatching({ since })` / `stopWatching()` | `since`（ISO 8601、本 party の `confirmed_at`）以降の写真を拾う。`granted` でなければ `denied` で失敗。`MediaStore.Images` を `ContentObserver` で見張り、`RELATIVE_PATH` が `DCIM/Camera/` で `DATE_TAKEN` が `since` から現在までの写真だけを待ち行列に積み、`photoCaptured` を発火する。開始時にも 1 回走査する（別の `since` で呼び直すと「見た」集合を空にする） |
-| `listPending()` / `removePending({ ids })` | 待ち行列 `{ items: [{ mediaStoreId, takenAt, uri }] }` の取得・削除。`removePending` で消した ID は永続化された「見た」集合に入り、以後 `startWatching` の走査で再び積まれない（取り消した写真・送信済みの写真を拾い直さないため） |
-| `readPhoto({ mediaStoreId })` | アップロード用の `{ data（base64）, mime }`。JPEG / PNG / WebP で 15 MB 以下ならそのまま返す。それ以外（HEIC など `BitmapFactory` が読めるもの）や 15 MB 超は、長辺 4096 px 以下に縮小して JPEG（品質 90 から 40 まで下げる）に変換して返す。15 MB 以下にできなければ `read_failed` |
+| `checkPermissions()` / `requestPermissions()` | `{ photos }` を返す。値は `granted` / `denied` / `prompt` / `prompt-with-rationale` に加え、Android 14 以降で「選んだ写真だけ」を許可された状態の `limited`。`limited` では自動共有を使えない（WebView が案内する）。判定は版ごとに分ける（下記） |
+| `startWatching({ since })` / `stopWatching()` | `since`（ISO 8601、本 party の `confirmed_at`）以降の写真を拾う。`granted` でなければ `denied` で失敗。`MediaStore.Images` を `ContentObserver` で見張り、`RELATIVE_PATH` が `DCIM/Camera/` で `DATE_TAKEN` が `since` から現在までの写真だけを待ち行列に積み、`photoCaptured` を発火する。開始時にも 1 回走査する（別の `since` で呼び直すと「見た」集合と走査の cursor を空にする）。走査の方式は下記 |
+| `listPending()` / `removePending({ ids })` | 待ち行列 `{ items: [{ mediaStoreId, takenAt, uri, foundAt }] }`（`foundAt` は native が最初に積んだ時刻（ISO 8601、永続化する）。`foundAt` の無い古い項目は `takenAt` を返す） の取得・削除。`removePending` で消した ID は永続化された「見た」集合に入り、以後 `startWatching` の走査で再び積まれない（取り消した写真・送信済みの写真を拾い直さないため） |
+| `readPhoto({ mediaStoreId })` | アップロード用の一時ファイル `{ path, mime, size }`（`cacheDir/chain-photos/{id}.{拡張子}`。base64 は返さない）。JPEG / PNG / WebP で 15 MB 以下ならそのままコピーする。それ以外（HEIC など `BitmapFactory` が読むもの）や 15 MB 超は、長辺 4096 px 以下に縮小して JPEG（品質 90 から 40 まで下げる）に変換して書く。15 MB 以下にできなければ `read_failed`。読み書きは走査と同じ単一スレッドで行う。WebView は `path` を `Capacitor.convertFileSrc` で読む |
+| `releasePhoto({ path })` | `readPhoto` の一時ファイルを消す。すでに無くても成功する。`cacheDir/chain-photos` の外のパスは `invalid_path` で拒否する。消し忘れは `startWatching` のたびに、24 時間より古い一時ファイルを掃除する |
 | `savePhoto({ url, album, takenAt, fileName })` | `url` を取得して `Pictures/CHAIN/{album}` に JPEG として保存し（`IS_PENDING` を使う）、`{ mediaStoreId }` を返す。書き込みは Android 10 以降では権限不要。`album` は制御文字と `/` `\` `:` を除き、`..` を `_` にして前後の空白を落とす（空なら `party`）。`fileName` は英数字と `._-` 以外を `_` にする |
 | `isSaved({ mediaStoreId })` | `{ saved }`。その ID の画像が MediaStore に残っているか |
 
-- イベント: `photoCaptured`（`{ mediaStoreId, takenAt, uri }`）
+- 写真権限の判定（版ごと）: Capacitor の alias は、束ねた権限が**全部**許可のときだけ `granted` になる。`READ_EXTERNAL_STORAGE` は `maxSdkVersion=32` なので Android 13 以降では許可されず、3 つを 1 つの alias にまとめると決して `granted` にならない（14 以降で全許可しても `limited` になる）。そのため alias は `mediaImages`（`READ_MEDIA_IMAGES`）/ `mediaSelected`（`READ_MEDIA_VISUAL_USER_SELECTED`）/ `storage`（`READ_EXTERNAL_STORAGE`）に分け、次のように決める
+  - Android 13 以降: `READ_MEDIA_IMAGES` が許可なら `granted`。そうでなく 14 以降で `READ_MEDIA_VISUAL_USER_SELECTED` が許可なら `limited`。どちらでもなければ `mediaImages` の状態
+  - Android 12 以下: `storage` の状態
+  - `requestPermissions()` が要求する alias は、14 以降が `mediaImages` と `mediaSelected`（部分アクセスを選べるようにする Android の推奨）、13 が `mediaImages`、12 以下が `storage`。`startWatching` も同じ判定を使う（純関数 `photoPermission`、単体テストあり）
+- イベント: `photoCaptured`（`{ mediaStoreId, takenAt, uri, foundAt }`）と `watchError`（`{ reason }`）
+  - `permission_revoked`: 走査中に `SecurityException` が出た、または写真権限が `granted` でなくなっていた。native は監視を止めている
+  - `query_failed`: それ以外の走査の失敗。監視は続け、次の変更通知で再試行する
+  - 走査スレッドから例外は外へ出さない（すべて捕まえて `watchError` にする）
+- 走査（`PhotoScanLogic.kt` の純関数に単体テストあり）:
+  - MediaStore の列は `MediaStore.Images.Media` の定数で指定する（文字列の直書きは機種により "Invalid token date_taken" で例外になるため）。`DATE_ADDED`（秒）で検索し、フォルダと期間は Kotlin 側で絞る
+  - 撮影時刻 `takenAt` は `DATE_TAKEN`（0 以下なら `DATE_ADDED` × 1000）。カメラのフォルダは、Android 10 以降は `RELATIVE_PATH` が `DCIM/Camera/` で始まる行、9 以下は `DATA` に `/DCIM/Camera/` を含む行。`takenAt` が `since` から現在までの行だけを積む
+  - 変更通知は 1.5 秒（通知が続けば延長）まとめてから 1 回走査する。走査は単一スレッドで、待ちは最大 1 件
+  - 差分走査: 最後に見た `DATE_ADDED` と `_ID` を cursor として SharedPreferences に保存し、次回は cursor の 120 秒前から検索する。カメラアプリは `IS_PENDING` の行を先に挿入し、あとから確定するため、重ねて拾い直す。重複は「見た」集合と待ち行列で防ぐ。下限は `since` の 60 秒前
+  - 限界: 挿入から 120 秒を超えて確定した行は、cursor が先へ進んでいると拾えない
+  - 自分の `savePhoto` が作った写真の通知は無視する（直近 50 件・5 分まで uri を覚える）
 - 待ち行列、`since`、「見た」集合は SharedPreferences（`chain.photos`）に保存する。WebView やプロセスが止まっていても、監視している間は積む
 - 送信済みの記録（`(partyId, mediaStoreId)`）、保存済みの記録（media id）、設定は WebView の localStorage にあり、native は持たない
 - backend は JPEG / PNG / WebP 以外を `400`、15 MB 超を `413` にする（backend 10 §4.4）ので、`readPhoto` が変換と縮小を済ませてから返す。EXIF の除去は backend が行う

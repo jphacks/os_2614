@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Party as PartyDTO, Memory as MemoryDTO } from "@/data/dto";
 import { getJson } from "@/data/api";
 import { usePagedResource, useResource } from "@/data/hooks";
 import { toMemory, toParty } from "@/data/mappers";
 import { useAuth } from "@/auth";
-import { usePhotoSettings, setPhotoPermissionNotice, writePhotoSettings } from "@/device/photos/settings";
+import { usePhotoSettings, readPhotoSettings, setPhotoPermissionNotice, writePhotoSettings } from "@/device/photos/settings";
+import { photoUploadController } from "@/device/photos/uploadQueue";
 import { ChainPhotos } from "@/device/photos";
 import { useAutoShare, type AutoShareState, type PartyPhotoWindow } from "@/device/photos/autoshare";
 import { useRealtimeEvent } from "@/realtime/provider";
@@ -47,11 +48,19 @@ export function usePhotoShare(): PhotoShareSnapshot {
 export function PhotoShareDriver() {
   const { state: auth } = useAuth();
   const [settings] = usePhotoSettings();
+  const wasOn = useRef(false);
   useEffect(() => {
     if (auth.status !== "signedIn" || !settings.autoShare) {
       setPhotoShareSnapshot(EMPTY);
+      // オン→オフに変わった時だけ止めて破棄する。起動時からオフなら ChainPhotos には触れない。
+      if (wasOn.current) {
+        wasOn.current = false;
+        // 設定の読み込み前 (state は既定値) では捨てない。保存値がオフの時だけ破棄する。
+        photoUploadController.stop(!readPhotoSettings().autoShare);
+      }
       return;
     }
+    wasOn.current = true;
     let active = true;
     void ChainPhotos.checkPermissions().then((permission) => {
       if (active && permission.photos !== "granted") {

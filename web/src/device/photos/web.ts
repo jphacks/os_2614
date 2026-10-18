@@ -3,6 +3,7 @@ import type {
   ChainPhotosPlugin,
   PendingPhoto,
   PhotoPermissionStatus,
+  PhotoWatchError,
   ReadPhotoResult,
 } from "./definitions";
 
@@ -15,6 +16,8 @@ export class ChainPhotosWeb extends WebPlugin implements ChainPhotosPlugin {
   private watching = false;
   private since = "";
   private saveCalls = 0;
+  private startError: Error | undefined;
+  private blobUrls = new Set<string>();
 
   constructor() {
     super();
@@ -28,16 +31,22 @@ export class ChainPhotosWeb extends WebPlugin implements ChainPhotosPlugin {
       ? (window as unknown as { __chainPhotosMockPending?: PendingPhoto[] }).__chainPhotosMockPending
       : undefined;
     if (initialPending) {
-      this.pending = initialPending.map((item) => ({ ...item }));
+      // native と同じく、foundAt の無い古い項目は takenAt を foundAt として扱う。
+      this.pending = initialPending.map((item) => ({ ...item, foundAt: item.foundAt ?? item.takenAt }));
     }
     if (typeof window !== "undefined") {
       const bridge = ((window as unknown as { __chainPhotosMock?: Record<string, unknown> }).__chainPhotosMock ?? {}) as Record<string, unknown>;
       const calls = Array.isArray(bridge.calls) ? bridge.calls : [];
       bridge.calls = calls;
       bridge.emit = (photo: PendingPhoto) => this.emitPhoto(photo);
-      bridge.seed = (photo: PendingPhoto) => this.pending.push(photo);
+      bridge.seed = (photo: PendingPhoto) => this.pending.push({ ...photo, foundAt: photo.foundAt ?? photo.takenAt });
+      bridge.emitWatchError = (reason: PhotoWatchError["reason"]) => this.notifyListeners("watchError", { reason });
+      bridge.failStart = (message: string | null) => { this.startError = message === null ? undefined : new Error(message); };
       bridge.setPermission = (permission: PhotoPermissionStatus) => this.setPermission(permission);
       bridge.state = () => ({ pending: this.pending.map((item) => ({ ...item })), saved: [...this.saved], saveCalls: this.saveCalls, calls });
+      if (typeof bridge.startError === "string") {
+        this.startError = new Error(bridge.startError);
+      }
       bridge.ready = true;
       (window as unknown as { __chainPhotosMock?: unknown }).__chainPhotosMock = bridge;
     }
@@ -52,6 +61,10 @@ export class ChainPhotosWeb extends WebPlugin implements ChainPhotosPlugin {
   }
 
   async startWatching(_opts: { since: string }): Promise<void> {
+    this.recordCall("startWatching");
+    if (this.startError) {
+      throw this.startError;
+    }
     if (_opts.since !== this.since) {
       this.seen.clear();
       this.since = _opts.since;
@@ -73,9 +86,20 @@ export class ChainPhotosWeb extends WebPlugin implements ChainPhotosPlugin {
     this.pending = this.pending.filter((item) => !ids.has(item.mediaStoreId));
   }
 
+  /** path には fetch できる blob URL を返す。実機の一時ファイル path に相当する。 */
   async readPhoto(_opts: { mediaStoreId: string }): Promise<ReadPhotoResult> {
     void _opts;
-    return { data: "aGVsbG8=", mime: "image/jpeg" };
+    const blob = new Blob(["hello"], { type: "image/jpeg" });
+    const path = URL.createObjectURL(blob);
+    this.blobUrls.add(path);
+    return { path, mime: "image/jpeg", size: blob.size };
+  }
+
+  async releasePhoto(opts: { path: string }): Promise<void> {
+    this.recordCall("releasePhoto");
+    if (this.blobUrls.delete(opts.path)) {
+      URL.revokeObjectURL(opts.path);
+    }
   }
 
   async savePhoto(_opts: {
@@ -101,7 +125,8 @@ export class ChainPhotosWeb extends WebPlugin implements ChainPhotosPlugin {
   }
 
   /** テスト用。実機では ContentObserver が同じイベントを発火する。 */
-  emitPhoto(photo: PendingPhoto): void {
+  emitPhoto(input: Omit<PendingPhoto, "foundAt"> & { foundAt?: string }): void {
+    const photo: PendingPhoto = { ...input, foundAt: input.foundAt ?? new Date().toISOString() };
     if (!this.watching || this.seen.has(photo.mediaStoreId) || !photo.uri.includes("DCIM/Camera")) {
       return;
     }

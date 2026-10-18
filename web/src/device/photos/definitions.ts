@@ -10,11 +10,19 @@ export type PendingPhoto = {
   mediaStoreId: string;
   takenAt: string;
   uri: string;
+  /** native が最初にキューへ入れた時刻 (ISO)。永続化され、アップロード期限の基準になる。 */
+  foundAt: string;
 };
 
+/** readPhoto が書き出した一時ファイル。使い終わったら releasePhoto で消す。 */
 export type ReadPhotoResult = {
-  data: string;
-  mime: string;
+  path: string;
+  mime: "image/jpeg" | "image/png" | "image/webp";
+  size: number;
+};
+
+export type PhotoWatchError = {
+  reason: "permission_revoked" | "query_failed";
 };
 
 export type ChainPhotosPlugin = {
@@ -25,6 +33,7 @@ export type ChainPhotosPlugin = {
   listPending(): Promise<{ items: PendingPhoto[] }>;
   removePending(opts: { ids: string[] }): Promise<void>;
   readPhoto(opts: { mediaStoreId: string }): Promise<ReadPhotoResult>;
+  releasePhoto(opts: { path: string }): Promise<void>;
   savePhoto(opts: {
     url: string;
     album: string;
@@ -35,6 +44,10 @@ export type ChainPhotosPlugin = {
   addListener(
     eventName: "photoCaptured",
     listener: (photo: PendingPhoto) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "watchError",
+    listener: (error: PhotoWatchError) => void,
   ): Promise<PluginListenerHandle>;
   removeAllListeners(): Promise<void>;
 };

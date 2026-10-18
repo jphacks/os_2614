@@ -77,6 +77,8 @@ async function mockPhotoApi(
     memories?: unknown;
     posts?: unknown;
     onMedia?: (path: string, body: unknown) => void;
+    /** /media に返すステータス。失敗アップロードの検証に使う。 */
+    mediaStatus?: () => number;
   } = {},
 ) {
   await page.route(`${API_BASE}/**`, async (route) => {
@@ -110,6 +112,11 @@ async function mockPhotoApi(
     }
     if (path === "/api/v1/media" || path === `/api/v1/instances/${PARTY.id}/media`) {
       options.onMedia?.(path, undefined);
+      const status = options.mediaStatus?.() ?? 200;
+      if (status !== 200) {
+        await route.fulfill({ status, headers: { ...CORS_HEADERS, "content-type": "application/json" }, body: JSON.stringify({ error: { code: "server_error", message: "failed" } }) });
+        return;
+      }
       await route.fulfill({ status: 200, headers: { ...CORS_HEADERS, "content-type": "application/json" }, body: JSON.stringify({ id: "uploaded-media" }) });
       return;
     }
@@ -129,6 +136,13 @@ async function emitPhoto(page: import("@playwright/test").Page, id = "camera-1")
   }, id);
 }
 
+async function photoCalls(page: import("@playwright/test").Page, name: string): Promise<number> {
+  return page.evaluate((callName) => {
+    const mock = (window as unknown as { __chainPhotosMock?: { calls?: string[] } }).__chainPhotosMock;
+    return (mock?.calls ?? []).filter((call) => call === callName).length;
+  }, name);
+}
+
 async function waitForPhotoMock(page: import("@playwright/test").Page): Promise<void> {
   await page.waitForFunction(() => Boolean((window as unknown as { __chainPhotosMock?: { ready?: boolean } }).__chainPhotosMock?.ready));
 }
@@ -139,6 +153,7 @@ test.describe("写真共有の判定", () => {
       mediaStoreId: "1",
       takenAt: "2026-01-01T10:00:00Z",
       uri: "content://1",
+      foundAt: "2026-01-01T10:00:05Z",
     };
     expect(
       isPhotoInParty(photo, {
@@ -185,6 +200,7 @@ test.describe("写真共有の判定", () => {
       mediaStoreId: "camera-1",
       takenAt: "2026-01-01T10:00:00Z",
       uri: "content://DCIM/Camera/camera-1",
+      foundAt: "2026-01-01T10:00:05Z",
     };
     photos.emitPhoto(photo);
     expect((await photos.listPending()).items).toHaveLength(1);
@@ -430,5 +446,138 @@ test.describe("写真共有の画面フロー", () => {
     await expect(page.locator("header").getByText("設定", { exact: true })).toBeVisible();
     await page.goto("/profile/");
     await expect(page.locator("body")).toContainText("プロフィール");
+  });
+
+  test("待機中に presence 更新が続いても 60 秒で一度だけ送り、監視をやり直さない", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-10-17T03:10:00Z") });
+    await preparePage(page, { autoShare: true, saveToDevice: false });
+    const sent: string[] = [];
+    await mockPhotoApi(page, { onMedia: (path) => sent.push(path) });
+    let socket: import("@playwright/test").WebSocketRoute | undefined;
+    await page.routeWebSocket(/\/api\/v1\/ws$/, (ws) => {
+      socket = ws;
+      ws.onMessage((message) => {
+        if (JSON.parse(String(message)).type === "auth") {
+          ws.send(JSON.stringify({ type: "ready", did: "did:plc:testuser" }));
+        }
+      });
+    });
+    await page.goto("/party/");
+    await expect.poll(() => socket !== undefined).toBeTruthy();
+    await emitPhoto(page);
+    await expect(page.getByText("1 枚を共有します")).toBeVisible();
+    for (let i = 0; i < 4; i += 1) {
+      socket?.send(JSON.stringify({ type: "event", event: "party.updated", space: PARTY.id, data: { id: PARTY.id, name: PARTY.name, phase: "confirmed", locked: false, present: ["did:plc:testuser"] } }));
+      await page.waitForTimeout(50);
+      await page.clock.fastForward(10_000);
+    }
+    expect(sent).toEqual([]);
+    await page.clock.fastForward(20_000);
+    await expect.poll(() => sent.length).toBe(2);
+    await page.clock.fastForward(120_000);
+    expect(sent.filter((path) => path === "/api/v1/media")).toHaveLength(1);
+    expect(await photoCalls(page, "startWatching")).toBe(1);
+  });
+
+  test("foundAt から 50 秒経った写真は開き直し後およそ 10 秒で送る", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-10-17T03:10:00Z") });
+    await page.addInitScript(() => {
+      (window as unknown as { __chainPhotosMockPending: unknown[] }).__chainPhotosMockPending = [
+        { mediaStoreId: "resume-1", takenAt: "2026-10-17T03:09:00Z", uri: "content://DCIM/Camera/resume-1", foundAt: "2026-10-17T03:09:10Z" },
+      ];
+    });
+    await preparePage(page, { autoShare: true, saveToDevice: false });
+    const sent: string[] = [];
+    await mockPhotoApi(page, { onMedia: (path) => sent.push(path) });
+    await page.goto("/party/");
+    await expect(page.getByText("1 枚を共有します")).toBeVisible();
+    await page.clock.fastForward(5_000);
+    await page.waitForTimeout(50);
+    expect(sent).toEqual([]);
+    await page.clock.fastForward(6_000);
+    await expect.poll(() => sent.length).toBe(2);
+  });
+
+  test("期限を過ぎた pending は開いてすぐ送る", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-10-17T03:10:00Z") });
+    await page.addInitScript(() => {
+      (window as unknown as { __chainPhotosMockPending: unknown[] }).__chainPhotosMockPending = [
+        { mediaStoreId: "late-1", takenAt: "2026-10-17T03:05:00Z", uri: "content://DCIM/Camera/late-1", foundAt: "2026-10-17T03:06:00Z" },
+      ];
+    });
+    await preparePage(page, { autoShare: true, saveToDevice: false });
+    const sent: string[] = [];
+    await mockPhotoApi(page, { onMedia: (path) => sent.push(path) });
+    await page.goto("/party/");
+    await expect.poll(() => sent.length).toBe(2);
+  });
+
+  test("watchError の permission_revoked で設定をオフにし、次回だけ Notice を出す", async ({ page }) => {
+    await preparePage(page, { autoShare: true, saveToDevice: false });
+    await mockPhotoApi(page);
+    await page.goto("/party/");
+    await expect.poll(() => photoCalls(page, "startWatching")).toBe(1);
+    await page.evaluate(() => (window as unknown as { __chainPhotosMock: { emitWatchError: (reason: string) => void } }).__chainPhotosMock.emitWatchError("query_failed"));
+    await page.waitForTimeout(100);
+    expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}").autoShare, PHOTO_SETTINGS_KEY)).toBe(true);
+    await page.evaluate(() => (window as unknown as { __chainPhotosMock: { emitWatchError: (reason: string) => void } }).__chainPhotosMock.emitWatchError("permission_revoked"));
+    await expect.poll(() => page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}").autoShare, PHOTO_SETTINGS_KEY)).toBe(false);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("chain.party.photos.permission-notice"))).toBe("1");
+    await page.goto("/settings/");
+    await expect(page.locator('[role="alert"]').filter({ hasText: "権限が無くなった" })).toBeVisible();
+    await page.reload();
+    await expect(page.locator('[role="alert"]').filter({ hasText: "権限が無くなった" })).toHaveCount(0);
+  });
+
+  test("startWatching が権限以外で失敗しても設定を保ち、前面復帰で再試行する", async ({ page }) => {
+    await preparePage(page, { autoShare: true, saveToDevice: false });
+    await page.addInitScript(() => {
+      (window as unknown as { __chainPhotosMock: { startError?: string } }).__chainPhotosMock.startError = "boom";
+    });
+    await mockPhotoApi(page);
+    await page.goto("/party/");
+    await expect.poll(() => photoCalls(page, "startWatching")).toBe(1);
+    await page.waitForTimeout(100);
+    expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}").autoShare, PHOTO_SETTINGS_KEY)).toBe(true);
+    expect(await page.evaluate(() => localStorage.getItem("chain.party.photos.permission-notice"))).toBeNull();
+    await page.evaluate(() => {
+      (window as unknown as { __chainPhotosMock: { failStart: (message: string | null) => void } }).__chainPhotosMock.failStart(null);
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(() => photoCalls(page, "startWatching")).toBe(2);
+    // 成功後の前面復帰では、これ以上やり直さない。
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await page.waitForTimeout(100);
+    expect(await photoCalls(page, "startWatching")).toBe(2);
+  });
+
+  test("アップロードの成功でも失敗でも一時ファイルを解放する", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-10-17T03:10:00Z") });
+    await preparePage(page, { autoShare: true, saveToDevice: false });
+    const sent: string[] = [];
+    let status = 500;
+    await mockPhotoApi(page, { onMedia: (path) => sent.push(path), mediaStatus: () => status });
+    await page.goto("/party/");
+    await emitPhoto(page);
+    await page.clock.fastForward(60_000);
+    await expect.poll(() => photoCalls(page, "releasePhoto")).toBeGreaterThanOrEqual(1);
+    const afterFailure = await photoCalls(page, "releasePhoto");
+    expect(sent.filter((path) => path === `/api/v1/instances/${PARTY.id}/media`)).toHaveLength(0);
+    await expect(page.getByText("1 枚を共有します")).toBeVisible();
+    status = 200;
+    await page.clock.fastForward(35_000);
+    await expect.poll(() => sent.filter((path) => path === `/api/v1/instances/${PARTY.id}/media`).length).toBe(1);
+    await expect.poll(() => photoCalls(page, "releasePhoto")).toBeGreaterThan(afterFailure);
+  });
+
+  test("起動時に自動共有がオフなら ChainPhotos を呼ばない", async ({ page }) => {
+    await preparePage(page, { autoShare: false, saveToDevice: false });
+    await mockPhotoApi(page);
+    await page.goto("/party/");
+    await expect(page.getByRole("heading", { name: PARTY.name })).toBeVisible();
+    await page.waitForTimeout(200);
+    const ready = await page.evaluate(() => (window as unknown as { __chainPhotosMock?: { ready?: boolean } }).__chainPhotosMock?.ready);
+    expect(ready).toBeFalsy();
+    expect(await page.evaluate(() => (window as unknown as { __chainPhotosMock: { calls: string[] } }).__chainPhotosMock.calls)).toEqual([]);
   });
 });

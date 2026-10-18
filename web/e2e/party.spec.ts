@@ -287,6 +287,8 @@ test.describe("party", () => {
     });
     await page.goto("/party/");
     await expect.poll(() => socket !== undefined).toBeTruthy();
+    // ページの準備前にイベントを送ると取りこぼすので、party の表示を待つ。
+    await expect(page.getByRole("heading", { name: PARTY.name })).toBeVisible();
 
     socket?.send(JSON.stringify({
       type: "event",
