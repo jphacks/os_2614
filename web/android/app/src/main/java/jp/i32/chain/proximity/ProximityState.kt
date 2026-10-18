@@ -45,6 +45,9 @@ object ProximityState {
     /** 同じ token の sighting イベントを JS に送る最短間隔 */
     private const val SIGHTING_EVENT_INTERVAL_MS = 5_000L
 
+    /** F-04: throttle マップの上限。超えたら古い順に落とす (adversarial token 増殖の歯止め)。 */
+    private const val MAX_SIGHTING_EVENT_ENTRIES = 2_048
+
     class Token(val windowStartSec: Long, val bytes: ByteArray)
 
     @Volatile var windowSec: Long = 900
@@ -63,7 +66,13 @@ object ProximityState {
     /** 語彙外の値は無視する。lastError を statusJson() に出す唯一の経路をここに集約する。 */
     @Volatile var lastError: String? = null
         set(value) {
-            field = if (isValidProximityError(value)) value else null
+            if (isValidProximityError(value)) {
+                field = value
+            } else {
+                // F-08: typo / rename で status が黙って null になるのを避け、バグを可視化する。
+                runCatching { Log.w(TAG, "dropping unknown lastError: $value") }
+                field = null
+            }
         }
 
     private val sightings = SightingAggregator()
@@ -87,42 +96,57 @@ object ProximityState {
     /** backend の時計での現在時刻 */
     fun now(): Long = System.currentTimeMillis() + clockOffsetMs
 
-    /** load は絶対に例外を投げない。失敗した部品はログだけ残して in-memory 側にフォールバックする。 */
+    /**
+     * load は絶対に例外を投げない。失敗した部品はログだけ残して in-memory 側にフォールバックする。
+     *
+     * [secureFactory] / [storeFactory] はテスト seam。既定は本番の実装 ([SecureStore.create] /
+     * [SightingStore])。`loaded` は初期化が最後まで通ってから立てるので、暗号化値の復号失敗
+     * (F-01) などで途中終了しても再ロードできる。
+     */
     @Synchronized
-    fun load(context: Context) {
+    fun load(
+        context: Context,
+        secureFactory: (Context) -> SecureStore = SecureStore::create,
+        storeFactory: (Context) -> SightingStore? = { SightingStore(it) },
+    ) {
         if (loaded) return
-        loaded = true
 
-        val secured = runCatching { SecureStore.create(context) }
+        val secured = runCatching { secureFactory(context) }
             .getOrElse { e ->
-                Log.w(TAG, "secure store unavailable: ${e.javaClass.simpleName}", e)
+                logWarn("secure store unavailable: ${e.javaClass.simpleName}", e)
                 null
             }
         secure = secured
         if (secured != null) {
-            if (!secured.usable) Log.w(TAG, "secure store unusable: ${secured.lastError}")
+            if (!secured.usable) logWarn("secure store unusable: ${secured.lastError}")
             // 平文 chain_proximity からの移行は 1 回だけ。冪等なので loaded ガード内で呼ぶ。
             runCatching { secured.migrate(context) }
-                .onFailure { Log.w(TAG, "secure store migration failed", it) }
+                .onFailure { logWarn("secure store migration failed", it) }
         }
 
-        windowSec = secured?.getLong(KEY_WINDOW_SEC, 900) ?: 900
+        // F-01: EncryptedSharedPreferences は READ 時にも SecurityException を投げうる。
+        // どの read も guarded で包み、失敗時は既定値に落として load を絶対に throw させない。
+        windowSec = guarded("window_sec", 900L) { secured?.getLong(KEY_WINDOW_SEC, 900L) ?: 900L }
         sampler.clear()
-        clockOffsetMs = sampler.add(secured?.getLong(KEY_CLOCK_OFFSET, 0) ?: 0)
+        clockOffsetMs = sampler.add(guarded("clock_offset_ms", 0L) { secured?.getLong(KEY_CLOCK_OFFSET, 0L) ?: 0L })
+        val tokensJson = guarded("tokens", "[]") { secured?.getString(KEY_TOKENS) ?: "[]" }
         tokens = runCatching {
-            val array = JSONArray(secured?.getString(KEY_TOKENS) ?: "[]")
+            val array = JSONArray(tokensJson)
             (0 until array.length()).map {
                 val item = array.getJSONObject(it)
                 Token(item.getLong("w"), decodeToken(item.getString("t")))
             }
         }.getOrDefault(emptyList())
 
-        store = runCatching { SightingStore(context) }
-            .onFailure { Log.w(TAG, "room sighting store unavailable; using in-memory aggregator", it) }
+        store = runCatching { storeFactory(context) }
+            .onFailure { logWarn("room sighting store unavailable; using in-memory aggregator", it) }
             .getOrNull()
+
+        loaded = true
     }
 
-    fun setTokens(context: Context, windowSec: Long, tokens: List<Token>) {
+    // F-09: plaintext SharedPreferences 時代の未使用 `context` 引数は削除した (呼び出し元も更新済み)。
+    fun setTokens(windowSec: Long, tokens: List<Token>) {
         this.windowSec = windowSec
         this.tokens = tokens.sortedBy { it.windowStartSec }
         val array = JSONArray()
@@ -136,12 +160,12 @@ object ProximityState {
         emitStatus()
     }
 
-    fun setClockOffset(context: Context, offsetMs: Long) {
+    fun setClockOffset(offsetMs: Long) {
         // 生のサンプルではなく、直近サンプルの中央値を採用して保存する。
         val median = sampler.add(offsetMs)
         clockOffsetMs = median
         secure?.putLong(KEY_CLOCK_OFFSET, median)
-        if (sampler.shouldWarn()) Log.w(TAG, "clock offset is large: ${median}ms")
+        if (sampler.shouldWarn()) logWarn("clock offset is large: ${median}ms")
         onBeaconConfigChanged?.invoke()
         emitStatus()
     }
@@ -157,6 +181,7 @@ object ProximityState {
         val now = now()
         val active = store
         if (active != null) active.record(token, now, rssi) else sightings.record(token, now, rssi)
+        pruneSightingEvents(now)
         val last = lastSightingEvent[token]
         if (last == null || now - last >= SIGHTING_EVENT_INTERVAL_MS) {
             lastSightingEvent[token] = now
@@ -182,13 +207,13 @@ object ProximityState {
                     .put("count", agg.count),
             )
         }
-        val cutoff = now - SIGHTING_EVENT_INTERVAL_MS
-        lastSightingEvent.entries.removeIf { it.value < cutoff }
+        pruneSightingEvents(now)
         return items
     }
 
     fun statusJson(): JSObject {
         val validUntil = tokens.lastOrNull()?.let { (it.windowStartSec + windowSec) * 1000 }
+        val now = now()
         return JSObject()
             .put("running", running)
             .put("bluetoothEnabled", bluetoothEnabled)
@@ -196,7 +221,8 @@ object ProximityState {
             .put("scanning", scanning)
             .put("currentWindowStart", currentWindowStartSec?.let { iso(it * 1000) } ?: JSONObject.NULL)
             .put("tokensValidUntil", validUntil?.let { iso(it) } ?: JSONObject.NULL)
-            .put("pendingSightings", store?.pending() ?: sightings.pending())
+            // F-04: TTL 切れは数えない (drain まで放置しない)。
+            .put("pendingSightings", store?.pending(now) ?: sightings.pending(now))
             .put("clockOffsetMs", clockOffsetMs)
             .put("lastError", lastError ?: JSONObject.NULL)
     }
@@ -212,4 +238,36 @@ object ProximityState {
 
     fun decodeToken(value: String): ByteArray =
         Base64.decode(value, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+
+    /**
+     * F-04: 5 秒 throttle マップを record 時にも剪定し、上限も設ける。
+     * (drain まで放置すると、WebView が死んで drain が来ない間 token ごとに増え続ける。)
+     */
+    private fun pruneSightingEvents(now: Long) {
+        val cutoff = now - SIGHTING_EVENT_INTERVAL_MS
+        lastSightingEvent.entries.removeIf { it.value < cutoff }
+        if (lastSightingEvent.size > MAX_SIGHTING_EVENT_ENTRIES) {
+            lastSightingEvent.entries
+                .sortedBy { it.value }
+                .take(lastSightingEvent.size - MAX_SIGHTING_EVENT_ENTRIES)
+                .forEach { lastSightingEvent.remove(it.key) }
+        }
+    }
+
+    /**
+     * 暗号化ストアの read を 1 箇所で握る。EncryptedSharedPreferences は read 時に
+     * SecurityException (値の復号失敗) を投げうるため、ここで既定値へ落とす。
+     * JVM 単体テストでは android.util.Log が無いので、ログ自体も握る。
+     */
+    internal fun <T> guarded(what: String, fallback: T, read: () -> T): T =
+        runCatching { read() }.getOrElse { e ->
+            logWarn("$what read failed: ${e.javaClass.simpleName}", e)
+            fallback
+        }
+
+    private fun logWarn(message: String, error: Throwable? = null) {
+        runCatching {
+            if (error != null) Log.w(TAG, message, error) else Log.w(TAG, message)
+        }
+    }
 }

@@ -28,6 +28,8 @@ import type {
 import {
   isKnownEvent,
   REALTIME_EVENT_NAMES,
+  type FeedUpdatedData,
+  type GroupUpdatedData,
   type PartyUpdatedData,
   type RealtimeEventDataMap,
   type RealtimeEventName,
@@ -84,6 +86,10 @@ export interface RealtimeCache {
   readonly friendEvents: RealtimeFriendEvent[];
   /** `party.updated` の最新値。未受信は null。 */
   readonly party: PartyUpdatedData | null;
+  /** `group.updated` の最新値。キーはグループ (= Space) の id。 */
+  readonly groupUpdates: Readonly<Record<string, GroupUpdatedData>>;
+  /** `feed.updated` の最新値。未受信は null。 */
+  readonly feed: FeedUpdatedData | null;
   /** Space ごとの差分。キーは spaceId (無ければ空文字)。 */
   readonly spaces: Readonly<Record<string, RealtimeSpaceState>>;
 }
@@ -108,6 +114,8 @@ function emptyCache(): RealtimeCache {
     encounters: [],
     friendEvents: [],
     party: null,
+    groupUpdates: {},
+    feed: null,
     spaces: {},
   };
 }
@@ -224,6 +232,16 @@ export class RealtimeStore {
       }
       case "party.updated":
         return { ...state, revision, party: data as PartyUpdatedData };
+      case "group.updated": {
+        const group = data as GroupUpdatedData;
+        return {
+          ...state,
+          revision,
+          groupUpdates: { ...state.groupUpdates, [group.id]: group },
+        };
+      }
+      case "feed.updated":
+        return { ...state, revision, feed: data as FeedUpdatedData };
       case "post.created":
       case "post.deleted":
       case "media.created":

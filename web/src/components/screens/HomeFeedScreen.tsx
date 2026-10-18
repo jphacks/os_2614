@@ -18,21 +18,27 @@ import { PressableLink } from "@/components/ui/Pressable";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import styles from "./HomeFeedScreen.module.css";
 
-/** フィードの取得元 (17 §3.1)。ホームは公開投稿、グループは参加中グループの投稿。 */
-export type FeedSource = "home" | "groups";
+/**
+ * フィードの取得元 (17 §3.1)。ホームは公開投稿、近くは今この場にいる人 (近接) の投稿、
+ * グループは参加中グループの投稿。
+ */
+export type FeedSource = "home" | "nearby" | "groups";
 
 const SOURCES: { value: FeedSource; label: string }[] = [
   { value: "home", label: "ホーム" },
+  { value: "nearby", label: "近く" },
   { value: "groups", label: "グループ" },
 ];
 
 const SUBTITLES: Record<FeedSource, string> = {
   home: "フレンドやすれ違った人の公開投稿",
+  nearby: "今この場にいる人の投稿",
   groups: "参加中のグループの投稿",
 };
 
 const EMPTY_DESCRIPTIONS: Record<FeedSource, string> = {
   home: "フレンドやすれ違った人の公開投稿がここに並びます。",
+  nearby: "今この場にいる人の投稿がここに並びます。",
   groups: "参加中のグループに投稿されると、ここに並びます。",
 };
 

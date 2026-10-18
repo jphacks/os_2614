@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -17,8 +18,10 @@ import (
 	encountermodel "github.com/applemango/chain/internal/model/encounter"
 	friendmodel "github.com/applemango/chain/internal/model/friend"
 	spacemodel "github.com/applemango/chain/internal/model/space"
+	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service/access"
 	"github.com/applemango/chain/internal/service/core"
+	"github.com/applemango/chain/internal/service/proximity"
 	"github.com/applemango/chain/internal/storage"
 	"github.com/applemango/chain/internal/utils"
 )
@@ -29,6 +32,7 @@ import (
 const (
 	feedHome        = "home"
 	feedGroups      = "groups"
+	feedNearby      = "nearby"
 	feedSpacePrefix = "space:"
 	feedUserPrefix  = "user:"
 
@@ -100,8 +104,9 @@ func NewSystemFeedItem(uri string, sp *FeedSpace, text, authorDID string, create
 // FeedService は source から要素を集めて 1 つのフィードにする。
 type FeedService struct {
 	core.Deps
-	Access access.AccessChecker
-	Signer storage.Signer
+	Access    access.AccessChecker
+	Signer    storage.Signer
+	Proximity proximity.PeerProximity
 }
 
 // List は source（カンマ区切りで複数可）からフィードを返す（17 §3.1）。
@@ -168,6 +173,8 @@ func (s *FeedService) buildSource(name string) (FeedSource, error) {
 		return &homeSource{f: s}, nil
 	case name == feedGroups:
 		return &groupsSource{f: s}, nil
+	case name == feedNearby:
+		return &nearbySource{f: s}, nil
 	case strings.HasPrefix(name, feedSpacePrefix):
 		id := strings.TrimPrefix(name, feedSpacePrefix)
 		if id == "" {
@@ -284,16 +291,23 @@ func (s *homeSource) Fetch(ctx context.Context, viewer string, before FeedCursor
 }
 
 func (s *FeedService) homeAuthors(ctx context.Context, viewer string) ([]string, error) {
+	return homeAuthors(ctx, s.DB, s.Clock, viewer)
+}
+
+// homeAuthors は viewer の home フィードに入る著者（自分・フレンド・直近 30 日に revealed な
+// encounter の相手）を返す（17 §3.1）。FeedService 以外（feed.updated の宛先の組み立て）からも
+// 使えるように、DB と Clock だけで動く package 関数にしてある（17 §3.4）。
+func homeAuthors(ctx context.Context, db *sql.DB, clk clock.Clock, viewer string) ([]string, error) {
 	set := map[string]bool{viewer: true}
-	friends, err := friendmodel.ListFriendships(ctx, s.DB, viewer)
+	friends, err := friendmodel.ListFriendships(ctx, db, viewer)
 	if err != nil {
 		return nil, err
 	}
 	for _, fr := range friends {
 		set[otherDID(fr.UserA, fr.UserB, viewer)] = true
 	}
-	since := s.Clock.Now().Add(-encounterFeedWindow)
-	peers, err := encountermodel.ListRevealedEncounterPeers(ctx, s.DB, viewer, since)
+	since := clk.Now().Add(-encounterFeedWindow)
+	peers, err := encountermodel.ListRevealedEncounterPeers(ctx, db, viewer, since)
 	if err != nil {
 		return nil, err
 	}
@@ -306,6 +320,22 @@ func (s *FeedService) homeAuthors(ctx context.Context, viewer string) ([]string,
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// publishHomeFeedUpdated は公開投稿が索引に入ったことを、投稿者と homeAuthors の相手へ知らせる（17 §3.4）。
+// 中身は載せず、受けた側が GET /feed?source=home で取り直す。失敗は呼び出し元を失敗させない。
+func publishHomeFeedUpdated(ctx context.Context, db *sql.DB, clk clock.Clock, broker realtime.Broker, authorDID string) {
+	if broker == nil {
+		return
+	}
+	recipients, err := homeAuthors(ctx, db, clk, authorDID)
+	if err != nil {
+		slog.WarnContext(ctx, "feed updated (home): homeAuthors failed", "err", err)
+		return
+	}
+	for _, did := range recipients {
+		broker.Publish(ctx, realtime.Event{Name: "feed.updated", User: did, Data: map[string]string{"source": "home"}})
+	}
 }
 
 func otherDID(a, b, me string) string {
@@ -424,6 +454,44 @@ func (s *FeedService) checkUserSource(ctx context.Context, viewer, target string
 		return httpx.ErrNotFound
 	}
 	return nil
+}
+
+// nearbySource は今近くにいる相手（自分を含む）の nearby 投稿（17 §3 の source=nearby）。
+// 近接が使えない（Proximity == nil）ときは何も返さない。
+type nearbySource struct{ f *FeedService }
+
+func (s *nearbySource) Fetch(ctx context.Context, viewer string, before FeedCursor, limit int) ([]FeedItem, error) {
+	if s.f.Proximity == nil {
+		return []FeedItem{}, nil
+	}
+	authors, err := nearbyAuthors(ctx, s.f.Proximity, viewer)
+	if err != nil {
+		return nil, err
+	}
+	posts, err := model.ListNearbyPublicPosts(ctx, s.f.DB, authors, s.f.Clock.Now(), beforeMillis(before), before.URI, limit)
+	if err != nil {
+		return nil, err
+	}
+	return nearbyPostItems(posts), nil
+}
+
+// nearbyAuthors は viewer と今近くにいる相手（Neighbors の DID）を、重複なく並べた DID の一覧にする（17 §3）。
+// nearby フィードの著者と、feed.updated{source:"nearby"} の宛先の両方に使う。prox は非 nil であること。
+func nearbyAuthors(ctx context.Context, prox proximity.PeerProximity, viewer string) ([]string, error) {
+	neighbors, err := prox.Neighbors(ctx, viewer, core.NearbyAudienceWindow)
+	if err != nil {
+		return nil, err
+	}
+	set := map[string]bool{viewer: true}
+	for _, n := range neighbors {
+		set[n.DID] = true
+	}
+	out := make([]string, 0, len(set))
+	for did := range set {
+		out = append(out, did)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func (s *FeedService) checkRead(ctx context.Context, spaceID, viewer string) error {
@@ -567,6 +635,26 @@ func publicPostItem(p model.PublicPost) FeedItem {
 		it.Bsky = &BskyRef{URI: p.BskyURI}
 	}
 	return it
+}
+
+func nearbyPostItems(posts []model.PublicPost) []FeedItem {
+	items := make([]FeedItem, 0, len(posts))
+	for _, p := range posts {
+		items = append(items, nearbyPostItem(p))
+	}
+	return items
+}
+
+func nearbyPostItem(p model.PublicPost) FeedItem {
+	return FeedItem{
+		Kind:      "nearby_post",
+		URI:       p.URI,
+		Text:      p.Text,
+		Format:    "plain",
+		CreatedAt: p.CreatedAt,
+		authorDID: p.AuthorDID,
+		modLabel:  p.ModLabel,
+	}
 }
 
 func FeedSpaceOf(sp *spacemodel.Space) *FeedSpace {

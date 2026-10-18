@@ -81,13 +81,14 @@ func (s *MeService) Get(ctx context.Context, did string) (*Me, error) {
 
 // SettingsUpdate は controller から渡される、来た項目だけの更新内容。
 type SettingsUpdate struct {
-	EncounterMode     *string
-	EncounterDelaySec *int
-	FriendBeaconShare *bool
-	PartyAuto         *bool
-	NaturalGroups     *bool
-	WarnDisplay       *string
-	Notify            map[string]bool // nil = 変更なし。{} も「通知設定を変更する」を意味する
+	EncounterMode        *string
+	EncounterDelaySec    *int
+	FriendBeaconShare    *bool
+	PartyAuto            *bool
+	NaturalGroups        *bool
+	RecordEncounterPlace *bool
+	WarnDisplay          *string
+	Notify               map[string]bool // nil = 変更なし。{} も「通知設定を変更する」を意味する
 }
 
 func (s *MeService) UpdateSettings(ctx context.Context, did string, u SettingsUpdate) (*model.UserSettings, error) {
@@ -101,12 +102,13 @@ func (s *MeService) UpdateSettings(ctx context.Context, did string, u SettingsUp
 	}
 
 	patch := model.SettingsPatch{
-		EncounterMode:     u.EncounterMode,
-		EncounterDelaySec: u.EncounterDelaySec,
-		FriendBeaconShare: u.FriendBeaconShare,
-		PartyAuto:         u.PartyAuto,
-		NaturalGroups:     u.NaturalGroups,
-		WarnDisplay:       u.WarnDisplay,
+		EncounterMode:        u.EncounterMode,
+		EncounterDelaySec:    u.EncounterDelaySec,
+		FriendBeaconShare:    u.FriendBeaconShare,
+		PartyAuto:            u.PartyAuto,
+		NaturalGroups:        u.NaturalGroups,
+		RecordEncounterPlace: u.RecordEncounterPlace,
+		WarnDisplay:          u.WarnDisplay,
 	}
 
 	if u.Notify != nil {

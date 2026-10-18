@@ -25,6 +25,7 @@ const (
 	NotificationGroupVotePassed     = "group.vote_passed"
 	NotificationGroupInvited        = "group.invited"
 	NotificationGroupInviteApproval = "group.invite_approval"
+	NotificationPostCreated         = "post.new"
 )
 
 // ModerationHiddenPayload は moderation.hidden の payload（12 §3）。遷移先は Space。

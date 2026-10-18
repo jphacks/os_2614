@@ -252,4 +252,79 @@ test.describe("home feed", () => {
 
     await expect(page.getByText("まだ投稿がありません")).toBeVisible();
   });
+
+  test("switches to the nearby source and renders the nearby posts", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    const sources: (string | null)[] = [];
+    await mockApi(page, async (route, request) => {
+      if (apiPath(request.url()) === "/api/v1/feed") {
+        const source = new URL(request.url()).searchParams.get("source");
+        sources.push(source);
+        await fulfillJson(
+          route,
+          200,
+          source === "nearby"
+            ? {
+                items: [
+                  {
+                    kind: "nearby_post",
+                    uri: "at://did:plc:dave/app.bsky.feed.post/4",
+                    author: {
+                      did: "did:plc:dave",
+                      handle: "dave.bsky.social",
+                      displayName: "デイブ",
+                    },
+                    text: "この場にいるよ",
+                    createdAt: "2026-10-05T11:00:00Z",
+                  },
+                ],
+              }
+            : PAGE_ONE,
+        );
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/home/");
+    await expect(page.getByText("はじめまして")).toBeVisible();
+
+    const nearby = page.getByRole("radio", { name: "近く" });
+    await expect(nearby).toBeVisible();
+    await nearby.click();
+
+    await expect(page.getByText("この場にいるよ")).toBeVisible();
+    await expect(page.getByText("はじめまして")).toHaveCount(0);
+    expect(sources).toEqual(["home", "nearby"]);
+  });
+
+  test("shows the nearby empty explanation when the nearby feed is empty", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    const sources: (string | null)[] = [];
+    await mockApi(page, async (route, request) => {
+      if (apiPath(request.url()) === "/api/v1/feed") {
+        const source = new URL(request.url()).searchParams.get("source");
+        sources.push(source);
+        await fulfillJson(route, 200, source === "nearby" ? { items: [] } : PAGE_ONE);
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/home/");
+    await expect(page.getByText("はじめまして")).toBeVisible();
+
+    await page.getByRole("radio", { name: "近く" }).click();
+
+    await expect(
+      page.getByText("今この場にいる人の投稿がここに並びます。", { exact: true }),
+    ).toBeVisible();
+    expect(sources).toEqual(["home", "nearby"]);
+  });
 });

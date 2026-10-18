@@ -122,6 +122,47 @@ func (f *FakeZonePresence) Inside(_ context.Context, u string, _ proximity.Zone,
 	return f.inside[u], nil
 }
 
+// FakePeerProximity は近接判定をテストから制御する（05 §3）。既定では隣接者はおらず、
+// Set した相手だけが Neighbors に出る。Observe / Mutual は何もしない。
+type FakePeerProximity struct {
+	mu        sync.Mutex
+	neighbors map[string][]string
+}
+
+func NewFakePeerProximity() *FakePeerProximity {
+	return &FakePeerProximity{neighbors: map[string][]string{}}
+}
+
+var _ proximity.PeerProximity = (*FakePeerProximity)(nil)
+
+func (*FakePeerProximity) Kind() proximity.Kind { return proximity.KindBLE }
+
+// Set は user の隣接者（DID）を設定する。
+func (f *FakePeerProximity) Set(user string, peers ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.neighbors[user] = append([]string(nil), peers...)
+}
+
+func (f *FakePeerProximity) Neighbors(_ context.Context, u string, _ time.Duration) ([]proximity.Neighbor, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	peers := f.neighbors[u]
+	out := make([]proximity.Neighbor, 0, len(peers))
+	for _, did := range peers {
+		out = append(out, proximity.Neighbor{DID: did})
+	}
+	return out, nil
+}
+
+func (*FakePeerProximity) Observe(_ context.Context, _, _ string, _, _ time.Time, _ *int) error {
+	return nil
+}
+
+func (*FakePeerProximity) Mutual(_ context.Context, _, _ string, _ time.Time, _ time.Duration) (bool, error) {
+	return false, nil
+}
+
 // FakeBroker は realtime.Broker の fake。送られたイベントを記録し、テストが
 // 「どのイベントが誰に送られたか」を確かめられるようにする（10 §7.3）。
 type FakeBroker struct {

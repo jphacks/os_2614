@@ -11,7 +11,7 @@ import { Suspense, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/auth/errors";
 import { getJson, postJson } from "@/data/api";
-import { createFeedPost } from "@/data/feed";
+import { createFeedPost, createNearbyPost } from "@/data/feed";
 import type {
   CreatePostResult,
   Instance as InstanceDTO,
@@ -29,6 +29,7 @@ import {
   MAX_MEDIA_COUNT,
   buildCreatePostBody,
   hasPendingAttachments,
+  isNearbyOnly,
   isPublicOnly,
   uploadMedia,
   validateComposeInput,
@@ -246,6 +247,22 @@ function ComposeForm() {
       return;
     }
     setSubmitting(true);
+    if (isNearbyOnly(input)) {
+      try {
+        await createNearbyPost({ text: input.text });
+        router.push("/home/");
+      } catch (e) {
+        const classified = classifyPostError(e);
+        setError(
+          classified.kind === "unavailable"
+            ? { kind: "invalid", message: "近くの人への投稿はまだ利用できません" }
+            : classified,
+        );
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     if (isPublicOnly(input)) {
       try {
         await createFeedPost({ text: input.text });

@@ -22,6 +22,7 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   "encounter.daily": "今日のすれ違い",
   "encounter.weekly": "今週のすれ違い",
   "encounter.monthly": "今月のすれ違い",
+  "post.new": "新しい投稿があります",
   "moderation.hidden": "投稿が非表示になりました",
 };
 
@@ -35,6 +36,7 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   "encounter.daily": "near_me",
   "encounter.weekly": "near_me",
   "encounter.monthly": "near_me",
+  "post.new": "chat",
   "moderation.hidden": "visibility_off",
 };
 

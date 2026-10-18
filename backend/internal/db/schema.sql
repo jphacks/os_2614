@@ -30,6 +30,7 @@ CREATE TABLE user_settings (
   location_paused      INTEGER NOT NULL DEFAULT 0,        -- 07 §4
   warn_display         TEXT NOT NULL DEFAULT 'blur' CHECK (warn_display IN ('show','blur','hide')),
   natural_groups       INTEGER NOT NULL DEFAULT 1,        -- 09 §8。0 なら自動グループの照合に使わない
+  record_encounter_place INTEGER NOT NULL DEFAULT 0,      -- 06 §7。1 のときだけすれ違い場所（geohash6）を残す
   notify_json          TEXT NOT NULL DEFAULT '{}',        -- 12 §3。種別ごとの on/off
   content_scan_consent_version INTEGER,                    -- 02 §8。NULL なら未同意
   content_scan_consent_at      INTEGER,
@@ -89,7 +90,7 @@ CREATE TABLE encounters (
   max_rssi        INTEGER,
   visibility      TEXT NOT NULL CHECK (visibility IN ('pending','revealed','hidden')),
   reveal_at       INTEGER,                    -- visibility=hidden なら NULL
-  geohash6        TEXT,                       -- P2。双方が場所記録を許可した場合のみ
+  geohash6        TEXT,                       -- 06 §7。双方が場所記録を許可した場合のみ
   CHECK (user_a < user_b)
 );
 CREATE INDEX encounters_pair ON encounters(user_a, user_b, last_seen_at);
@@ -281,9 +282,12 @@ CREATE TABLE public_posts (
   indexed_at  INTEGER NOT NULL,
   deleted_at  INTEGER,
   mod_label   TEXT NOT NULL DEFAULT 'ok',
-  mod_state   TEXT NOT NULL DEFAULT 'pending'
+  mod_state   TEXT NOT NULL DEFAULT 'pending',
+  audience    TEXT NOT NULL DEFAULT 'public' CHECK (audience IN ('public','nearby')),  -- 17 §2。nearby は今近くにいる人だけに配信する限定投稿
+  expires_at  INTEGER                         -- nearby の失効時刻（unix ms）。NULL なら失効しない
 );
 CREATE INDEX public_posts_author ON public_posts(author_did, created_at);
+CREATE INDEX public_posts_audience ON public_posts(audience, created_at);
 
 CREATE TABLE schedule_entries (               -- 09 §8.2。今日と明日の分だけを持つ
   id           TEXT PRIMARY KEY,

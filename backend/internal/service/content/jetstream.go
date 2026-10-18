@@ -10,6 +10,7 @@ import (
 
 	"github.com/applemango/chain/internal/external/atproto"
 	"github.com/applemango/chain/internal/model"
+	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service/core"
 )
 
@@ -38,7 +39,8 @@ type PublicPostBackfiller interface {
 // JetstreamService は Jetstream のイベントを DB に反映し、カーソルを保存する（03 §5）。
 type JetstreamService struct {
 	core.Deps
-	Posts PublicPostLister
+	Posts  PublicPostLister
+	Broker realtime.Broker
 }
 
 var _ PublicPostBackfiller = (*JetstreamService)(nil)
@@ -85,7 +87,11 @@ func (s *JetstreamService) handleCommit(ctx context.Context, did string, c *atpr
 	case CollectionFeedPost:
 		switch c.Operation {
 		case "create", "update":
-			return s.ingestFeedPost(ctx, did, c.RKey, c.CID, c.Record)
+			changed, err := s.ingestFeedPost(ctx, did, c.RKey, c.CID, c.Record)
+			if changed {
+				publishHomeFeedUpdated(ctx, s.DB, s.Clock, s.Broker, did)
+			}
+			return err
 		case "delete":
 			return model.MarkPublicPostDeleted(ctx, s.DB, atproto.FeedPostURI(did, c.RKey), s.Clock.Now())
 		}
@@ -98,14 +104,15 @@ func (s *JetstreamService) handleCommit(ctx context.Context, did string, c *atpr
 }
 
 // ingestFeedPost は feed.post の record を検証して public_posts に入れ、変わったら moderation に積む。
-func (s *JetstreamService) ingestFeedPost(ctx context.Context, did, rkey, cid string, raw json.RawMessage) error {
+// 変わったかどうかを返す。feed.updated の配信は呼び出し側が行う（初回の読み込みでは 1 回にまとめるため）。
+func (s *JetstreamService) ingestFeedPost(ctx context.Context, did, rkey, cid string, raw json.RawMessage) (bool, error) {
 	if rkey == "" {
-		return nil
+		return false, nil
 	}
 	rec, err := atproto.ParseFeedPost(raw)
 	if err != nil {
 		slog.WarnContext(ctx, "jetstream: dropping invalid feed.post record", "did", did, "err", err)
-		return nil
+		return false, nil
 	}
 	p := model.PublicPost{
 		URI: atproto.FeedPostURI(did, rkey), CID: cid, AuthorDID: did,
@@ -116,12 +123,12 @@ func (s *JetstreamService) ingestFeedPost(ctx context.Context, did, rkey, cid st
 	}
 	changed, err := model.UpsertPublicPost(ctx, s.DB, p)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if changed {
-		return model.EnqueueModerationJob(ctx, s.Redis, p.URI)
+		return true, model.EnqueueModerationJob(ctx, s.Redis, p.URI)
 	}
-	return nil
+	return false, nil
 }
 
 // updateBskyProfile は app.bsky.actor.profile を profiles に反映する（13 §1.1）。status は消さない。
@@ -188,11 +195,17 @@ func (s *JetstreamService) BackfillPublicPosts(ctx context.Context, did, pdsURL 
 	if err != nil {
 		return err
 	}
+	anyChanged := false
 	for _, p := range posts {
 		rkey := atproto.RKeyFromURI(p.URI)
-		if err := s.ingestFeedPost(ctx, did, rkey, p.CID, p.Value); err != nil {
+		changed, err := s.ingestFeedPost(ctx, did, rkey, p.CID, p.Value)
+		anyChanged = anyChanged || changed
+		if err != nil {
 			return err
 		}
+	}
+	if anyChanged {
+		publishHomeFeedUpdated(ctx, s.DB, s.Clock, s.Broker, did)
 	}
 	return nil
 }

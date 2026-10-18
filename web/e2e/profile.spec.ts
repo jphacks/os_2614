@@ -661,7 +661,7 @@ test.describe("profile edit", () => {
       buffer: PNG_4X4,
     });
 
-    const cropDialog = page.getByRole("dialog", { name: "アイコンを切り抜く" });
+    const cropDialog = page.getByRole("dialog", { name: "アイコンを調整" });
     const cropImage = cropDialog.locator("img");
     await expect(cropDialog.getByRole("alert").filter({ hasText: "画像を読み込めませんでした" })).toHaveCount(0);
     await expect.poll(() => cropImage.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
@@ -684,8 +684,8 @@ test.describe("profile edit", () => {
       buffer: PNG_60X40,
     });
 
-    const cropDialog = page.getByRole("dialog", { name: "バナーを切り抜く" });
-    const frame = cropDialog.locator("[data-crop-frame]");
+    const cropDialog = page.getByRole("dialog", { name: "バナーを調整" });
+    const frame = cropDialog.getByRole("application");
     const image = cropDialog.locator("img");
     await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
     const frameBox = await frame.boundingBox();
@@ -717,7 +717,7 @@ test.describe("profile edit", () => {
     const chooser = page.waitForEvent("filechooser");
     await page.getByRole("button", { name: "アイコンを変更" }).click();
     await (await chooser).setFiles({ name: "avatar.png", mimeType: "image/png", buffer: PNG_4X4 });
-    await page.getByRole("dialog", { name: "アイコンを切り抜く" }).getByRole("button", { name: "決定" }).click();
+    await page.getByRole("dialog", { name: "アイコンを調整" }).getByRole("button", { name: "決定" }).click();
     await page.getByRole("button", { name: "キャンセル" }).last().click();
     await expect(page.getByLabel("名前")).toHaveCount(0);
     expect(api.requests.filter((request) => request === "PUT /api/v1/me/avatar")).toHaveLength(0);
@@ -775,7 +775,7 @@ test.describe("profile edit", () => {
       buffer: PNG_4X4,
     });
 
-    await page.getByRole("dialog", { name: "アイコンを切り抜く" }).getByRole("button", { name: "決定" }).click();
+    await page.getByRole("dialog", { name: "アイコンを調整" }).getByRole("button", { name: "決定" }).click();
     await page.getByRole("button", { name: "保存" }).click();
     await expect(
       page.getByRole("alert").filter({ hasText: "保存できません" }),
@@ -796,7 +796,7 @@ test.describe("profile edit", () => {
     const chooser = page.waitForEvent("filechooser");
     await page.getByRole("button", { name: "アイコンを変更" }).click();
     await (await chooser).setFiles({ name: "avatar.png", mimeType: "image/png", buffer: PNG_4X4 });
-    await page.getByRole("dialog", { name: "アイコンを切り抜く" }).getByRole("button", { name: "決定" }).click();
+    await page.getByRole("dialog", { name: "アイコンを調整" }).getByRole("button", { name: "決定" }).click();
     await page.getByRole("button", { name: "保存" }).click();
     await expect(page.getByText("プロフィールを更新しました")).toBeVisible();
     expect(api.requests.indexOf("PATCH /api/v1/me/profile")).toBe(-1);
@@ -812,7 +812,7 @@ test.describe("profile edit", () => {
     const chooser = page.waitForEvent("filechooser");
     await page.getByRole("button", { name: "アイコンを変更" }).click();
     await (await chooser).setFiles({ name: "avatar.png", mimeType: "image/png", buffer: PNG_4X4 });
-    await page.getByRole("dialog", { name: "アイコンを切り抜く" }).getByRole("button", { name: "決定" }).click();
+    await page.getByRole("dialog", { name: "アイコンを調整" }).getByRole("button", { name: "決定" }).click();
     await page.getByRole("button", { name: "保存" }).click();
     await expect(page.getByText("プロフィールを更新しました")).toBeVisible();
     expect(api.requests.indexOf("PATCH /api/v1/me/profile")).toBeLessThan(api.requests.indexOf("PUT /api/v1/me/avatar"));

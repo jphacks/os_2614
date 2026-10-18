@@ -51,3 +51,8 @@ export { StatsScreen } from "./StatsScreen";
 export type { StatsScreenProps } from "./StatsScreen";
 export { SettingsScreen } from "./SettingsScreen";
 export type { SettingsScreenProps, AccountDeleteResult } from "./SettingsScreen";
+// 差し戻し用に残している旧画面。ページの import を差し替えれば元の UI に戻る。
+export { OldNearbyScreen } from "./OldNearbyScreen";
+export type { OldNearbyScreenProps } from "./OldNearbyScreen";
+export { OldCreateGroupScreen } from "./OldCreateGroupScreen";
+export type { OldCreateGroupScreenProps } from "./OldCreateGroupScreen";

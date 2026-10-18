@@ -18,15 +18,14 @@ interface SightingDao {
     @Query("SELECT * FROM sightings")
     suspend fun getAll(): List<SightingEntity>
 
-    @Query("SELECT * FROM sightings WHERE token = :token LIMIT 1")
-    suspend fun find(token: String): SightingEntity?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: SightingEntity)
 
-    @Query("DELETE FROM sightings")
-    suspend fun deleteAll()
-
+    /**
+     * drain が実際に返した (= FE へ送った) token だけを消す。
+     * `DELETE FROM sightings` で全消ししてはいけない: 送っていない集約の committed 行まで
+     * 消すと、ミラーにしか残らない集約がプロセス死で失われる (IS-1 違反 / F-02 の drain 欠陥)。
+     */
     @Query("DELETE FROM sightings WHERE token IN (:tokens)")
     suspend fun deleteByTokens(tokens: List<String>)
 
@@ -55,7 +54,7 @@ abstract class SightingDatabase : RoomDatabase() {
                     context.applicationContext,
                     SightingDatabase::class.java,
                     NAME,
-                ).fallbackToDestructiveMigration().build().also { instance = it }
+                ).fallbackToDestructiveMigration(dropAllTables = true).build().also { instance = it }
             }
     }
 }

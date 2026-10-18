@@ -16,7 +16,9 @@ import {
   shouldRefreshTokens,
 } from "../src/device/proximity/pipeline";
 
-// 近接パイプラインの起動/停止 (AppShell の ProximityDriver) を検証する。
+// 近接パイプラインの起動/停止 (ProximityDriver) を検証する。ドライバは AppShell では
+// なく src/app/layout.tsx から全ルートに 1 つマウントされるため、AppShell を使わない
+// /compose/ や /group/new/ でも近接パイプラインが起動し続ける (Gap-1 の回帰防止)。
 // 純関数はブラウザを開かずに、ライフサイクルは route mock + addInitScript で検証する。
 // 位置権限は navigator.permissions.query を差し替えて決定的にする (web.ts の
 // checkPermissions はこの API だけを見る)。
@@ -204,7 +206,7 @@ test.describe("shouldRefreshTokens", () => {
   });
 });
 
-test.describe("AppShell proximity driver", () => {
+test.describe("app-wide proximity driver", () => {
   test("signedIn + granted permissions starts the pipeline (running)", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
     await stubLocationPermission(page, "granted");
@@ -256,7 +258,30 @@ test.describe("AppShell proximity driver", () => {
     const driver = page.getByTestId("proximity-driver");
     await expect(driver).toHaveAttribute("data-state", "blocked");
     await expect(driver).toHaveAttribute("data-missing", "location");
-    await expect(driver.getByRole("button", { name: "許可する" })).toBeVisible();
+
+    const button = driver.getByRole("button", { name: "許可する" });
+    await expect(button).toBeVisible();
+
+    // 固定表示の検証: バナーはタップでき (actionability check)、タブバーに重ならない。
+    // trial click は実際には押さず、覆われていないことだけを検証する。
+    await button.click({ trial: true });
+
+    const bannerBox = await driver.getByRole("status").boundingBox();
+    const viewport = page.viewportSize();
+    expect(bannerBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    if (bannerBox && viewport) {
+      expect(bannerBox.y).toBeGreaterThanOrEqual(0);
+      expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(viewport.height + 1);
+    }
+
+    const tabBarBox = await page
+      .getByRole("navigation", { name: "メインナビゲーション" })
+      .boundingBox();
+    expect(tabBarBox).not.toBeNull();
+    if (bannerBox && tabBarBox) {
+      expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(tabBarBox.y + 1);
+    }
   });
 
   test("signedOut does not mount the driver or fetch beacon tokens", async ({ page }) => {
@@ -274,5 +299,19 @@ test.describe("AppShell proximity driver", () => {
 
     await expect(page.getByTestId("proximity-driver")).toHaveCount(0);
     expect(beaconCalls).toHaveLength(0);
+  });
+
+  test("mounts the driver on routes that do not use AppShell", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await stubLocationPermission(page, "granted");
+
+    await mockApi(page, async (route) => {
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+
+    for (const path of ["/compose/", "/group/new/"]) {
+      await page.goto(path);
+      await expect(page.getByTestId("proximity-driver")).toBeAttached();
+    }
   });
 });

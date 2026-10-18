@@ -142,6 +142,7 @@ const NOTIFICATION_TYPES: readonly NotificationType[] = [
   "encounter.daily",
   "encounter.weekly",
   "encounter.monthly",
+  "post.new",
   "moderation.hidden",
 ];
 const PIN_REASONS: readonly Pin["reason"][] = ["auto", "manual"];
@@ -320,6 +321,7 @@ export function toEncounter(dto: Maybe<EncounterDTO>): Encounter {
     seenUntil: dto?.seenUntil ?? "",
     timesWithPeer: num(dto?.timesWithPeer),
     relation: oneOf(dto?.relation, RELATIONS, "none"),
+    place: typeof dto?.place === "string" && dto.place !== "" ? dto.place : undefined,
   };
 }
 

@@ -216,7 +216,7 @@ func TestGroupCreateValidation(t *testing.T) {
 		field string
 	}{
 		{"geofence なし", `{"name":"x"}`, "geofence"},
-		{"半径が小さすぎる", `{"name":"x","geofence":{"lat":35.0,"lon":135.0,"radiusM":10}}`, "geofence.radiusM"},
+		{"半径が小さすぎる", `{"name":"x","geofence":{"lat":35.0,"lon":135.0,"radiusM":4}}`, "geofence.radiusM"},
 		{"半径が大きすぎる", `{"name":"x","geofence":{"lat":35.0,"lon":135.0,"radiusM":2001}}`, "geofence.radiusM"},
 		{"名前が長すぎる", `{"name":"` + longName + `","geofence":{"lat":35.0,"lon":135.0,"radiusM":40}}`, "name"},
 		{"不正な visibility", `{"name":"x","visibility":"hidden","geofence":{"lat":35.0,"lon":135.0,"radiusM":40}}`, "visibility"},

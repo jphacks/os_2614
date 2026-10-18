@@ -6,6 +6,8 @@
   place-items: center;
   background: #ffffff;
   animation: fade var(--splash-total, 1900ms) ease-in forwards;
+  /* 装飾なので、フェードアウト後もマウントが残っていても入力は奪わない。 */
+  pointer-events: none;
 }
 
 .character {

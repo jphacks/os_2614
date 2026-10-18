@@ -10,7 +10,8 @@ buildscript {
         classpath 'com.android.tools.build:gradle:8.13.0'
         classpath 'com.google.gms:google-services:4.4.4'
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.21'
-        // KSP version MUST stay in sync with the Kotlin version above (2.2.21-*).
+        // KSP version is the single source of truth here: buildscript is evaluated before
+        // variables.gradle is applied, so it cannot read an ext property (F-11).
         classpath 'com.google.devtools.ksp:symbol-processing-gradle-plugin:2.2.21-2.0.5'
 
         // NOTE: Do not place your application dependencies here; they belong

@@ -44,6 +44,7 @@ CREATE TABLE user_settings (
   location_paused      INTEGER NOT NULL DEFAULT 0,        -- 07 §4
   warn_display         TEXT NOT NULL DEFAULT 'blur' CHECK (warn_display IN ('show','blur','hide')),
   natural_groups       INTEGER NOT NULL DEFAULT 1,        -- 09 §8。0 なら自動グループの照合に使わない
+  record_encounter_place INTEGER NOT NULL DEFAULT 0,      -- 06 §7。1 のときだけすれ違い場所（geohash6）を残す
   notify_json          TEXT NOT NULL DEFAULT '{}',        -- 12 §3。種別ごとの on/off
   content_scan_consent_version INTEGER,                    -- 02 §8。NULL なら未同意
   content_scan_consent_at      INTEGER,
@@ -107,7 +108,7 @@ CREATE TABLE encounters (
   max_rssi        INTEGER,
   visibility      TEXT NOT NULL CHECK (visibility IN ('pending','revealed','hidden')),
   reveal_at       INTEGER,                    -- visibility=hidden なら NULL
-  geohash6        TEXT,                       -- P2。双方が場所記録を許可した場合のみ
+  geohash6        TEXT,                       -- 06 §7。双方が場所記録を許可した場合のみ
   CHECK (user_a < user_b)
 );
 CREATE INDEX encounters_pair ON encounters(user_a, user_b, last_seen_at);

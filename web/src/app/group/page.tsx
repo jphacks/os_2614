@@ -213,13 +213,21 @@ function GroupTimeline() {
 
   // 表示中のグループ (Space) を購読し、リアルタイム更新を反映する (10 §7.2)。
   useRealtimeSubscription(id);
-  // 再接続後は at-most-once の取りこぼしを補うためタイムラインと Pin を取り直す (10 §7.3)。
+  // 再接続後は at-most-once の取りこぼしを補うため、グループ本体・メンバー・
+  // タイムライン・Pin を取り直す (10 §7.3)。
   useRealtimeResync(() => {
+    reloadGroup();
+    reloadMembers();
     reloadPosts();
     reloadPins();
   });
   useRealtimeEvent("post.created", (post) => {
     if (post.spaceId === id) {
+      reloadPosts();
+    }
+  });
+  useRealtimeEvent("post.deleted", (_data, frame) => {
+    if (frame.space === id) {
       reloadPosts();
     }
   });
@@ -231,6 +239,31 @@ function GroupTimeline() {
   useRealtimeEvent("pin.deleted", (_data, frame) => {
     if (frame.space === id) {
       reloadPins();
+    }
+  });
+  // 設定 (名前・説明・予定・招待の定足数・公開範囲) が変わったら本体を取り直す。
+  useRealtimeEvent("group.updated", (_data, frame) => {
+    if (frame.space === id) {
+      reloadGroup();
+    }
+  });
+  // メンバーの出入りは一覧と本体 (memberCount) の両方に影響する。
+  useRealtimeEvent("member.joined", (_data, frame) => {
+    if (frame.space === id) {
+      reloadMembers();
+      reloadGroup();
+    }
+  });
+  useRealtimeEvent("member.left", (_data, frame) => {
+    if (frame.space === id) {
+      reloadMembers();
+      reloadGroup();
+    }
+  });
+  // アーカイブは本体の state に反映されるので取り直す。
+  useRealtimeEvent("space.archived", (_data, frame) => {
+    if (frame.space === id) {
+      reloadGroup();
     }
   });
 

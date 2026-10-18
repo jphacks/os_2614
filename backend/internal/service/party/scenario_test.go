@@ -748,6 +748,26 @@ func TestPartyUpdatedLifecycle(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("名前の変更を他のメンバーへ通知する", func(t *testing.T) {
+		h := newPartyHarness(t)
+		h.users(pa, pb)
+		h.friend(pa, pb)
+		spaceID := h.confirm(pa, pb)
+		h.broker.Reset()
+		if _, err := h.svc.Rename(context.Background(), pa, spaceID, "新しい名前"); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+
+		events := h.broker.EventsFor("party.updated", pb)
+		if len(events) != 1 {
+			t.Fatalf("party.updated for %s = %d, want 1", pb, len(events))
+		}
+		data, ok := events[0].Data.(map[string]any)
+		if !ok || data["id"] != spaceID || data["name"] != "新しい名前" {
+			t.Fatalf("party.updated = %+v, want name 新しい名前", events[0].Data)
+		}
+	})
 }
 
 func TestPartyIndexRebuild(t *testing.T) {

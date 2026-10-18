@@ -31,10 +31,22 @@ import type { EventFrame, RealtimeEvents, RealtimeState } from "./ws";
 
 /** `party.updated` の data。在席メンバーは DID の一覧 (backend service.publishPartyUpdated)。 */
 export interface PartyUpdatedData {
-	id: string;
-	phase: PartyPhase;
+  id: string;
+  name: string;
+  phase: PartyPhase;
   locked: boolean;
   present: string[];
+}
+
+/** `group.updated` の data。設定が変わったことだけを知らせ、受けた側が REST で取り直す。 */
+export interface GroupUpdatedData {
+  id: string;
+  name: string;
+}
+
+/** `feed.updated` の data。どの source のフィードに新しい投稿が入ったか (17 §3.4)。 */
+export interface FeedUpdatedData {
+  source: "home" | "groups";
 }
 
 /** 既知のイベント名と、その data の形 (10 §7.3 の表)。 */
@@ -47,12 +59,14 @@ export interface RealtimeEventDataMap {
   "member.joined": { did: string };
   "member.left": { did: string };
   "space.archived": undefined;
+  "group.updated": GroupUpdatedData;
   "party.updated": PartyUpdatedData;
   "encounter.revealed": EncounterDTO;
   "friend.request": UserDTO;
   "friend.accepted": UserDTO;
   "friend.changed": UserDTO;
   "notification": NotificationDTO;
+  "feed.updated": FeedUpdatedData;
 }
 
 export type RealtimeEventName = keyof RealtimeEventDataMap;
@@ -67,12 +81,14 @@ export const REALTIME_EVENT_NAMES = [
   "member.joined",
   "member.left",
   "space.archived",
+  "group.updated",
   "party.updated",
   "encounter.revealed",
   "friend.request",
   "friend.accepted",
   "friend.changed",
   "notification",
+  "feed.updated",
 ] as const satisfies readonly RealtimeEventName[];
 
 // REALTIME_EVENT_NAMES が RealtimeEventName を過不足なく覆っていることを型で固定する。

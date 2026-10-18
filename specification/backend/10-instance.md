@@ -184,10 +184,12 @@ draft「大事な情報は自動で Pin」。
 | `pin.created` / `pin.deleted` | Space | Pin 1 件 / `uri` |
 | `member.joined` / `member.left` | Space | `did` |
 | `space.archived` | Space | — |
-| `party.updated` | Space ＋ メンバーのユーザー | `id`, `phase`（`tentative` / `confirmed` / `ended` / `dissolved`）, `locked`, 在席メンバー。終了（`ended`）と仮 party の破棄（`dissolved`）でも、その時点のメンバー全員（離脱済みを含む）のユーザーチャンネルに送る |
+| `group.updated` | Space | `id`, `name`。グループの設定（名前・説明・予定・招待の定足数・公開範囲）が変わったとき。受けた側は `GET /groups/{id}` で取り直す |
+| `party.updated` | Space ＋ メンバーのユーザー | `id`, `name`, `phase`（`tentative` / `confirmed` / `ended` / `dissolved`）, `locked`, 在席メンバー。終了（`ended`）と仮 party の破棄（`dissolved`）でも、その時点のメンバー全員（離脱済みを含む）のユーザーチャンネルに送る |
 | `encounter.revealed` | ユーザー | encounter 1 件（06 §6 と同じ形） |
 | `friend.request` / `friend.accepted` / `friend.changed` | ユーザー | 相手の要約 |
 | `notification` | ユーザー | 通知 1 件（12） |
+| `feed.updated` | ユーザー | `source`（`home` / `groups`）。そのユーザーのフィードに新しい投稿が入ったことだけを知らせる。投稿の中身は載せず、受けた側が `GET /feed?source=...` で取り直す（17 §3.4） |
 
 - 配信は at-most-once。取りこぼしは、再接続後に REST で取り直して補う（一覧 API はすべて新しい順のカーソルを持つ）
 

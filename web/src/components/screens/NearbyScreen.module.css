@@ -13,11 +13,45 @@
   color: var(--color-text);
 }
 
+/* ヘッダーとタブバーの間をすべて泡のキャンバスにする */
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 360px;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  /* 泡の z-index をキャンバスの中に閉じ込め、タブバーやカードの上に出さない */
+  isolation: isolate;
+  z-index: 0;
+}
+
+.overlayTop {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 1;
+  padding: 0 var(--page-gutter);
+  pointer-events: none;
+}
+
+.overlayTop {
+  top: var(--space-3);
+}
+
+.overlayTop > * {
+  pointer-events: auto;
+}
+
 .banner {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: 0 var(--page-gutter) var(--space-3);
 }
 
 .banner :global(button) {
@@ -25,7 +59,7 @@
 }
 
 .actionError {
-  margin: 0 var(--page-gutter) var(--space-3);
+  margin: 0;
   padding: var(--space-3);
   border-radius: var(--radius-md);
   background: var(--color-surface);
@@ -33,71 +67,65 @@
   color: var(--color-text);
 }
 
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: 0 var(--page-gutter);
-  margin-bottom: var(--space-5);
-}
-
-.footer {
-  padding: var(--space-2) var(--page-gutter) var(--space-6);
-}
-
-.state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  min-height: 320px;
-  padding: var(--space-8) var(--space-4);
+.hint {
+  align-self: center;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-thumb);
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
   text-align: center;
 }
 
-.stateIcon {
-  color: var(--color-text-muted);
+.focusCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-thumb);
+  animation: focusCardIn 200ms ease-out;
 }
 
-.stateTitle {
+.focusText {
+  flex: 1;
+  min-width: 0;
+}
+
+.focusTitle {
   margin: 0;
-  font: var(--text-heading);
+  overflow: hidden;
+  font: var(--text-body-strong);
   color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.stateDescription {
+.focusDetail {
   margin: 0;
+  overflow: hidden;
   font: var(--text-caption);
   color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: 0 var(--page-gutter);
-}
-
-.skeletonRow {
-  height: 64px;
-  border-radius: var(--radius-lg);
-  background: var(--color-placeholder);
-  animation: skeletonPulse 1.4s ease-in-out infinite;
-}
-
-@keyframes skeletonPulse {
-  0%,
-  100% {
-    opacity: 1;
+@keyframes focusCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
   }
-  50% {
-    opacity: 0.55;
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeletonRow {
+  .focusCard {
     animation: none;
   }
 }

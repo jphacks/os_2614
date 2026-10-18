@@ -1246,7 +1246,7 @@ func (s *PartyService) publishPartyUpdated(ctx context.Context, detail *PartyDet
 		}
 	}
 	sort.Strings(present)
-	data := map[string]any{"id": detail.ID, "phase": detail.Phase, "locked": detail.Locked, "present": present}
+	data := map[string]any{"id": detail.ID, "name": detail.Name, "phase": detail.Phase, "locked": detail.Locked, "present": present}
 	s.publish(ctx, realtime.Event{Name: "party.updated", Space: detail.ID, Data: data})
 	for _, m := range detail.Members {
 		did := m.DID

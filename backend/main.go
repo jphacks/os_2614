@@ -103,7 +103,7 @@ func run() error {
 
 	sessions := &authsvc.SessionService{Deps: deps}
 	health := &service.HealthService{Deps: deps}
-	jetstreamSvc := &content.JetstreamService{Deps: deps, Posts: atproto.NewFirstLoadFetcher()}
+	jetstreamSvc := &content.JetstreamService{Deps: deps, Posts: atproto.NewFirstLoadFetcher(), Broker: hub}
 	authSvc := &authsvc.AuthService{Deps: deps, OAuth: oauthApp, Dir: oauthApp.Dir, Profiles: atproto.NewProfileFetcher(), FirstLoad: jetstreamSvc}
 	me := &mesvc.MeService{Deps: deps, Moderator: moderator, Writer: pdsWriter}
 	schedule := &naturalsvc.ScheduleService{Deps: deps, Embedder: embedderFor(cfg)}
@@ -119,19 +119,23 @@ func run() error {
 	notifications := &notify.NotificationService{Deps: deps}
 	revealer := &worker.EncounterRevealer{Deps: deps, Encounters: encounters}
 
-	store := spacemodel.NewSQLiteStore(conn, deps.Clock, idgen.NewTIDGenerator(deps.Clock, tidClockID(deps.IDs)))
+	tids := idgen.NewTIDGenerator(deps.Clock, tidClockID(deps.IDs))
+	store := spacemodel.NewSQLiteStore(conn, deps.Clock, tids)
 	mediaStore := storage.NewStore(cfg.MediaDir)
 	signer := storage.NewSigner(cfg.JWTKey)
 	account := &authsvc.AccountService{Deps: deps, OAuth: oauthApp, Storage: mediaStore}
 	janitorSvc := &service.Janitor{Deps: deps, Storage: mediaStore}
-	// 位置判定は S3 が作る。ここでは常に location_stale を返す仮実装を差す。
 	access := &access.AccessService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}}
 	realtimeSvc := &content.RealtimeService{Deps: deps, Access: access, Sessions: sessions}
 	mediaSvc := &content.MediaService{Deps: deps, Store: store, Access: access, Broker: hub, Storage: mediaStore, Signer: signer}
 	pins := &content.PinService{Deps: deps, Store: store, Access: access, Broker: hub}
-	publicPosts := &content.PublicPostService{Deps: deps, Writer: pdsWriter, Moderator: moderator}
+	publicPosts := &content.PublicPostService{Deps: deps, Writer: pdsWriter, Moderator: moderator, Broker: hub}
 	instances := &content.InstanceService{Deps: deps, Store: store, Access: access, Assessor: assessor, Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
-	feed := &content.FeedService{Deps: deps, Access: access, Signer: signer}
+	feed := &content.FeedService{Deps: deps, Access: access, Signer: signer, Proximity: &proximity.BLEPeerProximity{Deps: deps}}
+	nearbyPosts := &content.NearbyPostService{
+		Deps: deps, Moderator: moderator, Broker: hub,
+		Proximity: &proximity.BLEPeerProximity{Deps: deps}, TID: tids,
+	}
 	groups := &groupsvc.GroupService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}, Access: access, Moderator: moderator, Broker: hub}
 	naturalGroups := &naturalsvc.NaturalGroupService{Deps: deps, Moderator: moderator, Broker: hub}
 	groupVotes := &groupsvc.GroupVoteService{Deps: deps, Access: access, Broker: hub}
@@ -173,7 +177,14 @@ func run() error {
 	app.Use(recover.New())
 	app.Use(cors.New(cors.Config{AllowOrigins: cfg.CORSOrigins}))
 
-	controller.Mount(app, httpx.RequireAuth(cfg.JWTKey, deps.Clock, sessions), httpx.RateLimit(httpx.RateLimitConfig{Redis: rdb, Clock: deps.Clock}), controller.Routes{
+	// CHAIN_DISABLE_RATE_LIMIT=1 で一時的にレート制限を無効化する（開発・負荷確認用）。
+	var rateLimit fiber.Handler
+	if os.Getenv("CHAIN_DISABLE_RATE_LIMIT") == "1" {
+		slog.Warn("rate limit disabled by CHAIN_DISABLE_RATE_LIMIT")
+	} else {
+		rateLimit = httpx.RateLimit(httpx.RateLimitConfig{Redis: rdb, Clock: deps.Clock})
+	}
+	controller.Mount(app, httpx.RequireAuth(cfg.JWTKey, deps.Clock, sessions), rateLimit, controller.Routes{
 		Root: []controller.Registrar{
 			&controller.HealthController{Health: health},
 			&authctrl.OAuthController{Config: cfg, App: oauthApp, Auth: authSvc},
@@ -202,6 +213,7 @@ func run() error {
 			&controller.NotificationController{Notifications: notifications},
 			&contentctrl.InstanceController{Instances: instances, Pins: pins, Feed: feed},
 			&contentctrl.FeedPostController{Posts: publicPosts},
+			&contentctrl.NearbyPostController{Posts: nearbyPosts},
 			&contentctrl.FeedController{Feed: feed},
 			&contentctrl.MediaController{Media: mediaSvc},
 			&groupctrl.GroupController{Groups: groups},

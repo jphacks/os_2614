@@ -127,11 +127,13 @@ else:
 - revealed に加えて pending / hidden も数える。ただし **成立から 1 時間以内のものは数えない**。回数がリアルタイムに増えると、周りの誰とすれ違ったかを推測できてしまうため
 - 日・週・月の区切りは Asia/Tokyo（週は月曜始まり）
 
-## 7. すれ違い場所の記録（P2）
+## 7. すれ違い場所の記録
 
 - 両者が `record_encounter_place` を有効にした場合だけ、成立時に報告側の最新位置（`loc:`、鮮度 10 分以内）の geohash 6 桁（約 1.2 km × 0.6 km）を保存する
 - 座標そのものは保存しない
-- 設定項目は `user_settings` に追加する（P2 着手時に `schema.sql` に列を足す）
+- 設定項目は `user_settings.record_encounter_place`（既定 0）。`PATCH /me/settings` の `recordEncounterPlace` で変える
+- 成立（新規作成）時だけ保存する。同じすれ違いへの統合（merge）では更新しない
+- 位置がない・10 分より古い場合は場所なしのまま成立させる
 
 ## 8. パラメータ
 

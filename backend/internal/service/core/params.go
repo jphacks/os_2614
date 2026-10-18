@@ -18,6 +18,14 @@ const (
 	MaxSpeedKmh         = 300.0
 )
 
+// nearby オーディエンスのパラメータ（17 §2）。今近くにいる人だけに届ける限定投稿に使う。
+const (
+	// NearbyAudienceWindow は「今近くにいる」とみなす近接の時間窓。
+	NearbyAudienceWindow = 15 * time.Minute
+	// NearbyPostTTL は nearby 投稿の寿命（expires_at = created_at + NearbyPostTTL）。
+	NearbyPostTTL = time.Hour
+)
+
 // 06 §8 のパラメータ。
 const (
 	MatchWindow       = 10 * time.Minute
@@ -27,6 +35,9 @@ const (
 	DailyEncounterCap = 2000
 	SummaryHoldback   = time.Hour
 	TimeRounding      = 15 * time.Minute
+	// EncounterPlaceFresh は場所記録に使う位置の鮮度（06 §7）。
+	EncounterPlaceFresh  = 10 * time.Minute
+	EncounterPlaceLength = 6
 )
 
 // SightingMax は 1 リクエストで受け付ける sighting の上限（06 §2）。

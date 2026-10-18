@@ -124,14 +124,14 @@ class ChainProximityPlugin : Plugin() {
             return call.reject("invalid tokens: ${e.message}")
         }
 
-        ProximityState.setTokens(context, windowSec, tokens)
+        ProximityState.setTokens(windowSec, tokens)
         call.resolve()
     }
 
     @PluginMethod
     fun setClockOffset(call: PluginCall) {
         val offset = call.number("offsetMs")?.toDouble() ?: return call.reject("offsetMs is required")
-        ProximityState.setClockOffset(context, offset.toLong())
+        ProximityState.setClockOffset(offset.toLong())
         call.resolve()
     }
 

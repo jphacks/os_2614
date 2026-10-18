@@ -61,6 +61,27 @@ ATProto の書き込みと Jetstream の仕組みそのものは 03 §4・§5。
 - Bluesky の公式アプリなどで書いた `app.bsky.feed.post` は取り込まない（CHAIN の投稿だけを出す）。取り込むかどうかは P2 で再検討する
 - 取り込んだ投稿は非同期で moderation にかける（11 §2）
 
+### 2.6 nearby 投稿（限定オーディエンス）
+
+`POST /api/v1/nearby/posts`
+
+```json
+{ "text": "今ここにいる" }
+```
+
+今近くにいる人（`NearbyAudienceWindow` = 15 分以内の近接）だけに届ける限定投稿。PDS には書かず、`public_posts` の索引（`audience='nearby'`）にだけ入れる。
+
+- テキストのみ（画像なし）。1000 grapheme まで（公開投稿と同じ `MaxFeedPostGraphemes` を再利用）
+- 投稿内容の自動判定への同意（02 §8）が要る。未同意なら 403 `consent_required`
+- moderation（11）を索引に入れる**前**に行う。kind は `nearby_post`（11 §5.5）。block なら 422 `moderation_blocked` で、どこにも入れない
+- 書く順番:
+  1. PDS には何も書かない。Bluesky への同時投稿もしない
+  2. `public_posts` に `audience='nearby'`、`expires_at = createdAt + NearbyPostTTL`（1 時間）で入れる
+- URI は合成の at-uri。PDS に record が無いので `at://{did}/jp.i32.chain.feed.nearby/{rkey}`（rkey は TID から作る）
+- 失効（`expires_at <= now`）した行は取得時に除く。掃除のワーカーは無い
+- リアクションは無い（P2）
+- 入れた直後に `feed.updated`（10 §7.3）を `source: "nearby"` で publish する。宛先は投稿者と、投稿者と近い `Neighbors(author, NearbyAudienceWindow)` の相手
+
 ## 3. フィード
 
 ### 3.1 API
@@ -73,9 +94,12 @@ ATProto の書き込みと Jetstream の仕組みそのものは 03 §4・§5。
 | `groups` | 自分が今 read できるグループ（active）すべての instance の投稿とメディア | P1 |
 | `space:{id}` | 1 つの Space（グループ / Party）の instance の投稿とメディア。今の `GET /instances/{id}/posts` と同じ中身 | P1 |
 | `user:{did}` | そのユーザーの公開投稿（13 §1.2 の関係がある相手のみ。なければ 404） | P1 |
+| `nearby` | 今近くにいる相手（自分と `Neighbors(viewer, NearbyAudienceWindow)` = 15 分以内の近接）の nearby 投稿。失効済み（`expires_at` 経過）は除く | P1 |
 
 - `source` は将来カンマ区切りで複数を受け付けられるようにしておく（例 `home,groups`）。P1 では 1 つだけ
 - `GET /api/v1/instances/{id}/posts` は互換のため残し、中身は `source=space:{id}` を呼ぶだけにする
+- `nearby` の著者は閲覧者と、閲覧者と近い `Neighbors(viewer, NearbyAudienceWindow)`（15 分）の相手（17 §2.6）。要素の `kind` は `nearby_post`。近接が使えないときは何も返さない
+- `home` と `user:{did}` は `audience='public'` の投稿だけを返す。nearby 投稿（`audience='nearby'`）はここには混ざらず、`nearby` にだけ出る（17 §2.6）
 
 ### 3.2 要素の形
 
@@ -135,4 +159,7 @@ type FeedSource interface {
 
 - Feed コンポーネントは 1 つで、`source` を受け取って `GET /feed` を呼ぶ
 - ホーム画面は `home`、グループ一覧の画面は `groups`、個別のグループ / Party の画面は `space:{id}`、プロフィール画面は `user:{did}`
-- WebSocket の `post.created`（10 §7.3）は `space:{id}` と `groups` の画面だけが使う。`home` は引っぱって更新する（公開投稿には WebSocket の配信がないため）
+- WebSocket の `post.created`（10 §7.3）は `space:{id}` の画面が使う
+- `home` と `groups` の画面は、ユーザー宛ての `feed.updated`（10 §7.3）を受けて取り直す。配る先は次のとおり
+  - `groups`: グループ（Party は含めない）の instance に投稿が入ったとき（moderation が ok のときだけ）、投稿者以外の未離脱メンバー
+  - `home`: 公開投稿を `public_posts` に入れたとき（作成と Jetstream の取り込みで、内容が変わったときだけ）、投稿者と、`homeAuthors` に投稿者を含むユーザー（自分・フレンド・直近 30 日に revealed な encounter の相手。関係は対称なので、投稿者の `homeAuthors` と同じ集合）

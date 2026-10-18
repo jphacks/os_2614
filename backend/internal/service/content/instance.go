@@ -10,6 +10,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
+	"github.com/applemango/chain/internal/db"
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/model"
 	spacemodel "github.com/applemango/chain/internal/model/space"
@@ -17,6 +18,7 @@ import (
 	"github.com/applemango/chain/internal/service/access"
 	"github.com/applemango/chain/internal/service/core"
 	"github.com/applemango/chain/internal/service/moderation"
+	"github.com/applemango/chain/internal/service/notify"
 	"github.com/applemango/chain/internal/storage"
 )
 
@@ -225,6 +227,12 @@ func (s *InstanceService) CreatePosts(ctx context.Context, did string, in Create
 			return nil, err
 		} else if ok {
 			s.Broker.Publish(ctx, realtime.Event{Name: "post.created", Space: sp.ID, Data: item})
+			if sp.Type == core.SpaceTypeGroup && label == "ok" && !item.System {
+				s.publishFeedUpdated(ctx, sp.ID, did)
+			}
+			if label == "ok" && !item.System {
+				s.notifyNewPost(ctx, sp.ID, did, item, now)
+			}
 		}
 		if decision.Pin && s.Pins != nil {
 			if err := s.Pins.CreateAuto(ctx, sp.ID, rec.URI); err != nil {
@@ -439,4 +447,77 @@ func mediaItemFor(ctx context.Context, q *sql.DB, signer storage.Signer, publicU
 		Width:    m.Width,
 		Height:   m.Height,
 	}, nil
+}
+
+// publishFeedUpdated はグループの投稿を、投稿者以外の未離脱メンバーへ知らせる（17 §3.4）。
+// 中身は載せず、受けた側が GET /feed?source=groups で取り直す。失敗は投稿を妨げない。
+func (s *InstanceService) publishFeedUpdated(ctx context.Context, spaceID, authorDID string) {
+	if s.Broker == nil {
+		return
+	}
+	members, err := spacemodel.ListActiveSpaceMembers(ctx, s.DB, spaceID)
+	if err != nil {
+		slog.WarnContext(ctx, "feed updated: list members failed", "err", err)
+		return
+	}
+	for _, m := range members {
+		if m.DID == authorDID {
+			continue
+		}
+		s.Broker.Publish(ctx, realtime.Event{Name: "feed.updated", User: m.DID, Data: map[string]string{"source": "groups"}})
+	}
+}
+
+// notifyNewPost は新しい投稿を Space の他のメンバーへ通知する（12 §3 post.new）。
+// 通知は投稿の成功を妨げないので、失敗はログに残すだけにする。
+func (s *InstanceService) notifyNewPost(ctx context.Context, spaceID, authorDID string, item *FeedItem, now time.Time) {
+	members, err := spacemodel.ListActiveSpaceMembers(ctx, s.DB, spaceID)
+	if err != nil {
+		slog.WarnContext(ctx, "post notify: list members failed", "err", err)
+		return
+	}
+	blocked, err := model.BlockedDIDs(ctx, s.DB, authorDID)
+	if err != nil {
+		slog.WarnContext(ctx, "post notify: blocks failed", "err", err)
+		return
+	}
+	name := authorDID
+	if item.Author != nil {
+		if item.Author.DisplayName != "" {
+			name = item.Author.DisplayName
+		} else if item.Author.Handle != "" {
+			name = item.Author.Handle
+		}
+	}
+	payload := map[string]string{
+		"text":     name + ": " + truncateRunes(item.Text, 60),
+		"spaceId":  spaceID,
+		"targetId": item.URI,
+	}
+	for _, m := range members {
+		if m.DID == authorDID || !m.CanRead || blocked[m.DID] {
+			continue
+		}
+		var sent *notify.NotificationItem
+		err := db.Transaction(ctx, s.DB, func(tx *sql.Tx) error {
+			i, err := notify.EnqueueNotification(ctx, tx, s.Deps, m.DID, notify.NotificationPostCreated, payload, now)
+			sent = i
+			return err
+		})
+		if err != nil {
+			slog.WarnContext(ctx, "post notify: enqueue failed", "err", err)
+			continue
+		}
+		if sent != nil {
+			s.Broker.Publish(ctx, realtime.Event{Name: "notification", User: m.DID, Data: *sent})
+		}
+	}
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }

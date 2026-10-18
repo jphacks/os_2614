@@ -15,8 +15,8 @@ import {
   ACCEPTED_MEDIA_TYPES,
   validateMediaFile,
 } from "@/components/feature/compose";
-import { ImageCropSheet } from "@/components/feature/profile";
 import { AppShell } from "@/components/layout/AppShell";
+import { ImageCropDialog, type ImageCropKind } from "@/components/feature/imageCrop";
 import { MemoryThumbCard } from "@/components/feature/memory";
 import { PublicPostsSection } from "@/components/feature/post";
 import { Avatar } from "@/components/ui/Avatar";
@@ -194,10 +194,10 @@ function ProfileBody({
   const [profileReauth, setProfileReauth] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [crop, setCrop] = useState<{
-    kind: "avatar" | "banner";
+    kind: ImageCropKind;
     file: File;
   } | null>(null);
-  const [menu, setMenu] = useState<"avatar" | "banner" | null>(null);
+  const [menu, setMenu] = useState<ImageCropKind | null>(null);
   const avatarInput = useRef<HTMLInputElement>(null);
   const bannerInput = useRef<HTMLInputElement>(null);
   const statusInputRef = useRef<HTMLInputElement>(null);
@@ -270,13 +270,13 @@ function ProfileBody({
     setMenu(null);
   };
 
-  const chooseImage = (kind: "avatar" | "banner") => {
+  const chooseImage = (kind: ImageCropKind) => {
     setMenu(null);
     (kind === "avatar" ? avatarInput : bannerInput).current?.click();
   };
 
   const onFileSelected = (
-    kind: "avatar" | "banner",
+    kind: ImageCropKind,
     event: ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
@@ -292,7 +292,7 @@ function ProfileBody({
     setCrop({ kind, file });
   };
 
-  const setCroppedImage = (kind: "avatar" | "banner", blob: Blob) => {
+  const setCroppedImage = (kind: ImageCropKind, blob: Blob) => {
     const previewUrl = URL.createObjectURL(blob);
     objectUrls.current.push(previewUrl);
     setDraft((current) => {
@@ -308,7 +308,7 @@ function ProfileBody({
     setCrop(null);
   };
 
-  const removeImage = (kind: "avatar" | "banner") => {
+  const removeImage = (kind: ImageCropKind) => {
     setMenu(null);
     setDraft((current) => {
       const previous = current[kind];
@@ -319,7 +319,7 @@ function ProfileBody({
     });
   };
 
-  const imagePreview = (kind: "avatar" | "banner") => {
+  const imagePreview = (kind: ImageCropKind) => {
     const image = draft[kind];
     if (image.kind === "set") {
       return image.previewUrl;
@@ -690,9 +690,9 @@ function ProfileBody({
       </Card>
 
       {crop && (
-        <ImageCropSheet
-          file={crop.file}
+        <ImageCropDialog
           kind={crop.kind}
+          file={crop.file}
           onCancel={() => setCrop(null)}
           onConfirm={(blob) => setCroppedImage(crop.kind, blob)}
         />

@@ -1,5 +1,3 @@
-import { mkdirSync } from "node:fs";
-import path from "node:path";
 import {
   expect,
   test,
@@ -18,14 +16,20 @@ const CORS_HEADERS: Record<string, string> = {
   "access-control-max-age": "600",
 };
 
-type StoredSession = {
-  did: string;
-  accessToken: string;
-  refreshToken: string;
-  accessExpiresAtMs: number;
+const ME = {
+  did: "did:plc:testuser",
+  handle: "testuser.bsky.social",
+  displayName: "テストユーザー",
+  settings: {
+    encounterMode: "delayed",
+    encounterDelaySec: 3600,
+    friendBeaconShare: true,
+    partyAuto: true,
+    locationPaused: false,
+    warnDisplay: "blur",
+    notify: {},
+  },
 };
-
-type ApiMock = (route: Route, request: Request) => Promise<void> | void;
 
 /** GET /groups/nearby (09 §5) の NearbyResult。inside は距離なし、near は帯のみ。 */
 const NEARBY = {
@@ -39,20 +43,30 @@ const NEARBY = {
       radiusM: 120,
     },
   ],
-  near: [
-    {
-      id: "g2",
-      name: "朝のランニング部",
-      memberCount: 5,
-      distanceBucket: "<500m",
-    },
-  ],
+  near: [],
 };
 
-const EVIDENCE_PATH = path.resolve(
-  process.cwd(),
-  "../.omo/evidence/chain-fe-be-gap-closure/task-30-chain-fe-be-gap-closure.png",
-);
+const GROUP_G1 = {
+  id: "g1",
+  name: "情報工学科 3年",
+  description: "",
+  visibility: "open",
+  memberCount: 12,
+  isMember: false,
+  state: "active",
+  radiusM: 120,
+  centerLat: 35,
+  centerLon: 135,
+};
+
+type StoredSession = {
+  did: string;
+  accessToken: string;
+  refreshToken: string;
+  accessExpiresAtMs: number;
+};
+
+type ApiMock = (route: Route, request: Request) => Promise<void> | void;
 
 function base64url(value: string): string {
   return Buffer.from(value, "utf8").toString("base64url");
@@ -69,13 +83,13 @@ function jwtFor(did: string): string {
   return fakeJwt({ sub: did, iat: now, exp: now + 900 });
 }
 
-function makeStoredSession(expiresInMs = 60 * 60 * 1000): StoredSession {
+function makeStoredSession(): StoredSession {
   const did = "did:plc:testuser";
   return {
     did,
     accessToken: jwtFor(did),
     refreshToken: "refresh-token-0",
-    accessExpiresAtMs: Date.now() + expiresInMs,
+    accessExpiresAtMs: Date.now() + 60 * 60 * 1000,
   };
 }
 
@@ -111,13 +125,36 @@ function apiPath(url: string): string {
   return decodeURIComponent(new URL(url).pathname);
 }
 
+/** 新しい「ちかく」画面が叩く GET の既定応答。テストごとに上書きする。 */
+async function mockDefaults(page: Page, overrides: ApiMock = async () => {}): Promise<void> {
+  await mockApi(page, async (route, request) => {
+    const pathname = apiPath(request.url());
+    const method = request.method();
+    if (method === "GET" && pathname === "/api/v1/me") {
+      await fulfillJson(route, 200, ME);
+      return;
+    }
+    if (method === "GET" && pathname === "/api/v1/friends") {
+      await fulfillJson(route, 200, { items: [] });
+      return;
+    }
+    if (method === "GET" && pathname === "/api/v1/friends/locations") {
+      await fulfillJson(route, 200, { items: [] });
+      return;
+    }
+    if (method === "GET" && pathname === "/api/v1/encounters") {
+      await fulfillJson(route, 200, { items: [] });
+      return;
+    }
+    await overrides(route, request);
+  });
+}
+
 test.describe("nearby", () => {
-  test("renders inside and near groups from GET /groups/nearby", async ({
-    page,
-  }, testInfo) => {
+  test("renders a group bubble from GET /groups/nearby", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
 
-    await mockApi(page, async (route, request) => {
+    await mockDefaults(page, async (route, request) => {
       if (apiPath(request.url()) === "/api/v1/groups/nearby") {
         await fulfillJson(route, 200, NEARBY);
         return;
@@ -130,30 +167,15 @@ test.describe("nearby", () => {
     await page.goto("/");
 
     await expect(page.getByText("情報工学科 3年", { exact: true })).toBeVisible();
-    await expect(page.getByText("朝のランニング部", { exact: true })).toBeVisible();
-    await expect(page.getByText("<500m", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "参加" })).toBeVisible();
-
-    if (testInfo.project.name === "desktop-chrome") {
-      mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
-      await page.screenshot({ path: EVIDENCE_PATH });
-    }
+    await expect(page.getByText("12人", { exact: true })).toBeVisible();
   });
 
-  test("join issues POST /groups/{id}/join and reloads", async ({ page }) => {
+  test("opens the group create screen from the + bubble", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
 
-    let nearbyCalls = 0;
-    await mockApi(page, async (route, request) => {
-      const method = request.method();
-      const pathname = apiPath(request.url());
-      if (method === "GET" && pathname === "/api/v1/groups/nearby") {
-        nearbyCalls += 1;
-        await fulfillJson(route, 200, NEARBY);
-        return;
-      }
-      if (method === "POST" && pathname === "/api/v1/groups/g1/join") {
-        await route.fulfill({ status: 204, headers: CORS_HEADERS });
+    await mockDefaults(page, async (route, request) => {
+      if (apiPath(request.url()) === "/api/v1/groups/nearby") {
+        await fulfillJson(route, 200, { inside: [], near: [] });
         return;
       }
       await fulfillJson(route, 404, {
@@ -162,19 +184,9 @@ test.describe("nearby", () => {
     });
 
     await page.goto("/");
-    await expect(page.getByRole("button", { name: "参加" })).toBeVisible();
+    await page.getByLabel("グループを作る").click();
 
-    const joinRequest = page.waitForRequest(
-      (request) =>
-        request.method() === "POST" &&
-        apiPath(request.url()) === "/api/v1/groups/g1/join",
-    );
-
-    await page.getByRole("button", { name: "参加" }).click();
-
-    const request = await joinRequest;
-    expect(apiPath(request.url())).toBe("/api/v1/groups/g1/join");
-    await expect.poll(() => nearbyCalls).toBeGreaterThan(1);
+    await page.waitForURL(/\/group\/new\/?$/);
   });
 
   test("shows the location CTA when GET /groups/nearby is 403 location_stale", async ({
@@ -182,7 +194,7 @@ test.describe("nearby", () => {
   }) => {
     await useStoredSession(page, makeStoredSession());
 
-    await mockApi(page, async (route, request) => {
+    await mockDefaults(page, async (route, request) => {
       if (apiPath(request.url()) === "/api/v1/groups/nearby") {
         await fulfillJson(route, 403, {
           error: { code: "location_stale", message: "位置が古いです" },
@@ -204,10 +216,10 @@ test.describe("nearby", () => {
     ).toBeVisible();
   });
 
-  test("shows the empty explanation when nothing is nearby", async ({ page }) => {
+  test("shows the empty hint when nothing is nearby", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
 
-    await mockApi(page, async (route, request) => {
+    await mockDefaults(page, async (route, request) => {
       if (apiPath(request.url()) === "/api/v1/groups/nearby") {
         await fulfillJson(route, 200, { inside: [], near: [] });
         return;
@@ -219,14 +231,19 @@ test.describe("nearby", () => {
 
     await page.goto("/");
 
-    await expect(page.getByText("近くのグループはありません")).toBeVisible();
+    await expect(page.getByText("まだ近くに誰もいません")).toBeVisible();
   });
-});
 
-test.describe("nearby unavailable state", () => {
-  test("shows 準備中 and no rows when GET /groups/nearby is 404", async ({ page }) => {
+  test("shows a load error when GET /groups/nearby is 500", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
-    await mockApi(page, async (route) => {
+
+    await mockDefaults(page, async (route, request) => {
+      if (apiPath(request.url()) === "/api/v1/groups/nearby") {
+        await fulfillJson(route, 500, {
+          error: { code: "internal", message: "サーバーエラー" },
+        });
+        return;
+      }
       await fulfillJson(route, 404, {
         error: { code: "not_found", message: "not found" },
       });
@@ -234,8 +251,63 @@ test.describe("nearby unavailable state", () => {
 
     await page.goto("/");
 
-    await expect(page.getByText("ちかくは準備中です")).toBeVisible();
-    await expect(page.getByText("いまいるエリア")).toHaveCount(0);
-    await expect(page.getByText("近くのグループはありません")).toHaveCount(0);
+    await expect(
+      page.getByText("近くのグループを読み込めませんでした"),
+    ).toBeVisible();
+  });
+
+  test("joins a group from the focus card after tapping its bubble", async ({
+    page,
+  }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    let nearbyCalls = 0;
+    await mockDefaults(page, async (route, request) => {
+      const method = request.method();
+      const pathname = apiPath(request.url());
+      if (method === "GET" && pathname === "/api/v1/groups/nearby") {
+        nearbyCalls += 1;
+        await fulfillJson(route, 200, NEARBY);
+        return;
+      }
+      if (method === "GET" && pathname === "/api/v1/groups/g1") {
+        await fulfillJson(route, 200, GROUP_G1);
+        return;
+      }
+      if (method === "POST" && pathname === "/api/v1/groups/g1/join") {
+        await route.fulfill({ status: 204, headers: CORS_HEADERS });
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/");
+
+    // 起動スプラッシュ (約 2 秒) が最初のポインタ操作を吸うので、消えるまで待つ。
+    await page
+      .locator('[class*="StartupSplash"]')
+      .first()
+      .waitFor({ state: "detached", timeout: 10_000 });
+
+    // 泡をタップすると中央へ寄ってフォーカスが当たり、下のカードに操作が出る。
+    const bubble = page.getByText("情報工学科 3年", { exact: true });
+    await expect(bubble).toBeVisible();
+    await bubble.click();
+
+    const join = page.getByRole("button", { name: "参加" });
+    await expect(join).toBeVisible();
+
+    const joinRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        apiPath(request.url()) === "/api/v1/groups/g1/join",
+    );
+    await join.click();
+
+    const request = await joinRequest;
+    expect(apiPath(request.url())).toBe("/api/v1/groups/g1/join");
+    await expect.poll(() => nearbyCalls).toBeGreaterThan(1);
   });
 });

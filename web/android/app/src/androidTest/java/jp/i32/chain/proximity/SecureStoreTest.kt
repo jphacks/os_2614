@@ -114,6 +114,41 @@ class SecureStoreTest {
         assertTrue(legacy.all.isEmpty())
     }
 
+    @Test
+    fun migrateDoesNotClobberNewerEncryptedValue() {
+        // 前回の移行で平文削除が失敗し、古い平文が残っている状況を再現する (F-03)。
+        val legacy = context.getSharedPreferences(SecureStore.LEGACY_PREFS, Context.MODE_PRIVATE)
+        legacy.edit()
+            .putString(KEY_TOKENS, STALE_PLAINTEXT_TOKENS)
+            .putLong(KEY_OFFSET, 1L)
+            .putLong(KEY_WINDOW, 900L)
+            .commit()
+
+        // その後、より新しい token/offset が暗号化ストアへ書かれた (平文より新しい)。
+        val secure = SecureStore.create(context)
+        assertTrue(secure.usable)
+        secure.putString(KEY_TOKENS, FRESH_ENCRYPTED_TOKENS)
+        secure.putLong(KEY_OFFSET, 99_999L)
+
+        // 次回の load() 相当。古い平文で新しい暗号化値を上書きしてはならない (F-03)。
+        SecureStore.create(context).migrate(context)
+
+        val after = SecureStore.create(context)
+        assertEquals(
+            "newer encrypted token must survive migrate()",
+            FRESH_ENCRYPTED_TOKENS,
+            after.getString(KEY_TOKENS),
+        )
+        assertEquals(99_999L, after.getLong(KEY_OFFSET, -1L))
+        // 暗号化側に無かったキーは (古い平文から) 正しくコピーされる。
+        assertEquals(900L, after.getLong(KEY_WINDOW, -1L))
+
+        // 古い平文エントリは消える (暗号化側が正なので二重管理を残さない)。
+        assertFalse("stale plaintext tokens must be cleared", legacy.contains(KEY_TOKENS))
+        assertFalse("stale plaintext offset must be cleared", legacy.contains(KEY_OFFSET))
+        assertFalse("copied key must be cleared from plaintext", legacy.contains(KEY_WINDOW))
+    }
+
     private fun sharedPrefsDir(): File = File(context.dataDir, "shared_prefs")
 
     private fun sharedPrefsFiles(): List<File> =
@@ -128,5 +163,7 @@ class SecureStoreTest {
         const val KEY_OFFSET = "clock_offset_ms"
         const val SECRET = "SECRET"
         const val LEGACY_TOKENS = "TOKENS-JSON"
+        const val STALE_PLAINTEXT_TOKENS = "STALE-PLAINTEXT"
+        const val FRESH_ENCRYPTED_TOKENS = "FRESH-ENCRYPTED"
     }
 }

@@ -4,14 +4,54 @@
 // ぽこぽこ現れ、目が瞬きして、全体がフェードアウトする。アニメーションは CSS だけで行い、
 // 終了時に unmount する。
 
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import styles from "./StartupSplash.module.css";
 
 /** CSS の総再生時間 (ms) と揃える。 */
 const TOTAL_MS = 1900;
 
+// スプラッシュが消えたかどうか。下の画面が自分のアニメーションを
+// スプラッシュの裏で終わらせてしまわないよう、消えるのを待てるようにする。
+let splashDone = false;
+const listeners = new Set<() => void>();
+
+function markSplashDone() {
+  if (splashDone) return;
+  splashDone = true;
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** 起動スプラッシュが消えていれば true。スプラッシュを出さない環境 (SSR) では false。 */
+export function useSplashDone(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => splashDone,
+    () => false,
+  );
+}
+
 export function StartupSplash() {
   const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (done) markSplashDone();
+  }, [done]);
+
+  // onAnimationEnd はハイドレーション後にしか張られないため、遅延すると
+  // アニメーション終了を取り逃がして透明なスプラッシュが残り続ける。
+  // 総再生時間＋余裕で必ず unmount するフォールバック。
+  useEffect(() => {
+    const timer = setTimeout(() => setDone(true), TOTAL_MS + 400);
+    return () => clearTimeout(timer);
+  }, []);
+
   if (done) {
     return null;
   }
