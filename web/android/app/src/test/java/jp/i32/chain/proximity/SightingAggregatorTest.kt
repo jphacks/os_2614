@@ -138,4 +138,16 @@ class SightingAggregatorTest {
         assertEquals(200L, agg.lastMs)
         assertEquals(-60, agg.maxRssi)
     }
+
+    @Test
+    fun `combine merges two aggregates with summed counts and min-max fields`() {
+        val persisted = Aggregate(1000L, 2000L, -40, 5)
+        val incoming = Aggregate(3000L, 3000L, -50, 1)
+        val combined = combine(persisted, incoming)
+        assertEquals(1000L, combined.firstMs)
+        assertEquals(3000L, combined.lastMs)
+        assertEquals(-40, combined.maxRssi)
+        assertEquals(6, combined.count)
+        assertEquals("combine must be symmetric", combined, combine(incoming, persisted))
+    }
 }

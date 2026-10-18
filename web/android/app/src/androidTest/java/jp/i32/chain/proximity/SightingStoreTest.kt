@@ -335,6 +335,8 @@ class SightingStoreTest {
             // 2nd observation AFTER the snapshot: its merge is synchronous and its upsert job is chained
             // after the delete job, so its row must SURVIVE.
             store.record("tok", 200L, -60)
+            // The synchronous merge must already be visible while the persist job is still gated.
+            assertEquals(1, store.pending(200L))
 
             dispatcher.resume()
             store.awaitIdle()
@@ -399,6 +401,36 @@ class SightingStoreTest {
                 1L,
                 runBlocking { db.sightingDao().count().toLong() },
             )
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun hydrationCombinesPersistedAndIncomingSameTokenObservation() {
+        val db = newDb()
+        try {
+            // 再起動前の永続行 (count=5)。
+            runBlocking {
+                db.sightingDao().upsert(Aggregate(1000L, 2000L, -40, 5).toEntity("A"))
+            }
+            val dispatcher = gatedDispatcher()
+            val store = SightingStore(appContext, ttlMs = 60_000L, database = db, dispatcher = dispatcher)
+
+            // hydration が gated の間に同じ token を record する (ミラーはまだ空)。
+            store.record("A", 3000L, -50)
+
+            dispatcher.resume()
+            store.awaitIdle()
+
+            // hydrate は永続行を skip/overwrite せず combine し、record の upsert は実行時に
+            // ミラーの現在値 (combined) を書く。
+            val row = runBlocking { db.sightingDao().getAll() }.single { it.token == "A" }
+            assertEquals("hydrate must combine the persisted count", 6, row.count)
+            assertEquals(1000L, row.firstMs)
+            assertEquals(3000L, row.lastMs)
+            assertEquals(-40, row.maxRssi)
+            assertEquals(1, store.pending(3000L))
         } finally {
             db.close()
         }

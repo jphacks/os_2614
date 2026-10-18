@@ -28,8 +28,11 @@ import java.util.concurrent.TimeUnit
  *    行っていたため snapshot と record job の順序が定まらず、committed 行を消す損失パスがあった。
  *  - drain の後に来た record は snapshot に無いので削除対象にならず、その upsert job は delete job
  *    の後に連結されるため消されない。
- *  - hydration は put-if-absent: 既にミラーにある entry (record が同期 merge 済み) は DB 行より
- *    新しいので上書きしない。
+ *  - hydration は combine: 既にミラーにある entry (このプロセスの load 後に record された観測) と
+ *    永続行 (再起動前の観測) を first=min / last=max / maxRssi=max / count=和 で合成する。skip も
+ *    overwrite もしない (どちらも観測を失う)。
+ *  - record の upsert は「実行時に読んだミラーの現在値」を書く (capture しない)。hydrate の combine を
+ *    反映し、drain 済みの entry は書かない (返済済み集約の復活を防ぐ)。
  *  - record→upsert と drain→(token 削除 + 期限切れ掃除) は [scope] 上で前の操作に join して直列化する。
  *
  * 耐久性の窓 (F-02 の durability window):
@@ -73,7 +76,7 @@ class SightingStore(
         }
     }
 
-    /** 破棄されたプロセスの DB 行をミラーへ読み込む。既存のミラー entry は上書きしない。 */
+    /** 破棄されたプロセスの DB 行をミラーへ読み込む。既存のミラー entry とは combine する。 */
     private suspend fun hydrate() {
         val rows = runCatching { dao.getAll() }.getOrElse { e ->
             Log.w(TAG, "sighting hydration failed", e)
@@ -81,29 +84,36 @@ class SightingStore(
         }
         synchronized(lock) {
             for (row in rows) {
-                // put-if-absent: 既にミラーにある entry は record が同期 merge 済み = DB 行より新しい。
-                if (row.token !in mirror) mirror[row.token] = row.toAggregate()
+                val persisted = row.toAggregate()
+                val incoming = mirror[row.token]
+                // combine (skip も overwrite もしない): ミラーの entry にはこのプロセスの load 後に
+                // record された観測が入っている。count を足すのは hydrate が最初の enqueued job で
+                // record の upsert がまだ書かれておらず、両者の観測に重複が無いため (F2d (A)4)。
+                mirror[row.token] = if (incoming == null) persisted else combine(persisted, incoming)
             }
         }
     }
 
     /**
-     * first=min / last=max / maxRssi=max / count+1 でミラーをマージし、その行を DB へ upsert する。
+     * first=min / last=max / maxRssi=max / count+1 でミラーを同期マージし、DB 書き込みを enqueue する。
      * マージは呼び出しスレッドで [lock] の下に同期実行する (HashMap 操作のみ、ディスク I/O なし)。
      * これにより drain の snapshot は「既に record が返った」観測を取りこぼさない。
-     * DB 書き込み (upsert + 期限切れ掃除) だけを [scope] の chain に投げ、呼び出し側はブロックしない。
+     * upsert する値は [record] 呼び出し時の capture ではなく「実行時に読んだミラーの現在値」なので、
+     * hydrate の combine や後続の観測を反映した latest-wins (冪等) になる。
      */
     fun record(token: String, nowMs: Long, rssi: Int) {
-        var prune = false
-        val merged = synchronized(lock) {
-            prune = shouldPruneLocked(nowMs)
-            if (prune) pruneLocked(nowMs)
-            val old = mirror[token]
-            merge(old, nowMs, rssi).also { mirror[token] = it }
+        val prune = synchronized(lock) {
+            val shouldPrune = shouldPruneLocked(nowMs)
+            if (shouldPrune) pruneLocked(nowMs)
+            mirror[token] = merge(mirror[token], nowMs, rssi)
+            shouldPrune
         }
         enqueue {
             runCatching {
-                dao.upsert(merged.toEntity(token))
+                // 実行時にミラーの現在値を読む。entry が既に無ければ (drain が返した後) upsert しない
+                // = 返済済みの集約を復活させない (F2d (E)2 の重複再送も同時に解消)。
+                val current = synchronized(lock) { mirror[token] }
+                if (current != null) dao.upsert(current.toEntity(token))
                 // F-04: 期限切れ行を record 時にも落とす (drain まで放置しない)。
                 if (prune) dao.deleteExpired(nowMs - ttlMs)
             }.onFailure { Log.w(TAG, "sighting record failed", it) }
