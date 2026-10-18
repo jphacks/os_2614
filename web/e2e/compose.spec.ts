@@ -355,6 +355,7 @@ test.describe("compose input rules (純関数)", () => {
       format: "plain",
       attachments: [{ key: "a", id: "m1", alt: "写真" }],
       alsoPublic: false,
+      nearby: false,
     });
 
     expect(result.ok).toBe(false);
@@ -370,6 +371,7 @@ test.describe("compose input rules (純関数)", () => {
       format: "plain",
       attachments: [{ key: "a", id: "m1", alt: "" }],
       alsoPublic: false,
+      nearby: false,
     });
 
     expect(result.ok).toBe(true);
@@ -385,6 +387,7 @@ test.describe("compose input rules (純関数)", () => {
         { key: "pending", alt: "未アップロード" },
       ],
       alsoPublic: true,
+      nearby: false,
     });
 
     expect(body).toEqual({
@@ -409,6 +412,7 @@ test.describe("compose input rules (純関数)", () => {
       format: "plain",
       attachments: [],
       alsoPublic: false,
+      nearby: false,
     });
 
     expect(result.ok).toBe(false);

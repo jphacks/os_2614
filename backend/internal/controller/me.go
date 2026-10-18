@@ -49,6 +49,7 @@ type meSettingsResponse struct {
 	FriendBeaconShare         bool            `json:"friendBeaconShare"`
 	PartyAuto                 bool            `json:"partyAuto"`
 	NaturalGroups             bool            `json:"naturalGroups"`
+	RecordEncounterPlace      bool            `json:"recordEncounterPlace"`
 	LocationPaused            bool            `json:"locationPaused"`
 	WarnDisplay               string          `json:"warnDisplay"`
 	ContentScanConsentVersion *int            `json:"contentScanConsentVersion"`
@@ -80,6 +81,7 @@ func settingsResponse(st model.UserSettings) (meSettingsResponse, error) {
 		FriendBeaconShare:         st.FriendBeaconShare,
 		PartyAuto:                 st.PartyAuto,
 		NaturalGroups:             st.NaturalGroups,
+		RecordEncounterPlace:      st.RecordEncounterPlace,
 		LocationPaused:            st.LocationPaused,
 		WarnDisplay:               st.WarnDisplay,
 		ContentScanConsentVersion: st.ContentScanConsentVersion,
@@ -119,13 +121,14 @@ func (h *MeController) get(c fiber.Ctx) error {
 }
 
 type settingsPatchRequest struct {
-	EncounterMode     *string         `json:"encounterMode"`
-	EncounterDelaySec *int            `json:"encounterDelaySec"`
-	FriendBeaconShare *bool           `json:"friendBeaconShare"`
-	PartyAuto         *bool           `json:"partyAuto"`
-	NaturalGroups     *bool           `json:"naturalGroups"`
-	WarnDisplay       *string         `json:"warnDisplay"`
-	Notify            map[string]bool `json:"notify"`
+	EncounterMode        *string         `json:"encounterMode"`
+	EncounterDelaySec    *int            `json:"encounterDelaySec"`
+	FriendBeaconShare    *bool           `json:"friendBeaconShare"`
+	PartyAuto            *bool           `json:"partyAuto"`
+	NaturalGroups        *bool           `json:"naturalGroups"`
+	RecordEncounterPlace *bool           `json:"recordEncounterPlace"`
+	WarnDisplay          *string         `json:"warnDisplay"`
+	Notify               map[string]bool `json:"notify"`
 }
 
 var notifyTypes = map[string]bool{
@@ -181,13 +184,14 @@ func (h *MeController) updateSettings(c fiber.Ctx) error {
 		return err
 	}
 	st, err := h.Me.UpdateSettings(c.Context(), httpx.DID(c), mesvc.SettingsUpdate{
-		EncounterMode:     req.EncounterMode,
-		EncounterDelaySec: req.EncounterDelaySec,
-		FriendBeaconShare: req.FriendBeaconShare,
-		PartyAuto:         req.PartyAuto,
-		NaturalGroups:     req.NaturalGroups,
-		WarnDisplay:       req.WarnDisplay,
-		Notify:            req.Notify,
+		EncounterMode:        req.EncounterMode,
+		EncounterDelaySec:    req.EncounterDelaySec,
+		FriendBeaconShare:    req.FriendBeaconShare,
+		PartyAuto:            req.PartyAuto,
+		NaturalGroups:        req.NaturalGroups,
+		RecordEncounterPlace: req.RecordEncounterPlace,
+		WarnDisplay:          req.WarnDisplay,
+		Notify:               req.Notify,
 	})
 	if err != nil {
 		return err

@@ -70,10 +70,10 @@ func GetEncounter(ctx context.Context, q db.Querier, id string) (*Encounter, err
 func CreateEncounter(ctx context.Context, q db.Querier, e Encounter) error {
 	_, err := db.Execute(ctx, q, `
 		INSERT INTO encounters (id, user_a, user_b, established_at, first_seen_at, last_seen_at,
-		                        max_rssi, visibility, reveal_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                        max_rssi, visibility, reveal_at, geohash6)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.ID, e.UserA, e.UserB, clock.UnixMilli(e.EstablishedAt), clock.UnixMilli(e.FirstSeenAt),
-		clock.UnixMilli(e.LastSeenAt), nullableInt(e.MaxRSSI), e.Visibility, model.NullableTime(e.RevealAt))
+		clock.UnixMilli(e.LastSeenAt), nullableInt(e.MaxRSSI), e.Visibility, model.NullableTime(e.RevealAt), nullableString(e.Geohash6))
 	return err
 }
 
@@ -188,4 +188,11 @@ func nullableInt(v *int) any {
 		return nil
 	}
 	return *v
+}
+
+func nullableString(v string) any {
+	if v == "" {
+		return nil
+	}
+	return v
 }

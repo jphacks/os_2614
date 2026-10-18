@@ -24,19 +24,21 @@ type PublicPost struct {
 	CreatedAt time.Time
 	IndexedAt time.Time
 	DeletedAt *time.Time
-	ModLabel  string // ok / warn / block
-	ModState  string // pending / done
+	ModLabel  string     // ok / warn / block
+	ModState  string     // pending / done
+	Audience  string     // public / nearby（17 §2）。nearby は今近くにいる人だけに配信する
+	ExpiresAt *time.Time // nearby の失効時刻（17 §2）。nil なら失効しない
 }
 
 const publicPostColumns = `uri, cid, author_did, text, langs, bsky_uri, bsky_cid,
-	created_at, indexed_at, deleted_at, mod_label, mod_state`
+	created_at, indexed_at, deleted_at, mod_label, mod_state, audience, expires_at`
 
 func scanPublicPost(scan db.Scan, p *PublicPost) error {
 	var langs, bskyURI, bskyCID sql.NullString
 	var created, indexed int64
-	var deleted sql.NullInt64
+	var deleted, expires sql.NullInt64
 	if err := scan(&p.URI, &p.CID, &p.AuthorDID, &p.Text, &langs, &bskyURI, &bskyCID,
-		&created, &indexed, &deleted, &p.ModLabel, &p.ModState); err != nil {
+		&created, &indexed, &deleted, &p.ModLabel, &p.ModState, &p.Audience, &expires); err != nil {
 		return err
 	}
 	if langs.Valid && langs.String != "" {
@@ -50,6 +52,10 @@ func scanPublicPost(scan db.Scan, p *PublicPost) error {
 	if deleted.Valid {
 		t := clock.FromUnixMilli(deleted.Int64)
 		p.DeletedAt = &t
+	}
+	if expires.Valid {
+		t := clock.FromUnixMilli(expires.Int64)
+		p.ExpiresAt = &t
 	}
 	return nil
 }
@@ -77,18 +83,23 @@ func UpsertPublicPost(ctx context.Context, q db.Querier, p PublicPost) (bool, er
 	if p.ModState == "" {
 		p.ModState = "pending"
 	}
+	if p.Audience == "" {
+		p.Audience = "public"
+	}
 	res, err := db.Execute(ctx, q, `
 		INSERT INTO public_posts (uri, cid, author_did, text, langs, bsky_uri, bsky_cid,
-		                          created_at, indexed_at, mod_label, mod_state)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                          created_at, indexed_at, mod_label, mod_state, audience, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (uri) DO UPDATE SET
 		  cid = excluded.cid, text = excluded.text, langs = excluded.langs,
 		  bsky_uri = excluded.bsky_uri, bsky_cid = excluded.bsky_cid,
 		  indexed_at = excluded.indexed_at, deleted_at = NULL,
-		  mod_label = excluded.mod_label, mod_state = excluded.mod_state
+		  mod_label = excluded.mod_label, mod_state = excluded.mod_state,
+		  audience = excluded.audience, expires_at = excluded.expires_at
 		WHERE public_posts.cid != excluded.cid OR public_posts.deleted_at IS NOT NULL`,
 		p.URI, p.CID, p.AuthorDID, p.Text, langs, Nullable(p.BskyURI), Nullable(p.BskyCID),
-		clock.UnixMilli(p.CreatedAt), clock.UnixMilli(p.IndexedAt), p.ModLabel, p.ModState)
+		clock.UnixMilli(p.CreatedAt), clock.UnixMilli(p.IndexedAt), p.ModLabel, p.ModState,
+		p.Audience, NullableTime(p.ExpiresAt))
 	if err != nil {
 		return false, err
 	}
@@ -119,6 +130,7 @@ func HidePublicPostsByAuthor(ctx context.Context, q db.Querier, did string, now 
 
 // ListPublicPostsByAuthors は authors の公開投稿を新しい順に返す（フィードの home / user source 用、17 §3）。
 // before の (createdAt, uri) より古いものだけ。削除済みは除く。
+// audience='public' に限定する: nearby 投稿は home / user フィードに混ざらない（17 §3）。
 // block は除かない: 投稿者本人には hidden として返すため、表示の判定は service（FeedService）が行う（10 §4.2）。
 func ListPublicPostsByAuthors(ctx context.Context, q db.Querier, authors []string, beforeAt int64, beforeURI string, limit int) ([]PublicPost, error) {
 	if len(authors) == 0 {
@@ -129,7 +141,31 @@ func ListPublicPostsByAuthors(ctx context.Context, q db.Querier, authors []strin
 		args = append(args, a)
 	}
 	where := "author_did IN (" + strings.TrimSuffix(strings.Repeat("?,", len(authors)), ",") + ")" +
-		" AND deleted_at IS NULL"
+		" AND audience = 'public' AND deleted_at IS NULL"
+	if beforeAt > 0 {
+		where += " AND (created_at < ? OR (created_at = ? AND uri < ?))"
+		args = append(args, beforeAt, beforeAt, beforeURI)
+	}
+	args = append(args, limit)
+	return db.GetItems(ctx, q,
+		"SELECT "+publicPostColumns+" FROM public_posts WHERE "+where+" ORDER BY created_at DESC, uri DESC LIMIT ?",
+		args, scanPublicPost)
+}
+
+// ListNearbyPublicPosts は authors（自分と今近くにいる人）の nearby 投稿を新しい順に返す（17 §3 の source=nearby）。
+// audience='nearby' だけを対象にし、失効済み（expires_at <= now）は除く。paging は ListPublicPostsByAuthors と同じ。
+func ListNearbyPublicPosts(ctx context.Context, q db.Querier, authors []string, now time.Time, beforeAt int64, beforeURI string, limit int) ([]PublicPost, error) {
+	if len(authors) == 0 {
+		return []PublicPost{}, nil
+	}
+	args := make([]any, 0, len(authors)+5)
+	for _, a := range authors {
+		args = append(args, a)
+	}
+	where := "author_did IN (" + strings.TrimSuffix(strings.Repeat("?,", len(authors)), ",") + ")" +
+		" AND audience = 'nearby' AND deleted_at IS NULL" +
+		" AND (expires_at IS NULL OR expires_at > ?)"
+	args = append(args, clock.UnixMilli(now))
 	if beforeAt > 0 {
 		where += " AND (created_at < ? OR (created_at = ? AND uri < ?))"
 		args = append(args, beforeAt, beforeAt, beforeURI)

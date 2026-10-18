@@ -17,6 +17,7 @@ type UserSettings struct {
 	FriendBeaconShare         bool
 	PartyAuto                 bool
 	NaturalGroups             bool
+	RecordEncounterPlace      bool
 	LocationPaused            bool
 	WarnDisplay               string
 	NotifyJSON                string
@@ -33,13 +34,14 @@ func EnsureSettings(ctx context.Context, q db.Querier, did string, now time.Time
 
 // SettingsPatch は PATCH /me/settings で来た項目だけを持つ。nil の項目は更新しない。
 type SettingsPatch struct {
-	EncounterMode     *string
-	EncounterDelaySec *int
-	FriendBeaconShare *bool
-	PartyAuto         *bool
-	NaturalGroups     *bool
-	WarnDisplay       *string
-	NotifyJSON        *string
+	EncounterMode        *string
+	EncounterDelaySec    *int
+	FriendBeaconShare    *bool
+	PartyAuto            *bool
+	NaturalGroups        *bool
+	RecordEncounterPlace *bool
+	WarnDisplay          *string
+	NotifyJSON           *string
 }
 
 // UpdateSettings は patch に含まれる列と updated_at を更新する。
@@ -65,6 +67,10 @@ func UpdateSettings(ctx context.Context, q db.Querier, did string, patch Setting
 	if patch.NaturalGroups != nil {
 		sets = append(sets, "natural_groups = ?")
 		args = append(args, *patch.NaturalGroups)
+	}
+	if patch.RecordEncounterPlace != nil {
+		sets = append(sets, "record_encounter_place = ?")
+		args = append(args, *patch.RecordEncounterPlace)
 	}
 	if patch.WarnDisplay != nil {
 		sets = append(sets, "warn_display = ?")
@@ -98,12 +104,12 @@ func SetContentScanConsent(ctx context.Context, q db.Querier, did string, versio
 func GetSettings(ctx context.Context, q db.Querier, did string) (*UserSettings, error) {
 	return db.GetItem(ctx, q, `
 		SELECT did, encounter_mode, encounter_delay_sec, friend_beacon_share, party_auto, natural_groups,
-		       location_paused, warn_display, notify_json, content_scan_consent_version
+		       record_encounter_place, location_paused, warn_display, notify_json, content_scan_consent_version
 		FROM user_settings WHERE did = ?`,
 		[]any{did}, func(scan db.Scan, s *UserSettings) error {
 			var consent sql.NullInt64
 			if err := scan(&s.DID, &s.EncounterMode, &s.EncounterDelaySec, &s.FriendBeaconShare, &s.PartyAuto,
-				&s.NaturalGroups, &s.LocationPaused, &s.WarnDisplay, &s.NotifyJSON, &consent); err != nil {
+				&s.NaturalGroups, &s.RecordEncounterPlace, &s.LocationPaused, &s.WarnDisplay, &s.NotifyJSON, &consent); err != nil {
 				return err
 			}
 			if consent.Valid {

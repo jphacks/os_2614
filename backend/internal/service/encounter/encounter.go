@@ -181,10 +181,10 @@ func (s *EncounterService) establish(ctx context.Context, me, peer string, first
 	if n >= core.DailyEncounterCap {
 		return nil
 	}
-	return s.create(ctx, a, b, first, last, rssi, now)
+	return s.create(ctx, me, a, b, first, last, rssi, now)
 }
 
-func (s *EncounterService) create(ctx context.Context, a, b string, first, last time.Time, rssi *int, now time.Time) error {
+func (s *EncounterService) create(ctx context.Context, reporter, a, b string, first, last time.Time, rssi *int, now time.Time) error {
 	sa, err := s.getSettings(ctx, a, now)
 	if err != nil {
 		return err
@@ -194,11 +194,31 @@ func (s *EncounterService) create(ctx context.Context, a, b string, first, last 
 		return err
 	}
 	visibility, revealAt := resolveReveal(sa.EncounterMode, sa.EncounterDelaySec, sb.EncounterMode, sb.EncounterDelaySec, now, last)
+	var geohash string
+	if sa.RecordEncounterPlace && sb.RecordEncounterPlace {
+		geohash = s.encounterPlace(ctx, reporter, now)
+	}
 	return encountermodel.CreateEncounter(ctx, s.DB, encountermodel.Encounter{
 		ID: s.IDs.NewID(), UserA: a, UserB: b,
 		EstablishedAt: now, FirstSeenAt: first, LastSeenAt: last,
-		MaxRSSI: rssi, Visibility: visibility, RevealAt: revealAt,
+		MaxRSSI: rssi, Visibility: visibility, RevealAt: revealAt, Geohash6: geohash,
 	})
+}
+
+// encounterPlace は報告側の最新位置を geohash 6 桁に丸めて返す（06 §7）。
+// 位置がない・古い場合は空文字（場所なしで成立させる）。
+func (s *EncounterService) encounterPlace(ctx context.Context, did string, now time.Time) string {
+	loc, err := model.GetLocation(ctx, s.Redis, did)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.WarnContext(ctx, "encounter: load location failed", "did", did, "err", err)
+		}
+		return ""
+	}
+	if now.Sub(loc.RecordedAt) > core.EncounterPlaceFresh {
+		return ""
+	}
+	return core.EncodeGeohash(loc.Lat, loc.Lon, core.EncounterPlaceLength)
 }
 
 func (s *EncounterService) extend(ctx context.Context, e *encountermodel.Encounter, first, last time.Time, rssi *int, now time.Time) error {

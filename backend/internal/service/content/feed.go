@@ -21,6 +21,7 @@ import (
 	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service/access"
 	"github.com/applemango/chain/internal/service/core"
+	"github.com/applemango/chain/internal/service/proximity"
 	"github.com/applemango/chain/internal/storage"
 	"github.com/applemango/chain/internal/utils"
 )
@@ -31,6 +32,7 @@ import (
 const (
 	feedHome        = "home"
 	feedGroups      = "groups"
+	feedNearby      = "nearby"
 	feedSpacePrefix = "space:"
 	feedUserPrefix  = "user:"
 
@@ -102,8 +104,9 @@ func NewSystemFeedItem(uri string, sp *FeedSpace, text, authorDID string, create
 // FeedService は source から要素を集めて 1 つのフィードにする。
 type FeedService struct {
 	core.Deps
-	Access access.AccessChecker
-	Signer storage.Signer
+	Access    access.AccessChecker
+	Signer    storage.Signer
+	Proximity proximity.PeerProximity
 }
 
 // List は source（カンマ区切りで複数可）からフィードを返す（17 §3.1）。
@@ -170,6 +173,8 @@ func (s *FeedService) buildSource(name string) (FeedSource, error) {
 		return &homeSource{f: s}, nil
 	case name == feedGroups:
 		return &groupsSource{f: s}, nil
+	case name == feedNearby:
+		return &nearbySource{f: s}, nil
 	case strings.HasPrefix(name, feedSpacePrefix):
 		id := strings.TrimPrefix(name, feedSpacePrefix)
 		if id == "" {
@@ -451,6 +456,44 @@ func (s *FeedService) checkUserSource(ctx context.Context, viewer, target string
 	return nil
 }
 
+// nearbySource は今近くにいる相手（自分を含む）の nearby 投稿（17 §3 の source=nearby）。
+// 近接が使えない（Proximity == nil）ときは何も返さない。
+type nearbySource struct{ f *FeedService }
+
+func (s *nearbySource) Fetch(ctx context.Context, viewer string, before FeedCursor, limit int) ([]FeedItem, error) {
+	if s.f.Proximity == nil {
+		return []FeedItem{}, nil
+	}
+	authors, err := nearbyAuthors(ctx, s.f.Proximity, viewer)
+	if err != nil {
+		return nil, err
+	}
+	posts, err := model.ListNearbyPublicPosts(ctx, s.f.DB, authors, s.f.Clock.Now(), beforeMillis(before), before.URI, limit)
+	if err != nil {
+		return nil, err
+	}
+	return nearbyPostItems(posts), nil
+}
+
+// nearbyAuthors は viewer と今近くにいる相手（Neighbors の DID）を、重複なく並べた DID の一覧にする（17 §3）。
+// nearby フィードの著者と、feed.updated{source:"nearby"} の宛先の両方に使う。prox は非 nil であること。
+func nearbyAuthors(ctx context.Context, prox proximity.PeerProximity, viewer string) ([]string, error) {
+	neighbors, err := prox.Neighbors(ctx, viewer, core.NearbyAudienceWindow)
+	if err != nil {
+		return nil, err
+	}
+	set := map[string]bool{viewer: true}
+	for _, n := range neighbors {
+		set[n.DID] = true
+	}
+	out := make([]string, 0, len(set))
+	for did := range set {
+		out = append(out, did)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 func (s *FeedService) checkRead(ctx context.Context, spaceID, viewer string) error {
 	ok, err := s.Access.Check(ctx, spaceID, syntax.DID(viewer), access.ModeRead)
 	if err != nil {
@@ -592,6 +635,26 @@ func publicPostItem(p model.PublicPost) FeedItem {
 		it.Bsky = &BskyRef{URI: p.BskyURI}
 	}
 	return it
+}
+
+func nearbyPostItems(posts []model.PublicPost) []FeedItem {
+	items := make([]FeedItem, 0, len(posts))
+	for _, p := range posts {
+		items = append(items, nearbyPostItem(p))
+	}
+	return items
+}
+
+func nearbyPostItem(p model.PublicPost) FeedItem {
+	return FeedItem{
+		Kind:      "nearby_post",
+		URI:       p.URI,
+		Text:      p.Text,
+		Format:    "plain",
+		CreatedAt: p.CreatedAt,
+		authorDID: p.AuthorDID,
+		modLabel:  p.ModLabel,
+	}
 }
 
 func FeedSpaceOf(sp *spacemodel.Space) *FeedSpace {
