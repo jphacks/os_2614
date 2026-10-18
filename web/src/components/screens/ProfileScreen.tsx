@@ -1,7 +1,15 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import type { Memory, Profile } from "@/domain/types";
+import {
+  forwardRef,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import type { Memory, Profile, Stats } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import {
   ACCEPTED_MEDIA_TYPES,
@@ -26,19 +34,34 @@ import styles from "./ProfileScreen.module.css";
 export type StatusSaveResult =
   | { status: "ok"; value: string }
   | { status: "unavailable" }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; reauth?: boolean };
+
+export type ImageDraft =
+  | { kind: "keep" }
+  | { kind: "set"; blob: Blob; previewUrl: string }
+  | { kind: "remove" };
+
+/** プロフィール編集画面が保持する未保存値。 */
+export type ProfileDraft = {
+  displayName: string;
+  description: string;
+  initialDisplayName: string;
+  initialDescription: string;
+  avatar: ImageDraft;
+  banner: ImageDraft;
+};
 
 /** PATCH /me/profile と画像 API (13 §1.3) の共通結果。 */
 export type ProfileActionResult =
   | { status: "ok" }
   | { status: "unavailable" }
-  | { status: "error"; message: string };
-
-/** PATCH /me/profile (13 §1.3) の入力。 */
-export type ProfileUpdateInput = {
-  displayName: string;
-  description: string;
-};
+  | {
+      status: "error";
+      message: string;
+      reauth?: boolean;
+      conflict?: boolean;
+      remaining?: ProfileDraft;
+    };
 
 /** displayName の上限 (service.MaxDisplayNameGraphemes、13 §1.3)。 */
 export const MAX_DISPLAY_NAME_GRAPHEMES = 64;
@@ -66,39 +89,30 @@ function graphemeCount(text: string): number {
 }
 
 export type ProfileScreenProps = {
-  /**
-   * GET /me の取得状態。ok のときだけ data (マップ済みの Profile) を描画し、
-   * loading / error / unavailable は画面を空にせずそれぞれの状態を出す。
-   */
+  /** GET /me の取得状態。 */
   state: ResourceState<Profile>;
-  /** GET /memories (13 §2) は後続 todo。今は [] で空表示にする。 */
-  memories: Memory[];
-  /** error 状態の再取得。useResource の reload を渡す。 */
+  /** GET /me/stats の取得状態。未取得時は統計を `—` で表示する。 */
+  stats: ResourceState<Stats>;
+  /** GET /memories の最初のページ。 */
+  memories: ResourceState<Memory[]>;
+  /** error 状態の再取得。 */
   onRetry?: () => void;
-  /** ステータスの保存 (PUT /me/status, 13 §1)。未指定なら編集ボタンを無効にする。 */
+  /** ステータスの保存 (PUT /me/status, 13 §1)。 */
   onSaveStatus?: (status: string) => Promise<StatusSaveResult>;
-  /** 名前・自己紹介の保存 (PATCH /me/profile, 13 §1.3)。 */
-  onSaveProfile?: (input: ProfileUpdateInput) => Promise<ProfileActionResult>;
-  /** アイコンの変更 (PUT /me/avatar, multipart)。 */
-  onChangeAvatar?: (file: File) => Promise<ProfileActionResult>;
-  /** アイコンの削除 (DELETE /me/avatar)。 */
-  onRemoveAvatar?: () => Promise<ProfileActionResult>;
-  /** バナーの変更 (PUT /me/banner, multipart)。 */
-  onChangeBanner?: (file: File) => Promise<ProfileActionResult>;
-  /** バナーの削除 (DELETE /me/banner)。 */
-  onRemoveBanner?: () => Promise<ProfileActionResult>;
+  /** 名前・自己紹介・画像の保存を順番に行う。 */
+  onSaveProfile?: (draft: ProfileDraft) => Promise<ProfileActionResult>;
+  /** atproto の再認証が必要なときのログイン導線。 */
+  onRelogin?: () => void;
 };
 
 export function ProfileScreen({
   state,
+  stats,
   memories,
   onRetry,
   onSaveStatus,
   onSaveProfile,
-  onChangeAvatar,
-  onRemoveAvatar,
-  onChangeBanner,
-  onRemoveBanner,
+  onRelogin,
 }: ProfileScreenProps) {
   return (
     <AppShell tab="profile">
@@ -106,13 +120,11 @@ export function ProfileScreen({
         {state.status === "ok" ? (
           <ProfileBody
             me={state.data}
+            stats={stats}
             memories={memories}
             onSaveStatus={onSaveStatus}
             onSaveProfile={onSaveProfile}
-            onChangeAvatar={onChangeAvatar}
-            onRemoveAvatar={onRemoveAvatar}
-            onChangeBanner={onChangeBanner}
-            onRemoveBanner={onRemoveBanner}
+            onRelogin={onRelogin}
           />
         ) : state.status === "loading" ? (
           <ProfileSkeleton />
@@ -144,131 +156,236 @@ export function ProfileScreen({
 
 type ProfileBodyProps = {
   me: Profile;
-  memories: Memory[];
+  stats: ResourceState<Stats>;
+  memories: ResourceState<Memory[]>;
   onSaveStatus?: (status: string) => Promise<StatusSaveResult>;
-  onSaveProfile?: (input: ProfileUpdateInput) => Promise<ProfileActionResult>;
-  onChangeAvatar?: (file: File) => Promise<ProfileActionResult>;
-  onRemoveAvatar?: () => Promise<ProfileActionResult>;
-  onChangeBanner?: (file: File) => Promise<ProfileActionResult>;
-  onRemoveBanner?: () => Promise<ProfileActionResult>;
+  onSaveProfile?: (draft: ProfileDraft) => Promise<ProfileActionResult>;
+  onRelogin?: () => void;
 };
+
+function newDraft(me: Profile): ProfileDraft {
+  return {
+    displayName: me.name,
+    description: me.bio,
+    initialDisplayName: me.name,
+    initialDescription: me.bio,
+    avatar: { kind: "keep" },
+    banner: { kind: "keep" },
+  };
+}
 
 function ProfileBody({
   me,
+  stats,
   memories,
   onSaveStatus,
   onSaveProfile,
-  onChangeAvatar,
-  onRemoveAvatar,
-  onChangeBanner,
-  onRemoveBanner,
+  onRelogin,
 }: ProfileBodyProps) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  // server の status を key にした楽観値。server 値が変わると表示も server に戻る。
-  const [override, setOverride] = useState<{ base: string; value: string }>({
-    base: "",
-    value: "",
-  });
-
+  const [statusEditing, setStatusEditing] = useState(false);
+  const [statusDraft, setStatusDraft] = useState(me.status ?? "");
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusReauth, setStatusReauth] = useState(false);
   const [profileEditing, setProfileEditing] = useState(false);
-  const [nameDraft, setNameDraft] = useState("");
-  const [bioDraft, setBioDraft] = useState("");
+  const [draft, setDraft] = useState<ProfileDraft>(() => newDraft(me));
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [profileNotice, setProfileNotice] = useState<string | null>(null);
+  const [profileReauth, setProfileReauth] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [crop, setCrop] = useState<{
+    kind: ImageCropKind;
+    file: File;
+  } | null>(null);
+  const [menu, setMenu] = useState<ImageCropKind | null>(null);
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const bannerInput = useRef<HTMLInputElement>(null);
+  const statusInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const objectUrls = useRef<string[]>([]);
 
-  const [imageBusy, setImageBusy] = useState<string | null>(null);
-  const [imageError, setImageError] = useState<string | null>(null);
-  const [imageNotice, setImageNotice] = useState<string | null>(null);
+  useEffect(() => {
+    const closeOnOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenu(null);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
 
-  const [crop, setCrop] = useState<{ kind: ImageCropKind; file: File } | null>(
-    null,
+  useEffect(
+    () => () => {
+      objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    },
+    [],
   );
 
-  const avatarInputRef = useRef<HTMLInputElement>(null);
-  const bannerInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (statusEditing) {
+      statusInputRef.current?.focus();
+    }
+  }, [statusEditing]);
 
-  const serverStatus = me.status ?? "";
-  const status = override.base === serverStatus ? override.value : serverStatus;
+  const revokePreviewUrl = (url: string) => {
+    URL.revokeObjectURL(url);
+    objectUrls.current = objectUrls.current.filter((item) => item !== url);
+  };
 
-  const nameCount = graphemeCount(nameDraft);
-  const bioCount = graphemeCount(bioDraft);
-  const nameOver = nameCount > MAX_DISPLAY_NAME_GRAPHEMES;
-  const bioOver = bioCount > MAX_PROFILE_DESCRIPTION_GRAPHEMES;
-
-  const startEdit = () => {
-    setDraft(status);
-    setSaveError(null);
-    setEditing(true);
+  const startStatusEdit = () => {
     setProfileEditing(false);
+    setStatusDraft(me.status ?? "");
+    setStatusError(null);
+    setStatusReauth(false);
+    setStatusEditing(true);
   };
 
-  const cancelEdit = () => {
-    setEditing(false);
-    setSaveError(null);
+  const startProfileEdit = () => {
+    setStatusEditing(false);
+    setDraft(newDraft(me));
+    setProfileError(null);
+    setProfileReauth(false);
+    setNotice(null);
+    setProfileEditing(true);
   };
 
-  const save = async () => {
-    if (!onSaveStatus || saving) {
+  const cancelProfileEdit = () => {
+    for (const image of [draft.avatar, draft.banner]) {
+      if (image.kind === "set") {
+        revokePreviewUrl(image.previewUrl);
+      }
+    }
+    setProfileEditing(false);
+    setProfileError(null);
+    setProfileReauth(false);
+    setMenu(null);
+  };
+
+  const chooseImage = (kind: ImageCropKind) => {
+    setMenu(null);
+    (kind === "avatar" ? avatarInput : bannerInput).current?.click();
+  };
+
+  const onFileSelected = (
+    kind: ImageCropKind,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
       return;
     }
-    setSaving(true);
-    setSaveError(null);
-    const result = await onSaveStatus(draft);
-    setSaving(false);
+    const check = validateMediaFile(file);
+    if (!check.ok) {
+      setProfileError(check.message);
+      return;
+    }
+    setCrop({ kind, file });
+  };
+
+  const setCroppedImage = (kind: ImageCropKind, blob: Blob) => {
+    const previewUrl = URL.createObjectURL(blob);
+    objectUrls.current.push(previewUrl);
+    setDraft((current) => {
+      const previous = current[kind];
+      if (previous.kind === "set") {
+        revokePreviewUrl(previous.previewUrl);
+      }
+      return {
+        ...current,
+        [kind]: { kind: "set", blob, previewUrl },
+      };
+    });
+    setCrop(null);
+  };
+
+  const removeImage = (kind: ImageCropKind) => {
+    setMenu(null);
+    setDraft((current) => {
+      const previous = current[kind];
+      if (previous.kind === "set") {
+        revokePreviewUrl(previous.previewUrl);
+      }
+      return { ...current, [kind]: { kind: "remove" } };
+    });
+  };
+
+  const imagePreview = (kind: ImageCropKind) => {
+    const image = draft[kind];
+    if (image.kind === "set") {
+      return image.previewUrl;
+    }
+    if (image.kind === "remove") {
+      return undefined;
+    }
+    return kind === "avatar" ? me.avatarUrl : me.bannerUrl;
+  };
+
+  const saveStatus = async () => {
+    if (!onSaveStatus || statusSaving || Array.from(statusDraft).length > 40) {
+      return;
+    }
+    setStatusSaving(true);
+    setStatusError(null);
+    setStatusReauth(false);
+    const result = await onSaveStatus(statusDraft);
+    setStatusSaving(false);
     if (result.status === "ok") {
-      setOverride({ base: serverStatus, value: result.value });
-      setEditing(false);
+      setStatusEditing(false);
       return;
     }
-    setSaveError(
+    if (result.status === "error") {
+      setStatusReauth(result.reauth === true);
+    }
+    setStatusError(
       result.status === "unavailable"
         ? "ステータスはまだ更新できません。"
         : result.message,
     );
   };
 
-  const startProfileEdit = () => {
-    setNameDraft(me.name);
-    setBioDraft(me.bio);
-    setProfileError(null);
-    setProfileNotice(null);
-    setProfileEditing(true);
-    setEditing(false);
-  };
-
-  const cancelProfileEdit = () => {
-    setProfileEditing(false);
-    setProfileError(null);
-  };
-
   const saveProfile = async () => {
     if (!onSaveProfile || profileSaving) {
       return;
     }
-    if (nameOver) {
+    const nameCount = graphemeCount(draft.displayName);
+    const bioCount = graphemeCount(draft.description);
+    if (nameCount > MAX_DISPLAY_NAME_GRAPHEMES) {
       setProfileError("名前は64文字までです");
       return;
     }
-    if (bioOver) {
+    if (bioCount > MAX_PROFILE_DESCRIPTION_GRAPHEMES) {
       setProfileError("自己紹介は256文字までです");
       return;
     }
     setProfileSaving(true);
     setProfileError(null);
-    setProfileNotice(null);
+    setProfileReauth(false);
     const result = await onSaveProfile({
-      displayName: nameDraft.trim(),
-      description: bioDraft.trim(),
+      ...draft,
+      displayName: draft.displayName.trim(),
+      description: draft.description.trim(),
     });
     setProfileSaving(false);
     if (result.status === "ok") {
       setProfileEditing(false);
-      setProfileNotice("プロフィールを更新しました");
+      setNotice("プロフィールを更新しました");
       return;
+    }
+    if (result.status === "error" && result.remaining) {
+      setDraft(result.remaining);
+    }
+    if (result.status === "error") {
+      setProfileReauth(result.reauth === true);
     }
     setProfileError(
       result.status === "unavailable"
@@ -277,221 +394,163 @@ function ProfileBody({
     );
   };
 
-  const runImageAction = async (
-    key: string,
-    action: () => Promise<ProfileActionResult>,
-    okMessage: string,
-  ) => {
-    if (imageBusy) {
-      return;
-    }
-    setImageBusy(key);
-    setImageError(null);
-    setImageNotice(null);
-    const result = await action();
-    setImageBusy(null);
-    if (result.status === "ok") {
-      setImageNotice(okMessage);
-      return;
-    }
-    setImageError(
-      result.status === "unavailable"
-        ? "この画像はまだ変更できません。"
-        : result.message,
-    );
-  };
-
-  // 選んだ画像はすぐ送らず、トリミング画面で位置と大きさを決めてから送る。
-  const onFileSelected = (
-    event: ChangeEvent<HTMLInputElement>,
-    kind: ImageCropKind,
-    action: ((file: File) => Promise<ProfileActionResult>) | undefined,
-  ) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file || !action) {
-      return;
-    }
-    const check = validateMediaFile(file);
-    if (!check.ok) {
-      setImageError(check.message);
-      return;
-    }
-    setImageError(null);
-    setCrop({ kind, file });
-  };
-
-  const confirmCrop = async (file: File) => {
-    if (!crop) {
-      return;
-    }
-    const isAvatar = crop.kind === "avatar";
-    const action = isAvatar ? onChangeAvatar : onChangeBanner;
-    if (!action) {
-      return;
-    }
-    await runImageAction(
-      "upload",
-      () => action(file),
-      isAvatar ? "アイコンを更新しました" : "バナーを更新しました",
-    );
-    setCrop(null);
-  };
-
-  const pickAvatar = () => avatarInputRef.current?.click();
-  const pickBanner = () => bannerInputRef.current?.click();
-
-  const removeAvatar = () => {
-    if (!onRemoveAvatar) {
-      return;
-    }
-    return runImageAction("remove-avatar", onRemoveAvatar, "アイコンを削除しました");
-  };
-
-  const removeBanner = () => {
-    if (!onRemoveBanner) {
-      return;
-    }
-    return runImageAction("remove-banner", onRemoveBanner, "バナーを削除しました");
-  };
+  const statValue = (value: number | undefined) =>
+    stats.status === "ok" ? value ?? 0 : "—";
+  const avatarUrl = imagePreview("avatar");
+  const bannerUrl = imagePreview("banner");
+  const statusCount = Array.from(statusDraft).length;
 
   return (
     <>
       <input
-        ref={avatarInputRef}
+        ref={avatarInput}
         type="file"
         accept={ACCEPTED_MEDIA_TYPES.join(",")}
         hidden
         data-testid="profile-avatar-input"
-        onChange={(event) =>
-          onFileSelected(event, "avatar", onChangeAvatar)
-        }
+        onChange={(event) => onFileSelected("avatar", event)}
       />
       <input
-        ref={bannerInputRef}
+        ref={bannerInput}
         type="file"
         accept={ACCEPTED_MEDIA_TYPES.join(",")}
         hidden
         data-testid="profile-banner-input"
-        onChange={(event) =>
-          onFileSelected(event, "banner", onChangeBanner)
-        }
+        onChange={(event) => onFileSelected("banner", event)}
       />
 
-      {crop && (
-        <ImageCropDialog
-          kind={crop.kind}
-          file={crop.file}
-          busy={imageBusy !== null}
-          onCancel={() => setCrop(null)}
-          onConfirm={(file) => void confirmCrop(file)}
-        />
-      )}
-
       <div className={styles.bannerWrap}>
-        <div className={styles.banner} aria-hidden>
-          {me.bannerUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className={styles.bannerImage} src={me.bannerUrl} alt="" />
-          ) : (
-            <>
-              <span className={`${styles.cloud} ${styles.cloudA}`} />
-              <span className={`${styles.cloud} ${styles.cloudB}`} />
-              <span className={`${styles.cloud} ${styles.cloudC}`} />
-            </>
-          )}
-        </div>
-        <div className={styles.bannerEdit}>
-          <IconButton
-            icon="edit"
-            label="バナーを編集"
-            variant="surface"
-            onClick={onChangeBanner ? pickBanner : undefined}
-            disabled={!onChangeBanner || imageBusy !== null}
-          />
-        </div>
-        <span className={styles.avatar}>
-          <Avatar user={me} size={80} />
-        </span>
-        <div className={styles.editButton}>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="edit"
-            onClick={onSaveStatus ? startEdit : undefined}
-            disabled={!onSaveStatus || editing}
+        {profileEditing ? (
+          <button
+            type="button"
+            className={styles.banner}
+            onClick={() => (bannerUrl ? setMenu("banner") : chooseImage("banner"))}
+            aria-label="バナーを変更"
           >
-            編集
-          </Button>
-        </div>
-      </div>
+            <BannerImage url={bannerUrl} editable />
+          </button>
+        ) : (
+          <div className={styles.banner} aria-hidden>
+            <BannerImage url={me.bannerUrl} />
+          </div>
+        )}
+        {profileEditing && menu === "banner" && (
+          <ImageMenu
+            ref={menuRef}
+            className={styles.bannerMenu}
+            onChange={() => chooseImage("banner")}
+            onRemove={() => removeImage("banner")}
+          />
+        )}
 
-      <div className={styles.nameRow}>
-        <h1 className={styles.name}>{me.name}</h1>
-        {status && !editing && (
-          <span className={styles.status}>
-            <span className={styles.onlineDot} aria-hidden />
-            {status}
+        {profileEditing ? (
+          <button
+            type="button"
+            className={styles.avatar}
+            onClick={() => (avatarUrl ? setMenu("avatar") : chooseImage("avatar"))}
+            aria-label="アイコンを変更"
+          >
+            <AvatarImage me={me} url={avatarUrl} editable />
+          </button>
+        ) : (
+          <span className={styles.avatar}>
+            <Avatar user={me} size={80} />
           </span>
+        )}
+        {profileEditing && menu === "avatar" && (
+          <ImageMenu
+            ref={menuRef}
+            className={styles.avatarMenu}
+            onChange={() => chooseImage("avatar")}
+            onRemove={() => removeImage("avatar")}
+          />
+        )}
+
+        {!profileEditing && (
+          <div className={styles.editButton}>
+            <Button variant="secondary" size="sm" icon="edit" onClick={startProfileEdit}>
+              編集
+            </Button>
+          </div>
         )}
       </div>
 
-      {editing && (
-        <div className={styles.statusEditor}>
-          <label className={styles.statusLabel} htmlFor="profile-status">
-            ステータス
-          </label>
-          <input
-            id="profile-status"
-            className={styles.statusInput}
-            value={draft}
-            maxLength={40}
-            disabled={saving}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <div className={styles.statusActions}>
-            <Button variant="secondary" size="sm" onClick={cancelEdit} disabled={saving}>
-              キャンセル
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => void save()} disabled={saving}>
-              {saving ? "保存しています…" : "保存"}
-            </Button>
+      <div className={`${styles.nameRow} ${statusEditing ? styles.nameRowEditing : ""}`}>
+        <h1 className={styles.name}>{me.name}</h1>
+        {!profileEditing && statusEditing ? (
+          <div className={styles.statusEditRow}>
+            <input
+              ref={statusInputRef}
+              className={styles.statusInput}
+              value={statusDraft}
+              aria-label="ステータス"
+              disabled={statusSaving}
+              onChange={(event) => setStatusDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setStatusEditing(false);
+                } else if (
+                  event.key === "Enter" &&
+                  !event.nativeEvent.isComposing &&
+                  event.nativeEvent.keyCode !== 229
+                ) {
+                  event.preventDefault();
+                  void saveStatus();
+                }
+              }}
+            />
+            <span
+              className={
+                statusCount > 40
+                  ? `${styles.statusCounter} ${styles.statusCounterOver}`
+                  : styles.statusCounter
+              }
+            >
+              {statusCount}/40
+            </span>
+            <IconButton
+              icon="close"
+              label="キャンセル"
+              onClick={() => setStatusEditing(false)}
+              disabled={statusSaving}
+            />
+            <IconButton
+              icon="check"
+              label="保存"
+              onClick={() => void saveStatus()}
+              disabled={statusSaving || statusCount > 40}
+            />
           </div>
-          {saveError && (
-            <div role="alert">
-              <Notice tone="warning" icon="error">
-                {saveError}
-              </Notice>
-            </div>
-          )}
+        ) : !profileEditing ? (
+          <StatusPill status={me.status ?? ""} onEdit={startStatusEdit} />
+        ) : null}
+      </div>
+
+      {statusEditing && statusError && (
+        <div role="alert">
+          <Notice tone="warning" icon="error">
+            {statusError}
+            {statusReauth && onRelogin && (
+              <Button variant="secondary" size="sm" onClick={onRelogin}>
+                再ログイン
+              </Button>
+            )}
+          </Notice>
         </div>
       )}
 
       <p className={styles.bio}>{me.bio}</p>
 
-      {profileNotice && (
+      {notice && (
         <div role="status">
           <Notice tone="info" icon="check">
-            {profileNotice}
-          </Notice>
-        </div>
-      )}
-      {imageNotice && (
-        <div role="status">
-          <Notice tone="info" icon="check">
-            {imageNotice}
-          </Notice>
-        </div>
-      )}
-      {imageError && (
-        <div role="alert">
-          <Notice tone="warning" icon="error">
-            {imageError}
+            {notice}
           </Notice>
         </div>
       )}
 
-      {profileEditing ? (
+      {profileEditing && (
         <div className={styles.profileEditor}>
           <label className={styles.fieldLabel} htmlFor="profile-display-name">
             名前
@@ -499,12 +558,23 @@ function ProfileBody({
           <input
             id="profile-display-name"
             className={styles.fieldInput}
-            value={nameDraft}
+            value={draft.displayName}
             disabled={profileSaving}
-            onChange={(event) => setNameDraft(event.target.value)}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                displayName: event.target.value,
+              }))
+            }
           />
-          <span className={nameOver ? styles.counterOver : styles.counter}>
-            {nameCount}/{MAX_DISPLAY_NAME_GRAPHEMES}
+          <span
+            className={
+              graphemeCount(draft.displayName) > MAX_DISPLAY_NAME_GRAPHEMES
+                ? styles.counterOver
+                : styles.counter
+            }
+          >
+            {graphemeCount(draft.displayName)}/{MAX_DISPLAY_NAME_GRAPHEMES}
           </span>
 
           <label className={styles.fieldLabel} htmlFor="profile-description">
@@ -513,67 +583,24 @@ function ProfileBody({
           <textarea
             id="profile-description"
             className={styles.fieldTextarea}
-            value={bioDraft}
+            value={draft.description}
             disabled={profileSaving}
-            onChange={(event) => setBioDraft(event.target.value)}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                description: event.target.value,
+              }))
+            }
           />
-          <span className={bioOver ? styles.counterOver : styles.counter}>
-            {bioCount}/{MAX_PROFILE_DESCRIPTION_GRAPHEMES}
+          <span
+            className={
+              graphemeCount(draft.description) > MAX_PROFILE_DESCRIPTION_GRAPHEMES
+                ? styles.counterOver
+                : styles.counter
+            }
+          >
+            {graphemeCount(draft.description)}/{MAX_PROFILE_DESCRIPTION_GRAPHEMES}
           </span>
-
-          <div className={styles.imageRow}>
-            <span className={styles.imageLabel}>アイコン</span>
-            <div className={styles.imageActions}>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={pickAvatar}
-                disabled={!onChangeAvatar || imageBusy !== null}
-              >
-                アイコンを変更
-              </Button>
-              {me.avatarUrl && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void removeAvatar()}
-                  disabled={!onRemoveAvatar || imageBusy !== null}
-                >
-                  アイコンを削除
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <div className={styles.imageRow}>
-            <span className={styles.imageLabel}>バナー</span>
-            <div className={styles.imageActions}>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={pickBanner}
-                disabled={!onChangeBanner || imageBusy !== null}
-              >
-                バナーを変更
-              </Button>
-              {me.bannerUrl && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void removeBanner()}
-                  disabled={!onRemoveBanner || imageBusy !== null}
-                >
-                  バナーを削除
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {imageBusy !== null && (
-            <p className={styles.uploading} role="status">
-              送信しています…
-            </p>
-          )}
 
           <div className={styles.statusActions}>
             <Button
@@ -597,29 +624,31 @@ function ProfileBody({
             <div role="alert">
               <Notice tone="warning" icon="error">
                 {profileError}
+                {profileReauth && onRelogin && (
+                  <Button variant="secondary" size="sm" onClick={onRelogin}>
+                    再ログイン
+                  </Button>
+                )}
               </Notice>
             </div>
           )}
-        </div>
-      ) : (
-        <div className={styles.profileEditRow}>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="edit"
-            onClick={onSaveProfile ? startProfileEdit : undefined}
-            disabled={!onSaveProfile}
-          >
-            プロフィールを編集
-          </Button>
         </div>
       )}
 
       <StatTriple
         items={[
-          { value: me.counts.encounters, label: "すれ違い" },
-          { value: me.counts.friends, label: "友達" },
-          { value: me.counts.parties, label: "パーティ" },
+          {
+            value: statValue(stats.status === "ok" ? stats.data.encounters.total : undefined),
+            label: "すれ違い",
+          },
+          {
+            value: statValue(stats.status === "ok" ? stats.data.friends : undefined),
+            label: "友達",
+          },
+          {
+            value: statValue(stats.status === "ok" ? stats.data.parties.total : undefined),
+            label: "パーティ",
+          },
         ]}
       />
 
@@ -629,12 +658,14 @@ function ProfileBody({
           action={{ label: "すべて見る ›", href: "/memory/" }}
         />
         <div className={styles.memories}>
-          {memories.length > 0 ? (
-            memories.map((memory) => (
+          {memories.status === "ok" && memories.data.length > 0 ? (
+            memories.data.map((memory) => (
               <MemoryThumbCard key={memory.spaceId} memory={memory} />
             ))
           ) : (
-            <p className={styles.memoryEmpty}>まだメモリーはありません</p>
+            <p className={styles.memoryEmpty}>
+              {memories.status === "loading" ? "" : "まだメモリーはありません"}
+            </p>
           )}
         </div>
       </section>
@@ -657,9 +688,136 @@ function ProfileBody({
           />
         </List>
       </Card>
+
+      {crop && (
+        <ImageCropDialog
+          kind={crop.kind}
+          file={crop.file}
+          onCancel={() => setCrop(null)}
+          onConfirm={(blob) => setCroppedImage(crop.kind, blob)}
+        />
+      )}
     </>
   );
 }
+
+function StatusPill({ status, onEdit }: { status: string; onEdit: () => void }) {
+  const viewportRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [overflow, setOverflow] = useState(0);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const text = textRef.current;
+    if (!viewport || !text) {
+      return;
+    }
+    const measure = () => {
+      setOverflow(Math.max(0, text.scrollWidth - viewport.clientWidth));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(text);
+    return () => observer.disconnect();
+  }, [status]);
+
+  const marqueeStyle = {
+    "--marquee-distance": `${overflow}px`,
+    "--marquee-duration": `${Math.max(4, overflow / 35 / 0.3)}s`,
+  } as CSSProperties;
+
+  return (
+    <span className={`${styles.status} ${!status ? styles.statusMuted : ""}`}>
+      {status && <span className={styles.onlineDot} aria-hidden />}
+      <span
+        ref={viewportRef}
+        className={styles.statusViewport}
+        data-marquee={overflow > 0 ? "on" : "off"}
+        title={status}
+      >
+        <span
+          ref={textRef}
+          className={styles.statusText}
+          style={marqueeStyle}
+        >
+          {status || "ステータスを設定"}
+        </span>
+      </span>
+      <IconButton icon="edit" label="ステータスを編集" onClick={onEdit} />
+    </span>
+  );
+}
+
+/* eslint-disable @next/next/no-img-element */
+function BannerImage({ url, editable = false }: { url?: string; editable?: boolean }) {
+  return url ? (
+    <>
+      <img className={styles.bannerImage} src={url} alt="" />
+      {editable && (
+        <span className={styles.imageOverlay} data-testid="profile-image-overlay">
+          <Icon name="photo_camera" size={24} />
+        </span>
+      )}
+    </>
+  ) : (
+    <>
+      <span className={`${styles.cloud} ${styles.cloudA}`} />
+      <span className={`${styles.cloud} ${styles.cloudB}`} />
+      <span className={`${styles.cloud} ${styles.cloudC}`} />
+      {editable && (
+        <span className={styles.imageOverlay} data-testid="profile-image-overlay">
+          <Icon name="photo_camera" size={24} />
+        </span>
+      )}
+    </>
+  );
+}
+
+function AvatarImage({ me, url, editable = false }: { me: Profile; url?: string; editable?: boolean }) {
+  return url ? (
+    <>
+      <img className={styles.avatarImage} src={url} alt="" />
+      {editable && (
+        <span className={styles.imageOverlay} data-testid="profile-image-overlay">
+          <Icon name="photo_camera" size={22} />
+        </span>
+      )}
+    </>
+  ) : (
+    <>
+      <Avatar user={{ ...me, avatarUrl: undefined }} size={80} />
+      {editable && (
+        <span className={styles.imageOverlay} data-testid="profile-image-overlay">
+          <Icon name="photo_camera" size={22} />
+        </span>
+      )}
+    </>
+  );
+}
+/* eslint-enable @next/next/no-img-element */
+
+type ImageMenuProps = {
+  className: string;
+  onChange: () => void;
+  onRemove: () => void;
+};
+
+const ImageMenu = forwardRef<HTMLDivElement, ImageMenuProps>(function ImageMenu(
+  { className, onChange, onRemove },
+  ref,
+) {
+  return (
+    <div ref={ref} className={`${styles.imageMenu} ${className}`}>
+      <Button variant="ghost" size="sm" onClick={onChange}>
+        画像を変更
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onRemove}>
+        削除
+      </Button>
+    </div>
+  );
+});
 
 type ProfileStateProps = {
   icon: string;

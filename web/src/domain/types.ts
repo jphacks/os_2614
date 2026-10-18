@@ -34,7 +34,6 @@ export type Profile = User & {
   /** 例: "図書館でもくもく中" */
   status?: string;
   bannerUrl?: string;
-  counts: { encounters: number; friends: number; parties: number };
 };
 
 /** 位置の見せ方 (07 §4.1)。フレンドごとに設定する。 */

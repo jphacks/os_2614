@@ -63,8 +63,14 @@ export function ImageCropDialog({
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ distance: number; zoom: number } | null>(null);
 
-  const url = useMemo(() => URL.createObjectURL(file), [file]);
-  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  // useMemo で作ると StrictMode の再マウントで revoke 済みの URL が残るので、effect で作り直す。
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const next = URL.createObjectURL(file);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
 
   useEffect(() => {
     let cancelled = false;
@@ -261,7 +267,7 @@ export function ImageCropDialog({
           onWheel={onWheel}
           onKeyDown={onKeyDown}
         >
-          {current && image && (
+          {current && image && url && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               className={styles.image}

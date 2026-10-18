@@ -44,7 +44,7 @@ export type { ConsentScreenProps, ConsentState } from "./ConsentScreen";
 export { HomeFeedScreen } from "./HomeFeedScreen";
 export type { FeedSource, HomeFeedScreenProps } from "./HomeFeedScreen";
 export { ProfileScreen } from "./ProfileScreen";
-export type { ProfileScreenProps, StatusSaveResult } from "./ProfileScreen";
+export type { ProfileScreenProps, StatusSaveResult, ProfileActionResult, ProfileDraft, ImageDraft } from "./ProfileScreen";
 export { MemoryScreen } from "./MemoryScreen";
 export type { MemoryScreenProps } from "./MemoryScreen";
 export { StatsScreen } from "./StatsScreen";
