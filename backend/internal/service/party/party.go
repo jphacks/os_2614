@@ -100,6 +100,8 @@ type MemoryItem struct {
 	Name        string       `json:"name"`
 	From        time.Time    `json:"from"`
 	Until       time.Time    `json:"until"`
+	ConfirmedAt *time.Time   `json:"confirmedAt,omitempty"`
+	EndedAt     *time.Time   `json:"endedAt,omitempty"`
 	MemberCount int          `json:"memberCount"`
 	MediaCount  int          `json:"mediaCount"`
 	Cover       *MemoryCover `json:"cover,omitempty"`
@@ -495,7 +497,7 @@ func (s *PartyService) Memories(ctx context.Context, me, cursor string, limit in
 		}
 		item := MemoryItem{
 			SpaceID: r.SpaceID, Type: memoryTypeName(r.Type), Name: r.Name,
-			From: r.From, Until: r.Until,
+			From: r.From, Until: r.Until, ConfirmedAt: r.ConfirmedAt, EndedAt: r.EndedAt,
 			MemberCount: r.MemberCount, MediaCount: r.MediaCount,
 		}
 		if r.CoverMediaID != nil {

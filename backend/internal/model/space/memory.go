@@ -17,6 +17,8 @@ type MemoryItem struct {
 	Name         string
 	From         time.Time
 	Until        time.Time
+	ConfirmedAt  *time.Time
+	EndedAt      *time.Time
 	MemberCount  int
 	MediaCount   int
 	CoverMediaID *string
@@ -38,6 +40,7 @@ const memoryFromSQL = `CASE WHEN s.type = '` + model.SpaceTypeParty + `'
 func ListMemories(ctx context.Context, q db.Querier, did string, beforeAt int64, beforeID string, limit int) ([]MemoryItem, error) {
 	query := `
 		SELECT s.id, s.type, s.name, ` + memoryFromSQL + `, ` + memoryUntilSQL + `,
+		  p.confirmed_at, p.ended_at,
 		  (SELECT count(*) FROM space_members m2 WHERE m2.space_id = s.id),
 		  (SELECT count(*) FROM media md WHERE md.space_id = s.id AND md.deleted_at IS NULL),
 		  (SELECT md2.id FROM media md2 WHERE md2.space_id = s.id AND md2.deleted_at IS NULL
@@ -56,13 +59,22 @@ func ListMemories(ctx context.Context, q db.Querier, did string, beforeAt int64,
 
 	return db.GetItems(ctx, q, query, args, func(scan db.Scan, m *MemoryItem) error {
 		var from, until int64
+		var confirmed, ended sql.NullInt64
 		var cover sql.NullString
-		if err := scan(&m.SpaceID, &m.Type, &m.Name, &from, &until,
+		if err := scan(&m.SpaceID, &m.Type, &m.Name, &from, &until, &confirmed, &ended,
 			&m.MemberCount, &m.MediaCount, &cover); err != nil {
 			return err
 		}
 		m.From = clock.FromUnixMilli(from)
 		m.Until = clock.FromUnixMilli(until)
+		if confirmed.Valid {
+			t := clock.FromUnixMilli(confirmed.Int64)
+			m.ConfirmedAt = &t
+		}
+		if ended.Valid {
+			t := clock.FromUnixMilli(ended.Int64)
+			m.EndedAt = &t
+		}
 		if cover.Valid {
 			v := cover.String
 			m.CoverMediaID = &v

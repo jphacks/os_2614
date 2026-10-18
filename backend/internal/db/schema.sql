@@ -245,6 +245,7 @@ CREATE TABLE records (
   collection   TEXT NOT NULL,
   rkey         TEXT NOT NULL,                 -- TID
   value_json   TEXT NOT NULL,
+  reply_root   TEXT GENERATED ALWAYS AS (json_extract(value_json, '$.reply.root')) STORED,
   created_at   INTEGER NOT NULL,
   deleted_at   INTEGER,
   deleted_by   TEXT,
@@ -252,6 +253,7 @@ CREATE TABLE records (
   mod_state    TEXT NOT NULL DEFAULT 'done' CHECK (mod_state IN ('pending','done'))
 );
 CREATE INDEX records_space ON records(space_id, collection, created_at);
+CREATE INDEX records_reply_root ON records(space_id, reply_root, created_at);
 CREATE INDEX records_author ON records(author_did, created_at);
 
 CREATE TABLE media (

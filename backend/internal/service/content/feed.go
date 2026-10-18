@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,6 +81,7 @@ type FeedItem struct {
 	Hidden     string              `json:"hidden,omitempty"`
 	TakenAt    *time.Time          `json:"takenAt,omitempty"`
 	CreatedAt  time.Time           `json:"createdAt"`
+	ReplyCount int                 `json:"replyCount"`
 
 	// 内部用。API には出さない。
 	authorDID string // ブロック判定に使う
@@ -90,6 +92,110 @@ type FeedItem struct {
 type FeedPage struct {
 	Items  []FeedItem `json:"items"`
 	Cursor string     `json:"cursor,omitempty"`
+}
+
+type ThreadPage struct {
+	Root    FeedItem   `json:"root"`
+	Replies []FeedItem `json:"replies"`
+	Cursor  string     `json:"cursor,omitempty"`
+}
+
+// Thread は 10 §4.2.1 のスレッドを返す。limit は未指定なら 50、最大 200。
+func (s *FeedService) Thread(ctx context.Context, viewer, spaceID, rootURI, cursor, limitParam string) (*ThreadPage, error) {
+	if rootURI == "" {
+		return nil, httpx.ErrNotFound
+	}
+	limit := 50
+	if n, e := strconv.Atoi(limitParam); e == nil && n > 0 {
+		limit = n
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if err := s.checkRead(ctx, spaceID, viewer); err != nil {
+		return nil, err
+	}
+	sp, err := spacemodel.GetSpace(ctx, s.DB, spaceID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, httpx.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	rec, err := spacemodel.GetRecord(ctx, s.DB, rootURI)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, httpx.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if rec.SpaceID != spaceID || rec.Collection != core.CollectionPost || rec.DeletedAt != nil {
+		return nil, httpx.ErrNotFound
+	}
+	var pv PostValue
+	if err := json.Unmarshal([]byte(rec.ValueJSON), &pv); err == nil && pv.Reply != nil {
+		rootURI = pv.Reply.Root
+		rec, err = spacemodel.GetRecord(ctx, s.DB, rootURI)
+		if errors.Is(err, sql.ErrNoRows) || err != nil || rec.SpaceID != spaceID || rec.Collection != core.CollectionPost || rec.DeletedAt != nil {
+			return nil, httpx.ErrNotFound
+		}
+	}
+	rootItem, err := newInstanceItem(ctx, s.DB, sp, *rec)
+	if err != nil {
+		return nil, err
+	}
+	blocked, err := model.BlockedDIDs(ctx, s.DB, viewer)
+	if err != nil {
+		return nil, err
+	}
+	warn, err := warnDisplayFor(ctx, s.DB, viewer)
+	if err != nil {
+		return nil, err
+	}
+	ok, err := decorateItem(ctx, s.DB, s.Config.PublicURL, s.Signer, s.Clock.Now(), viewer, warn, blocked, rootItem)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, httpx.ErrNotFound
+	}
+	counts, err := spacemodel.ListReplyCounts(ctx, s.DB, spaceID, viewer, []string{rootURI})
+	if err != nil {
+		return nil, err
+	}
+	rootItem.ReplyCount = counts[rootURI]
+	at, uri, err := utils.DecodeCursor(cursor)
+	if err != nil {
+		return nil, httpx.ErrInvalidRequest
+	}
+	recs, err := spacemodel.ListReplies(ctx, s.DB, spaceID, rootURI, at, uri, limit+1)
+	if err != nil {
+		return nil, err
+	}
+	pageLen := len(recs)
+	if pageLen > limit {
+		pageLen = limit
+	}
+	replies := make([]FeedItem, 0, pageLen)
+	for i := 0; i < pageLen; i++ {
+		it, e := newInstanceItem(ctx, s.DB, sp, recs[i])
+		if e != nil {
+			return nil, e
+		}
+		keep, e := decorateItem(ctx, s.DB, s.Config.PublicURL, s.Signer, s.Clock.Now(), viewer, warn, blocked, it)
+		if e != nil {
+			return nil, e
+		}
+		if keep {
+			replies = append(replies, *it)
+		}
+	}
+	p := &ThreadPage{Root: *rootItem, Replies: replies}
+	if len(recs) > limit {
+		last := recs[limit-1]
+		p.Cursor = utils.EncodeCursor(last.CreatedAt.UnixMilli(), last.URI)
+	}
+	return p, nil
 }
 
 // NewSystemFeedItem は lock / unlock などの system 投稿の FeedItem を作る（08 §4.4）。
@@ -116,6 +222,14 @@ func (s *FeedService) List(ctx context.Context, viewer, source, cursor string, l
 		return nil, err
 	}
 	return s.ListSources(ctx, viewer, sources, cursor, limit)
+}
+
+// ListSpace は 10 §4.2 の Space 投稿一覧を返す。roots=true なら返信を除く。
+func (s *FeedService) ListSpace(ctx context.Context, viewer, spaceID, cursor string, limit int, roots bool) (*FeedPage, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	return s.ListSources(ctx, viewer, []FeedSource{&spaceSource{f: s, spaceID: spaceID, roots: roots}}, cursor, limit)
 }
 
 // ListSources は組み立て済みの source をマージして返す。複数 source のマージはここで行う。
@@ -387,6 +501,7 @@ func (s *groupsSource) Fetch(ctx context.Context, viewer string, before FeedCurs
 type spaceSource struct {
 	f       *FeedService
 	spaceID string
+	roots   bool
 }
 
 func (s *spaceSource) Fetch(ctx context.Context, viewer string, before FeedCursor, limit int) ([]FeedItem, error) {
@@ -400,12 +515,33 @@ func (s *spaceSource) Fetch(ctx context.Context, viewer string, before FeedCurso
 	if err := s.f.checkRead(ctx, s.spaceID, viewer); err != nil {
 		return nil, err
 	}
-	recs, err := spacemodel.ListRecordsInSpace(ctx, s.f.DB, s.spaceID,
+	list := spacemodel.ListRecordsInSpace
+	if s.roots {
+		list = spacemodel.ListRecordsInSpaceRoots
+	}
+	recs, err := list(ctx, s.f.DB, s.spaceID,
 		[]string{core.CollectionPost, core.CollectionMedia}, beforeMillis(before), before.URI, limit)
 	if err != nil {
 		return nil, err
 	}
-	return s.f.instanceItems(ctx, sp, recs)
+	items, err := s.f.instanceItems(ctx, sp, recs)
+	if err != nil {
+		return nil, err
+	}
+	roots := make([]string, 0, len(items))
+	for i := range items {
+		if items[i].Kind == "instance_post" {
+			roots = append(roots, items[i].URI)
+		}
+	}
+	counts, err := spacemodel.ListReplyCounts(ctx, s.f.DB, s.spaceID, viewer, roots)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].ReplyCount = counts[items[i].URI]
+	}
+	return items, nil
 }
 
 // userSource は 13 §1.2 の関係がある相手（自分を含む）の公開投稿（17 §3.1）。関係がなければ 404。

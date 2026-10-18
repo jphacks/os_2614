@@ -4,6 +4,7 @@ package content_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -100,6 +101,138 @@ func uploadJPEG(t *testing.T, app *fiber.App, token string) string {
 		t.Fatalf("upload response has no id (body=%s)", body)
 	}
 	return up.ID
+}
+
+func shareMedia(t *testing.T, app *fiber.App, token, spaceID, mediaID string, takenAt *time.Time) (int, []byte) {
+	t.Helper()
+	body := map[string]any{"mediaId": mediaID}
+	if takenAt != nil {
+		body["takenAt"] = takenAt.UTC().Format(time.RFC3339)
+	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal share body: %v", err)
+	}
+	return testutil.Request(t, app, http.MethodPost, "/api/v1/instances/"+spaceID+"/media", string(b), token)
+}
+
+func archivedPartyForMedia(t *testing.T, env *testutil.Env, spaceID, did string, confirmed, ended time.Time, leftAt *time.Time) {
+	t.Helper()
+	testutil.Space(t, env, spaceID, "jp.i32.chain.space.party", "archived", did)
+	testutil.Exec(t, env, `INSERT INTO parties (space_id, phase, confirmed_at, ended_at, tentative_at, last_activity_at)
+		VALUES (?, 'ended', ?, ?, ?, ?)`, spaceID, confirmed.UnixMilli(), ended.UnixMilli(), confirmed.UnixMilli(), ended.UnixMilli())
+	testutil.Exec(t, env, `INSERT INTO space_members (space_id, did, can_read, can_write, role, joined_at, left_at)
+		VALUES (?, ?, 1, 0, 'member', ?, ?)`, spaceID, did, confirmed.UnixMilli(), func() any {
+		if leftAt == nil {
+			return nil
+		}
+		return leftAt.UnixMilli()
+	}())
+}
+
+func insertUnattachedMedia(t *testing.T, env *testutil.Env, id, owner, sha string) {
+	t.Helper()
+	testutil.Exec(t, env, `INSERT INTO media (id, owner_did, mime, width, height, bytes, sha256, created_at)
+		VALUES (?, ?, 'image/jpeg', 32, 24, 100, ?, ?)`, id, owner, sha, env.Clock.Now().UnixMilli())
+}
+
+func TestShareMediaDeduplicatesAndAllowsArchivedPartyWindow(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	const alice = "did:plc:alice"
+	env.CreateUser(t, alice, "alice.test")
+	token := env.Login(t, alice)
+
+	testutil.Space(t, env, "group-active", "jp.i32.chain.space.group", "active", alice)
+	testutil.Group(t, env, "group-active", true)
+	testutil.Member(t, env, "group-active", alice, true)
+	mediaID := uploadJPEG(t, app, token)
+	status, body := shareMedia(t, app, token, "group-active", mediaID, nil)
+	if status != http.StatusCreated {
+		t.Fatalf("new share: status = %d, want 201 (body=%s)", status, body)
+	}
+	var first struct {
+		URI string `json:"uri"`
+	}
+	testutil.MustJSONBody(t, body, &first)
+	status, body = shareMedia(t, app, token, "group-active", mediaID, nil)
+	if status != http.StatusOK {
+		t.Fatalf("duplicate share: status = %d, want 200 (body=%s)", status, body)
+	}
+	var duplicate struct {
+		URI string `json:"uri"`
+	}
+	testutil.MustJSONBody(t, body, &duplicate)
+	if duplicate.URI != first.URI {
+		t.Fatalf("duplicate uri = %q, want %q", duplicate.URI, first.URI)
+	}
+
+	now := env.Clock.Now()
+	cases := []struct {
+		name       string
+		age        time.Duration
+		left       bool
+		taken      time.Time
+		wantStatus int
+	}{
+		{name: "within 24 hours", age: time.Hour, taken: now.Add(-90 * time.Minute), wantStatus: http.StatusCreated},
+		{name: "over 24 hours", age: 25 * time.Hour, taken: now.Add(-25 * time.Hour), wantStatus: http.StatusGone},
+		{name: "left before ending", age: time.Hour, left: true, taken: now.Add(-90 * time.Minute), wantStatus: http.StatusGone},
+		{name: "taken outside party", age: time.Hour, taken: now.Add(-4 * time.Hour), wantStatus: http.StatusGone},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			spaceID := "party-media-" + string(rune('a'+i))
+			ended := now.Add(-tc.age)
+			confirmed := ended.Add(-2 * time.Hour)
+			var leftAt *time.Time
+			if tc.left {
+				left := ended.Add(-time.Minute)
+				leftAt = &left
+			}
+			archivedPartyForMedia(t, env, spaceID, alice, confirmed, ended, leftAt)
+			mediaID := "uploaded-" + string(rune('a'+i))
+			insertUnattachedMedia(t, env, mediaID, alice, "sha-"+string(rune('a'+i)))
+			status, body := shareMedia(t, app, token, spaceID, mediaID, &tc.taken)
+			if status != tc.wantStatus {
+				t.Fatalf("status = %d, want %d (body=%s)", status, tc.wantStatus, body)
+			}
+			if tc.wantStatus == http.StatusGone {
+				testutil.WantErrorCode(t, body, "gone")
+			}
+		})
+	}
+
+	testutil.Space(t, env, "group-archived-media", "jp.i32.chain.space.group", "archived", alice)
+	testutil.Group(t, env, "group-archived-media", true)
+	testutil.Member(t, env, "group-archived-media", alice, false)
+	insertUnattachedMedia(t, env, "group-archived-upload", alice, "sha-group")
+	status, body = shareMedia(t, app, token, "group-archived-media", "group-archived-upload", nil)
+	if status != http.StatusGone {
+		t.Fatalf("archived group: status = %d, want 410 (body=%s)", status, body)
+	}
+	testutil.WantErrorCode(t, body, "gone")
+}
+
+func TestShareMediaRejectsForeignMediaBeforeValidation(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	const alice = "did:plc:alice"
+	const bob = "did:plc:bob"
+	env.CreateUser(t, alice, "alice.test")
+	env.CreateUser(t, bob, "bob.test")
+	aliceToken := env.Login(t, alice)
+	bobToken := env.Login(t, bob)
+	testutil.Space(t, env, "group-foreign-media", "jp.i32.chain.space.group", "active", alice)
+	testutil.Group(t, env, "group-foreign-media", true)
+	testutil.Member(t, env, "group-foreign-media", alice, true)
+	mediaID := uploadJPEG(t, app, aliceToken)
+
+	status, body := shareMedia(t, app, bobToken, "group-foreign-media", mediaID, nil)
+	if status != http.StatusForbidden {
+		t.Fatalf("foreign media from non-member: status = %d, want 403 (body=%s)", status, body)
+	}
+	testutil.WantErrorCode(t, body, "forbidden")
 }
 
 func TestMediaUploadStripsEXIF(t *testing.T) {

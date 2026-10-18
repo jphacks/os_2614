@@ -76,3 +76,13 @@ func AttachMedia(ctx context.Context, q db.Querier, id, ownerDID, spaceID string
 	n, err := res.RowsAffected()
 	return n > 0, err
 }
+
+// FindSharedMedia は同じ Space・投稿者・変換後 sha256 の共有済み media record を探す（10 §4.4）。
+func FindSharedMedia(ctx context.Context, q db.Querier, spaceID, ownerDID, sha256 string) (*Record, error) {
+	return db.GetItem(ctx, q, `SELECT r.uri, r.space_id, r.author_did, r.collection, r.rkey,
+		r.value_json, r.reply_root, r.created_at, r.deleted_at, r.deleted_by, r.mod_label, r.mod_state
+		FROM records r JOIN media m ON json_extract(r.value_json, '$.media.id') = m.id
+		WHERE r.space_id = ? AND r.author_did = ? AND r.collection = 'jp.i32.chain.instance.media'
+		  AND m.sha256 = ? AND r.deleted_at IS NULL
+		ORDER BY r.created_at, r.uri LIMIT 1`, []any{spaceID, ownerDID, sha256}, ScanRecord)
+}

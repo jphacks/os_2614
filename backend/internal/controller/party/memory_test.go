@@ -44,6 +44,8 @@ type memoryItem struct {
 	Name        string `json:"name"`
 	From        string `json:"from"`
 	Until       string `json:"until"`
+	ConfirmedAt string `json:"confirmedAt"`
+	EndedAt     string `json:"endedAt"`
 	MemberCount int    `json:"memberCount"`
 	MediaCount  int    `json:"mediaCount"`
 	Cover       *struct {
@@ -118,6 +120,9 @@ func TestMemoriesMixPartiesAndGroups(t *testing.T) {
 	second := page.Items[1]
 	if second.SpaceID != archivedPartyID || second.Type != "party" {
 		t.Fatalf("second = %+v, want the party", second)
+	}
+	if second.ConfirmedAt == "" || second.EndedAt == "" {
+		t.Fatalf("party timestamps = %+v, want confirmedAt and endedAt", second)
 	}
 	if second.MemberCount != 1 || second.MediaCount != 0 {
 		t.Fatalf("party counts = %+v, want memberCount 1, mediaCount 0", second)

@@ -5,8 +5,10 @@ package content_test
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -312,6 +314,40 @@ type replyPostItem struct {
 	} `json:"reply"`
 }
 
+type instancePostItem struct {
+	URI        string `json:"uri"`
+	Text       string `json:"text"`
+	ReplyCount int    `json:"replyCount"`
+	Reply      *struct {
+		Root string `json:"root"`
+	} `json:"reply"`
+}
+
+type instancePostPage struct {
+	Items  []instancePostItem `json:"items"`
+	Cursor string             `json:"cursor"`
+}
+
+func listPostsWithQuery(t *testing.T, app *fiber.App, token, spaceID, query string) instancePostPage {
+	t.Helper()
+	status, body := testutil.Request(t, app, http.MethodGet, "/api/v1/instances/"+spaceID+"/posts?"+query, "", token)
+	if status != http.StatusOK {
+		t.Fatalf("list posts: status = %d, want 200 (body=%s)", status, body)
+	}
+	var page instancePostPage
+	testutil.MustJSONBody(t, body, &page)
+	return page
+}
+
+func insertReply(t *testing.T, env *testutil.Env, spaceID, typ, author, rkey, text, root string, at time.Time, modLabel string) string {
+	t.Helper()
+	uri := testutil.InsertInstancePost(t, env, spaceID, typ, author, rkey, text, at, modLabel)
+	value := fmt.Sprintf(`{"text":%q,"format":"plain","reply":{"root":%q,"parent":%q},"createdAt":%q}`,
+		text, root, root, at.UTC().Format(time.RFC3339))
+	testutil.Exec(t, env, `UPDATE records SET value_json = ? WHERE uri = ?`, value, uri)
+	return uri
+}
+
 func createPost(t *testing.T, app *fiber.App, token, spaceID, text string) string {
 	t.Helper()
 	status, body := testutil.Request(t, app, http.MethodPost, "/api/v1/posts",
@@ -418,5 +454,165 @@ func TestCreatePostReplyErrors(t *testing.T) {
 	e := testutil.WantErrorCode(t, body, "invalid_request")
 	if e.Error.Details.Fields["reply"] == "" {
 		t.Fatalf("details.fields.reply is empty (body=%s)", body)
+	}
+}
+
+// 10 §4.2 の roots / replyCount と、返信の可視性を確認する。
+func TestListPostsRootsAndReplyCount(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	const space = "sp-replies"
+	const typ = "jp.i32.chain.space.group"
+	users := []string{"did:plc:root", "did:plc:visible", "did:plc:deleted", "did:plc:moderated", "did:plc:blocked"}
+	for _, did := range users {
+		env.CreateUser(t, did, strings.TrimPrefix(did, "did:plc:")+".test")
+		env.Consent(t, did)
+	}
+	alice := env.Login(t, users[0])
+	testutil.Space(t, env, space, typ, "active", users[0])
+	testutil.Group(t, env, space, true)
+	for _, did := range users {
+		testutil.Member(t, env, space, did, true)
+	}
+	now := env.Clock.Now()
+	root := testutil.InsertInstancePost(t, env, space, typ, users[0], "root", "root", now, "ok")
+	insertReply(t, env, space, typ, users[1], "visible", "visible", root, now.Add(time.Minute), "ok")
+	deleted := insertReply(t, env, space, typ, users[2], "deleted", "deleted", root, now.Add(2*time.Minute), "ok")
+	testutil.Exec(t, env, `UPDATE records SET deleted_at = ? WHERE uri = ?`, now.UnixMilli(), deleted)
+	insertReply(t, env, space, typ, users[3], "moderated", "moderated", root, now.Add(3*time.Minute), "block")
+	insertReply(t, env, space, typ, users[4], "blocked", "blocked", root, now.Add(4*time.Minute), "ok")
+	// Alice -> blocked と blocked -> Alice のどちら向きも replyCount から除外する。
+	testutil.Exec(t, env, `INSERT INTO blocks (blocker, blocked, created_at) VALUES (?, ?, ?)`, users[0], users[4], now.UnixMilli())
+	testutil.Exec(t, env, `INSERT INTO blocks (blocker, blocked, created_at) VALUES (?, ?, ?)`, users[4], users[0], now.UnixMilli())
+
+	all := listPostsWithQuery(t, app, alice, space, "")
+	if len(all.Items) != 2 {
+		t.Fatalf("roots なしの件数 = %d, want visible root and reply (items=%+v)", len(all.Items), all.Items)
+	}
+	for _, item := range all.Items {
+		if item.URI == root && item.ReplyCount != 1 {
+			t.Fatalf("replyCount = %d, want 1 (item=%+v)", item.ReplyCount, item)
+		}
+	}
+	roots := listPostsWithQuery(t, app, alice, space, "roots=1")
+	if len(roots.Items) != 1 || roots.Items[0].URI != root || roots.Items[0].Reply != nil {
+		t.Fatalf("roots=1 = %+v, want root only", roots.Items)
+	}
+}
+
+// 10 §4.2.1 の順序・cursor・root 解決・404 と read 判定を確認する。
+func TestThreadAPI(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	const typ = "jp.i32.chain.space.group"
+	const space = "sp-thread"
+	aliceDID, bobDID := "did:plc:thread-alice", "did:plc:thread-bob"
+	env.CreateUser(t, aliceDID, "thread-alice.test")
+	env.CreateUser(t, bobDID, "thread-bob.test")
+	env.Consent(t, aliceDID)
+	alice := env.Login(t, aliceDID)
+	testutil.Space(t, env, space, typ, "active", aliceDID)
+	testutil.Group(t, env, space, true)
+	testutil.Member(t, env, space, aliceDID, true)
+	testutil.Member(t, env, space, bobDID, true)
+	now := env.Clock.Now()
+	root := testutil.InsertInstancePost(t, env, space, typ, aliceDID, "thread-root", "root", now, "ok")
+	old := insertReply(t, env, space, typ, aliceDID, "old", "old", root, now.Add(time.Minute), "ok")
+	blockedReply := insertReply(t, env, space, typ, bobDID, "blocked", "blocked", root, now.Add(90*time.Second), "ok")
+	newReply := insertReply(t, env, space, typ, aliceDID, "new", "new", root, now.Add(2*time.Minute), "ok")
+	testutil.Exec(t, env, `INSERT INTO blocks (blocker, blocked, created_at) VALUES (?, ?, ?)`, aliceDID, bobDID, now.UnixMilli())
+	thread := func(rootURI, limit string) (int, string, []instancePostItem) {
+		query := "root=" + url.QueryEscape(rootURI)
+		if limit != "" {
+			query += "&limit=" + limit
+		}
+		status, body := testutil.Request(t, app, http.MethodGet, "/api/v1/instances/"+space+"/thread?"+query, "", alice)
+		if status != http.StatusOK {
+			t.Fatalf("thread %s: status = %d (body=%s)", query, status, body)
+		}
+		var page struct {
+			Root    instancePostItem   `json:"root"`
+			Replies []instancePostItem `json:"replies"`
+			Cursor  string             `json:"cursor"`
+		}
+		testutil.MustJSONBody(t, body, &page)
+		return status, page.Cursor, page.Replies
+	}
+	_, cursor, replies := thread(root, "1")
+	if len(replies) != 1 || replies[0].URI != old || cursor == "" {
+		t.Fatalf("thread first page = replies=%+v cursor=%q", replies, cursor)
+	}
+	status, body := testutil.Request(t, app, http.MethodGet, "/api/v1/instances/"+space+"/thread?root="+url.QueryEscape(root)+"&limit=1&cursor="+url.QueryEscape(cursor), "", alice)
+	if status != http.StatusOK {
+		t.Fatalf("thread second page: status = %d (body=%s)", status, body)
+	}
+	var second struct {
+		Replies []instancePostItem `json:"replies"`
+		Cursor  string             `json:"cursor"`
+	}
+	testutil.MustJSONBody(t, body, &second)
+	if len(second.Replies) != 0 {
+		t.Fatalf("thread second page = %+v", second.Replies)
+	}
+	status, body = testutil.Request(t, app, http.MethodGet, "/api/v1/instances/"+space+"/thread?root="+url.QueryEscape(root)+"&limit=1&cursor="+url.QueryEscape(second.Cursor), "", alice)
+	if status != http.StatusOK {
+		t.Fatalf("thread third page: status = %d (body=%s)", status, body)
+	}
+	var third struct {
+		Replies []instancePostItem `json:"replies"`
+	}
+	testutil.MustJSONBody(t, body, &third)
+	if len(third.Replies) != 1 || third.Replies[0].URI != newReply || third.Replies[0].URI == blockedReply {
+		t.Fatalf("thread third page = %+v", third.Replies)
+	}
+	_, _, byReply := thread(old, "")
+	if len(byReply) != 2 || byReply[0].URI != old || byReply[1].URI != newReply {
+		t.Fatalf("reply URI as root = %+v, want root thread", byReply)
+	}
+
+	foreignSpace := "sp-thread-foreign"
+	testutil.Space(t, env, foreignSpace, typ, "active", aliceDID)
+	testutil.Group(t, env, foreignSpace, true)
+	foreignRoot := testutil.InsertInstancePost(t, env, foreignSpace, typ, aliceDID, "foreign-root", "foreign", now, "ok")
+	for _, bad := range []string{"at://missing", foreignRoot} {
+		status, _ := testutil.Request(t, app, http.MethodGet, "/api/v1/instances/"+space+"/thread?root="+url.QueryEscape(bad), "", alice)
+		if status != http.StatusNotFound {
+			t.Fatalf("missing root %s: status = %d, want 404", bad, status)
+		}
+	}
+	testutil.Exec(t, env, `UPDATE records SET deleted_at = ? WHERE uri = ?`, now.UnixMilli(), root)
+	status, _ = testutil.Request(t, app, http.MethodGet, "/api/v1/instances/"+space+"/thread?root="+url.QueryEscape(root), "", alice)
+	if status != http.StatusNotFound {
+		t.Fatalf("deleted root: status = %d, want 404", status)
+	}
+
+	// 仮 party、離脱済みメンバー、archived は read 可。メンバー外は 403。
+	for _, tc := range []struct {
+		id, state, phase string
+		left             bool
+	}{
+		{"party-tentative", "active", "tentative", false},
+		{"party-left", "active", "confirmed", true},
+		{"party-archived", "archived", "ended", true},
+	} {
+		testutil.Space(t, env, tc.id, "jp.i32.chain.space.party", tc.state, aliceDID)
+		testutil.Exec(t, env, `INSERT INTO parties (space_id, phase, tentative_at, confirmed_at, last_activity_at) VALUES (?, ?, ?, ?, ?)`, tc.id, tc.phase, now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
+		if tc.left {
+			testutil.Exec(t, env, `INSERT INTO space_members (space_id, did, can_read, can_write, joined_at, left_at) VALUES (?, ?, 1, 0, ?, ?)`, tc.id, aliceDID, now.UnixMilli(), now.UnixMilli())
+		} else {
+			testutil.Member(t, env, tc.id, aliceDID, false)
+		}
+		partyRoot := testutil.InsertInstancePost(t, env, tc.id, "jp.i32.chain.space.party", aliceDID, tc.id+"-root", "party root", now, "ok")
+		status, _ = testutil.Request(t, app, http.MethodGet, "/api/v1/instances/"+tc.id+"/thread?root="+url.QueryEscape(partyRoot), "", alice)
+		if status != http.StatusOK {
+			t.Fatalf("%s read: status = %d, want 200", tc.id, status)
+		}
+	}
+	testutil.Space(t, env, "sp-outsider", typ, "active", aliceDID)
+	testutil.Group(t, env, "sp-outsider", true)
+	outsiderRoot := testutil.InsertInstancePost(t, env, "sp-outsider", typ, aliceDID, "outsider-root", "root", now, "ok")
+	status, _ = testutil.Request(t, app, http.MethodGet, "/api/v1/instances/sp-outsider/thread?root="+url.QueryEscape(outsiderRoot), "", alice)
+	if status != http.StatusForbidden {
+		t.Fatalf("non-member read: status = %d, want 403", status)
 	}
 }

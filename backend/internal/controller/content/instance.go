@@ -22,6 +22,7 @@ func (h *InstanceController) Register(r fiber.Router) {
 	r.Get("/instances", h.listInstances)
 	r.Post("/posts", h.createPost)
 	r.Get("/instances/:spaceId/posts", h.listPosts)
+	r.Get("/instances/:spaceId/thread", h.thread)
 	r.Delete("/instances/:spaceId/posts/:rkey", h.deletePost)
 	r.Get("/instances/:spaceId/pins", h.listPins)
 	r.Post("/instances/:spaceId/pins", h.createPin)
@@ -118,11 +119,19 @@ func (h *InstanceController) createPost(c fiber.Ctx) error {
 }
 
 func (h *InstanceController) listPosts(c fiber.Ctx) error {
-	page, err := h.Feed.List(c.Context(), httpx.DID(c), "space:"+c.Params("spaceId"), c.Query("cursor"), controller.PageLimit(c))
+	page, err := h.Feed.ListSpace(c.Context(), httpx.DID(c), c.Params("spaceId"), c.Query("cursor"), controller.PageLimit(c), c.Query("roots") == "1")
 	if err != nil {
 		return err
 	}
 	return c.JSON(page)
+}
+
+func (h *InstanceController) thread(c fiber.Ctx) error {
+	res, err := h.Feed.Thread(c.Context(), httpx.DID(c), c.Params("spaceId"), c.Query("root"), c.Query("cursor"), c.Query("limit"))
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
 }
 
 func (h *InstanceController) deletePost(c fiber.Ctx) error {
