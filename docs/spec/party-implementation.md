@@ -323,5 +323,12 @@ on party.updated(d):
 
 - 設定（端末ごと、既定オフ）でオンにしたときだけ、本 party 中にカメラで撮った写真を 60 秒の取り消し待ちの後に自動でアップロードし、他のメンバーの写真を `Pictures/CHAIN/{party 名}` に自動保存する。仕様は backend 08 §5、native は android README §3.1
 - 実装は `web/src/device/photos/`（`settings.ts`、`autoshare.ts`、`download.ts`）と `ChainPhotos` プラグイン。前面にいる間だけ送る・保存する。§5.4 の presence と同じく、背面では動かない
+- アップロードの待ち行列は、モジュール単位の `PhotoUploadController`（`uploadQueue.ts`）が持つ。React の再描画では作り直さず、`PhotoShareDriver` は設定と party の変化を渡すだけにする
+  - 送信の期限は native が積んだ時刻 `foundAt` + 60 秒。再描画やアプリの再起動をまたいで保たれる（再起動後は native の待ち行列から復元する）
+  - 同時に送るのは 1 枚。失敗したら 30 秒から 10 分まで間隔を延ばして再試行し、`foundAt` から 24 時間で諦めて捨てる
+  - `ChainPhotos` の監視を張り直すのは、自動共有・party ID・`confirmedAt` のどれかが変わったときだけ。`startWatching` が失敗したら、前面に戻ったときに再試行する
+  - 起動時に自動共有がオフなら、native プラグインには何も触れない
+  - 待ち行列を捨てるのは、自動共有がオンからオフに変わったときとログアウト時だけ（再描画・起動時の一時的な状態では捨てない）
+  - 一時ファイルは `readPhoto` で作り、送信の成否にかかわらず `releasePhoto` で消す。native の `watchError`（`permission_revoked` は監視停止、`query_failed` は継続）も受ける
 - §6.5 の「archived は書けない」は、写真の共有だけ例外がある。終了から 24 時間以内、終了時に未離脱、`takenAt` が party の期間内の写真は archived でも追加できる（10 §5）。memory 一覧の `confirmedAt` / `endedAt`（13 §2）が、どの party に送るかの判定に使われる
 - 同じ写真の再送は `200` で既存の record が返る（10 §4.4）
