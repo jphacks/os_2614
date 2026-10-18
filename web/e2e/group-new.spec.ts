@@ -237,7 +237,7 @@ test.describe("group create", () => {
     await page.waitForURL(/\/group\/\?id=g9/);
     expect(body).not.toBeNull();
     const sent = body as unknown as GroupBody;
-    // 現在地が geofence の中心、半径は 20〜2000m (09 §2)。
+    // 現在地が geofence の中心、半径は 5〜2000m (09 §2)。
     expect(sent.geofence).toEqual({ lat: TEST_LAT, lon: TEST_LON, radiusM: 40 });
     expect(sent.visibility).toBe("open");
     expect(sent.force).toBe(false);

@@ -143,6 +143,29 @@ test.describe("friends", () => {
     }
   });
 
+  test("tapping a row outside the buttons opens the profile", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    await mockApi(page, async (route, request) => {
+      if (apiPath(request.url()) === "/api/v1/friends") {
+        await fulfillJson(route, 200, FRIENDS);
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/friends/");
+    // 名前ではなくアバター (行の左端) を押しても、行全体へ広げたリンクが拾う。
+    await page
+      .getByRole("listitem")
+      .filter({ hasText: "アリス" })
+      .click({ position: { x: 20, y: 20 } });
+
+    await expect(page).toHaveURL(/\/users\/\?did=did%3Aplc%3Aalice&relation=friend$/);
+  });
+
   test("delete issues DELETE /friends/{did} and hides the row", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
 
