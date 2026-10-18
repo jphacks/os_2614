@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type CSSProperties,
   type ReactNode,
 } from "react";
 import type { Memory, Profile, Stats } from "@/domain/types";
@@ -27,6 +26,7 @@ import { List, ListItem } from "@/components/ui/List";
 import { Notice } from "@/components/ui/Notice";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { StatTriple } from "@/components/ui/StatTriple";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import styles from "./ProfileScreen.module.css";
 
 /** PUT /me/status (13 §1) の結果。 */
@@ -474,57 +474,56 @@ function ProfileBody({
         )}
       </div>
 
-      <div className={`${styles.nameRow} ${statusEditing ? styles.nameRowEditing : ""}`}>
-        <h1 className={styles.name}>{me.name}</h1>
-        {!profileEditing && statusEditing ? (
-          <div className={styles.statusEditRow}>
-            <input
-              ref={statusInputRef}
-              className={styles.statusInput}
-              value={statusDraft}
-              aria-label="ステータス"
-              disabled={statusSaving}
-              onChange={(event) => setStatusDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.stopPropagation();
-                  setStatusEditing(false);
-                } else if (
-                  event.key === "Enter" &&
-                  !event.nativeEvent.isComposing &&
-                  event.nativeEvent.keyCode !== 229
-                ) {
-                  event.preventDefault();
-                  void saveStatus();
-                }
-              }}
-            />
-            <span
-              className={
-                statusCount > 40
-                  ? `${styles.statusCounter} ${styles.statusCounterOver}`
-                  : styles.statusCounter
+      <h1 className={styles.name}>{me.name}</h1>
+
+      {!profileEditing && statusEditing ? (
+        <div className={styles.statusEditRow}>
+          <input
+            ref={statusInputRef}
+            className={styles.statusInput}
+            value={statusDraft}
+            aria-label="ステータス"
+            disabled={statusSaving}
+            onChange={(event) => setStatusDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                setStatusEditing(false);
+              } else if (
+                event.key === "Enter" &&
+                !event.nativeEvent.isComposing &&
+                event.nativeEvent.keyCode !== 229
+              ) {
+                event.preventDefault();
+                void saveStatus();
               }
-            >
-              {statusCount}/40
-            </span>
-            <IconButton
-              icon="close"
-              label="キャンセル"
-              onClick={() => setStatusEditing(false)}
-              disabled={statusSaving}
-            />
-            <IconButton
-              icon="check"
-              label="保存"
-              onClick={() => void saveStatus()}
-              disabled={statusSaving || statusCount > 40}
-            />
-          </div>
-        ) : !profileEditing ? (
-          <StatusPill status={me.status ?? ""} onEdit={startStatusEdit} />
-        ) : null}
-      </div>
+            }}
+          />
+          <span
+            className={
+              statusCount > 40
+                ? `${styles.statusCounter} ${styles.statusCounterOver}`
+                : styles.statusCounter
+            }
+          >
+            {statusCount}/40
+          </span>
+          <IconButton
+            icon="close"
+            label="キャンセル"
+            onClick={() => setStatusEditing(false)}
+            disabled={statusSaving}
+          />
+          <IconButton
+            icon="check"
+            label="保存"
+            onClick={() => void saveStatus()}
+            disabled={statusSaving || statusCount > 40}
+          />
+        </div>
+      ) : !profileEditing ? (
+        <StatusBadge status={me.status ?? ""} onEdit={startStatusEdit} />
+      ) : null}
 
       {statusEditing && statusError && (
         <div role="alert">
@@ -695,54 +694,6 @@ function ProfileBody({
         />
       )}
     </>
-  );
-}
-
-function StatusPill({ status, onEdit }: { status: string; onEdit: () => void }) {
-  const viewportRef = useRef<HTMLSpanElement>(null);
-  const textRef = useRef<HTMLSpanElement>(null);
-  const [overflow, setOverflow] = useState(0);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    const text = textRef.current;
-    if (!viewport || !text) {
-      return;
-    }
-    const measure = () => {
-      setOverflow(Math.max(0, text.scrollWidth - viewport.clientWidth));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(viewport);
-    observer.observe(text);
-    return () => observer.disconnect();
-  }, [status]);
-
-  const marqueeStyle = {
-    "--marquee-distance": `${overflow}px`,
-    "--marquee-duration": `${Math.max(4, overflow / 35 / 0.3)}s`,
-  } as CSSProperties;
-
-  return (
-    <span className={`${styles.status} ${!status ? styles.statusMuted : ""}`}>
-      {status && <span className={styles.onlineDot} aria-hidden />}
-      <span
-        ref={viewportRef}
-        className={styles.statusViewport}
-        data-marquee={overflow > 0 ? "on" : "off"}
-        title={status}
-      >
-        <span
-          ref={textRef}
-          className={styles.statusText}
-          style={marqueeStyle}
-        >
-          {status || "ステータスを設定"}
-        </span>
-      </span>
-      <IconButton icon="edit" label="ステータスを編集" onClick={onEdit} />
-    </span>
   );
 }
 

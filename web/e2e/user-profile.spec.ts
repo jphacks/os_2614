@@ -112,6 +112,8 @@ function apiPath(url: string): string {
 type MockOptions = {
   /** /users/{did} の応答。200 以外なら同じステータスでエラーを返す。 */
   profileStatus?: number;
+  /** /users/{did} の 200 応答の上書き (ステータス空のケースなど)。 */
+  profile?: unknown;
   /** /me の応答。自分自身を開くテストで上書きする。 */
   me?: unknown;
   /**
@@ -154,7 +156,7 @@ async function mockProfileApi(
     if (path === `/api/v1/users/${TARGET_DID}`) {
       const status = opts.profileStatus ?? 200;
       if (status === 200) {
-        await fulfillJson(route, 200, PROFILE);
+        await fulfillJson(route, 200, opts.profile ?? PROFILE);
       } else {
         await fulfillJson(route, status, {
           error: { code: "internal", message: "boom" },
@@ -197,9 +199,29 @@ test.describe("user profile", () => {
     await expect(page.getByText(`@${PROFILE.handle}`)).toBeVisible();
     await expect(page.getByText(PROFILE.description)).toBeVisible();
     await expect(page.getByText(PROFILE.status)).toBeVisible();
+    // ステータスは名前の直下に出る。
+    const nameBox = await page.getByRole("heading", { name: PROFILE.displayName }).boundingBox();
+    const statusBox = await page.getByText(PROFILE.status).boundingBox();
+    expect(statusBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height);
     // GET /users/{did} は統計を返さないため、すれ違いの数字は出さない。
     await expect(page.getByText("すれ違い", { exact: true })).toHaveCount(0);
     await expect(page.getByText("公園でひと休み")).toBeVisible();
+  });
+
+  test("renders no status line when the other user's status is empty", async ({
+    page,
+  }) => {
+    await mockProfileApi(page, { profile: { ...PROFILE, status: "" } });
+
+    await page.goto(`/users/?did=${TARGET_DID}`);
+
+    await expect(
+      page.getByRole("heading", { name: PROFILE.displayName }),
+    ).toBeVisible();
+    await expect(page.getByText(PROFILE.description)).toBeVisible();
+    await expect(page.getByText("ステータスを設定")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "ステータスを編集" })).toHaveCount(0);
+    await expect(profileMain(page).getByText(PROFILE.status)).toHaveCount(0);
   });
 
   test("loads public posts from /feed?source=user:{did}", async ({ page }) => {
