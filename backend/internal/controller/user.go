@@ -25,6 +25,8 @@ type userResponse struct {
 	AvatarURL   string `json:"avatarUrl,omitempty"`
 	BannerURL   string `json:"bannerUrl,omitempty"`
 	Status      string `json:"status,omitempty"`
+	Following   bool   `json:"following"`
+	FollowedBy  bool   `json:"followedBy"`
 }
 
 func (h *UserController) get(c fiber.Ctx) error {
@@ -44,5 +46,7 @@ func (h *UserController) get(c fiber.Ctx) error {
 		AvatarURL:   atproto.AvatarURL(p.User.DID, p.Profile.AvatarCID),
 		BannerURL:   atproto.BannerURL(p.User.DID, p.Profile.BannerCID),
 		Status:      p.Profile.Status,
+		Following:   p.Following,
+		FollowedBy:  p.FollowedBy,
 	})
 }

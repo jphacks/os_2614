@@ -155,9 +155,17 @@
   width: 56px;
   height: 56px;
   margin-bottom: var(--space-1);
+  overflow: hidden;
   border-radius: 50%;
   background: var(--bubble-tone);
   color: var(--color-text);
+}
+
+.sheetIconImage {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .sheetTitle {

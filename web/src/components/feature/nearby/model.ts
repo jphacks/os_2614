@@ -53,6 +53,8 @@ export type NearbyBubble =
       /** 自分がこのグループのエリアの中にいる (参加・退出できる)。 */
       inside: boolean;
       detail: string;
+      /** 作成時に選んだアイコン。無ければ色の円に名前を書く。 */
+      iconUrl?: string;
     };
 
 export type NearbyModel = {
@@ -308,6 +310,7 @@ export function buildNearbyModel(input: {
           groupId: group.id,
           name: group.name,
           tone: groupTone(group.id),
+          iconUrl: group.iconUrl,
           memberCount: group.memberCount,
           isMember: group.isMember || (input.joinedGroupIds?.has(group.id) ?? false),
           inside: true,
@@ -333,6 +336,7 @@ export function buildNearbyModel(input: {
           groupId: group.id,
           name: group.name,
           tone: groupTone(group.id),
+          iconUrl: group.iconUrl,
           memberCount: group.memberCount,
           isMember: input.joinedGroupIds?.has(group.id) ?? false,
           inside: false,

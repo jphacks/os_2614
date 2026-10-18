@@ -218,7 +218,8 @@ CREATE TABLE groups (
   schedule_json    TEXT,                      -- 09 §3。NULL なら常時有効
   invite_quorum    INTEGER NOT NULL DEFAULT 1,
   parent_space_id  TEXT REFERENCES spaces(id) ON DELETE SET NULL,
-  mod_label        TEXT NOT NULL DEFAULT 'ok'
+  mod_label        TEXT NOT NULL DEFAULT 'ok',
+  icon_media_id    TEXT REFERENCES media(id) ON DELETE SET NULL   -- 09 §2。作成時に添付した画像
 );
 
 CREATE TABLE group_invites (

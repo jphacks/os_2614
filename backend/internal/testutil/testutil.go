@@ -322,7 +322,7 @@ func NewApp(e *Env) *fiber.App {
 	}
 	feed := &content.FeedService{Deps: e.Deps, Access: access, Signer: signer, Proximity: prox}
 	nearbyPosts := &content.NearbyPostService{Deps: e.Deps, Moderator: moderator, Broker: hub, Proximity: prox, TID: idgen.NewSeqTID()}
-	groups := &groupsvc.GroupService{Deps: e.Deps, Zones: zones, Access: access, Moderator: moderator, Broker: hub}
+	groups := &groupsvc.GroupService{Deps: e.Deps, Zones: zones, Access: access, Moderator: moderator, Broker: hub, Signer: signer}
 	groupVotes := &groupsvc.GroupVoteService{Deps: e.Deps, Access: access, Broker: hub}
 	groupInvites := &groupsvc.GroupInviteService{Deps: e.Deps, Zones: zones, Access: access, Broker: hub}
 	groups.Invites = groupInvites

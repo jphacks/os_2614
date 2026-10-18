@@ -77,6 +77,7 @@ export default function CreateGroupPage() {
       geofence: { lat: fix.lat, lon: fix.lon, radiusM: draft.radiusM },
       inviteQuorum: draft.inviteQuorum,
       force: draft.force,
+      iconMediaId: draft.iconMediaId,
     };
     const result = await toResult(() => postJson<GroupDTO>("/groups", body));
     switch (result.status) {

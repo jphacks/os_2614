@@ -138,7 +138,7 @@ func run() error {
 		Deps: deps, Moderator: moderator, Broker: hub,
 		Proximity: &proximity.BLEPeerProximity{Deps: deps}, TID: tids,
 	}
-	groups := &groupsvc.GroupService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}, Access: access, Moderator: moderator, Broker: hub}
+	groups := &groupsvc.GroupService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}, Access: access, Moderator: moderator, Broker: hub, Signer: signer}
 	naturalGroups := &naturalsvc.NaturalGroupService{Deps: deps, Moderator: moderator, Broker: hub}
 	groupVotes := &groupsvc.GroupVoteService{Deps: deps, Access: access, Broker: hub}
 	groupInvites := &groupsvc.GroupInviteService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}, Access: access, Broker: hub}

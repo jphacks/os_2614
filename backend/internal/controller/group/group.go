@@ -38,6 +38,7 @@ type createGroupRequest struct {
 	Schedule     *schedulesvc.GroupSchedule `json:"schedule"`
 	InviteQuorum int                        `json:"inviteQuorum"`
 	Force        bool                       `json:"force"`
+	IconMediaID  string                     `json:"iconMediaId"`
 }
 
 func (r *createGroupRequest) Validate() map[string]string {
@@ -56,7 +57,7 @@ func (h *GroupController) create(c fiber.Ctx) error {
 		Name: req.Name, Description: req.Description, Visibility: req.Visibility,
 		Persistent: req.Persistent, Lat: req.Geofence.Lat, Lon: req.Geofence.Lon,
 		RadiusM: req.Geofence.RadiusM, Schedule: req.Schedule,
-		InviteQuorum: req.InviteQuorum, Force: req.Force,
+		InviteQuorum: req.InviteQuorum, Force: req.Force, IconMediaID: req.IconMediaID,
 	})
 	if err != nil {
 		return err

@@ -32,6 +32,10 @@ export type UserProfileScreenProps = {
   relation?: EncounterRelation;
   /** 友達申請を送る。すれ違いの ID が分かるときだけ渡す。 */
   onRequestFriend?: () => Promise<FriendRequestResult>;
+  /** Bluesky でフォローする (POST /users/{did}/follow)。 */
+  onFollow?: () => Promise<FriendRequestResult>;
+  /** Bluesky のフォローを外す (DELETE /users/{did}/follow)。相互ならフレンドも外れる。 */
+  onUnfollow?: () => Promise<FriendRequestResult>;
   /** error 状態の再取得。useResource の reload を渡す。 */
   onRetry?: () => void;
 };
@@ -46,6 +50,8 @@ export function UserProfileScreen({
   isSelf = false,
   relation,
   onRequestFriend,
+  onFollow,
+  onUnfollow,
   onRetry,
 }: UserProfileScreenProps) {
   return (
@@ -59,6 +65,8 @@ export function UserProfileScreen({
             isSelf={isSelf}
             relation={relation}
             onRequestFriend={onRequestFriend}
+            onFollow={onFollow}
+            onUnfollow={onUnfollow}
           />
         ) : state.status === "loading" ? (
           <ProfileSkeleton />
@@ -94,6 +102,8 @@ type ProfileBodyProps = {
   isSelf: boolean;
   relation?: EncounterRelation;
   onRequestFriend?: () => Promise<FriendRequestResult>;
+  onFollow?: () => Promise<FriendRequestResult>;
+  onUnfollow?: () => Promise<FriendRequestResult>;
 };
 
 function ProfileBody({
@@ -102,22 +112,67 @@ function ProfileBody({
   isSelf,
   relation,
   onRequestFriend,
+  onFollow,
+  onUnfollow,
 }: ProfileBodyProps) {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // フォロー / 解除が成功したら、再取得を待たずに表示を切り替える。
+  const [followingOverride, setFollowingOverride] = useState<boolean | null>(
+    null,
+  );
+  // GET /users/{did} が following を返さない (古い backend) ときは undefined のまま、
+  // すれ違いから渡された relation の表示に戻す。
+  const following = followingOverride ?? user.following;
+  const mutual = following === true && user.followedBy === true;
 
-  const send = async () => {
-    if (!onRequestFriend || sending) return;
+  const run = async (
+    action: () => Promise<FriendRequestResult>,
+    unavailable: string,
+  ): Promise<boolean> => {
+    if (sending) return false;
     setSending(true);
     setMessage(null);
-    const result = await onRequestFriend();
+    const result = await action();
     setSending(false);
     if (result.status === "unavailable") {
-      setMessage("友達申請はまだ使えません");
+      setMessage(unavailable);
     } else if (result.status === "error") {
       setMessage(result.message);
     }
+    return result.status === "ok";
   };
+
+  const send = async () => {
+    if (!onRequestFriend) return;
+    if (await run(onRequestFriend, "友達申請はまだ使えません")) {
+      setFollowingOverride(true);
+    }
+  };
+
+  const follow = async () => {
+    if (!onFollow) return;
+    if (await run(onFollow, "フォローはまだ使えません")) {
+      setFollowingOverride(true);
+    }
+  };
+
+  const unfollow = async () => {
+    if (!onUnfollow) return;
+    if (
+      mutual &&
+      !window.confirm("フォローを外すと、フレンドも解除されます。よろしいですか？")
+    ) {
+      return;
+    }
+    if (await run(onUnfollow, "フォロー解除はまだ使えません")) {
+      setFollowingOverride(false);
+    }
+  };
+
+  // 友達申請 (すれ違いの裏付けつきフォロー) を出せるときは、そちらを優先する。
+  const canRequestFriend =
+    !isSelf && following !== true && relation === "none" && !!onRequestFriend;
 
   return (
     <>
@@ -145,7 +200,33 @@ function ProfileBody({
           <StatusBadge status={user.status ?? ""} />
           {user.handle && <p className={styles.handle}>@{user.handle}</p>}
         </div>
-        {!isSelf && relation === "none" && onRequestFriend && (
+        {!isSelf && following !== undefined && !canRequestFriend && (
+          <div className={styles.friendAction}>
+            {mutual && <Tag label="友達" />}
+            {following ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="person_remove"
+                onClick={unfollow}
+                disabled={sending || !onUnfollow}
+              >
+                {sending ? "解除中…" : "フォロー解除"}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                icon="person_add"
+                onClick={follow}
+                disabled={sending || !onFollow}
+              >
+                {sending ? "送信中…" : "フォロー"}
+              </Button>
+            )}
+          </div>
+        )}
+        {canRequestFriend && (
           <div className={styles.friendAction}>
             <Button
               variant="primary"
@@ -158,23 +239,31 @@ function ProfileBody({
             </Button>
           </div>
         )}
-        {!isSelf && relation === "requested" && (
+        {!isSelf && following === undefined && relation === "requested" && (
           <div className={styles.friendAction}>
             <Button variant="secondary" size="sm" icon="schedule" disabled>
               申請済み
             </Button>
           </div>
         )}
-        {!isSelf && relation === "friend" && (
+        {!isSelf && following === undefined && relation === "friend" && (
           <div className={styles.friendAction}>
             <Tag label="友達" />
           </div>
         )}
       </div>
 
-      {!isSelf && relation === "none" && onRequestFriend && (
+      {canRequestFriend && (
         <p className={styles.friendActionMessage}>
           申請すると、Bluesky でもフォローします（公開されます）。
+        </p>
+      )}
+
+      {!isSelf && following === false && !canRequestFriend && (
+        <p className={styles.friendActionMessage}>
+          {user.followedBy
+            ? "フォローされています。フォローを返すとフレンドになります（Bluesky に公開されます）。"
+            : "Bluesky でフォローします（公開されます）。"}
         </p>
       )}
 

@@ -22,10 +22,12 @@ import (
 	spacemodel "github.com/applemango/chain/internal/model/space"
 	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service/access"
+	"github.com/applemango/chain/internal/service/content"
 	"github.com/applemango/chain/internal/service/core"
 	"github.com/applemango/chain/internal/service/moderation"
 	"github.com/applemango/chain/internal/service/proximity"
 	"github.com/applemango/chain/internal/service/schedule"
+	"github.com/applemango/chain/internal/storage"
 )
 
 // GroupService はグループ（09）の作成・詳細・変更・一覧・参加・退出・メンバー一覧。
@@ -37,6 +39,8 @@ type GroupService struct {
 	Broker    realtime.Broker
 	// Invites は closed グループの招待（09 §6）。メンバーの退出で必要承認数が下がったときの再判定に使う。
 	Invites *GroupInviteService
+	// Signer はアイコン画像の署名付き URL を作る（10 §4.4）。
+	Signer storage.Signer
 }
 
 type CreateGroupInput struct {
@@ -50,6 +54,8 @@ type CreateGroupInput struct {
 	Schedule     *schedule.GroupSchedule
 	InviteQuorum int
 	Force        bool
+	// IconMediaID は POST /media で上げた未添付の画像（09 §2）。空ならアイコンなし。
+	IconMediaID string
 }
 
 type UpdateGroupInput struct {
@@ -79,6 +85,8 @@ type GroupDetail struct {
 	Schedule      *schedule.GroupSchedule `json:"schedule,omitempty"`
 	InviteQuorum  *int                    `json:"inviteQuorum,omitempty"`
 	ParentSpaceID *string                 `json:"parentSpaceId,omitempty"`
+	// IconURL はアイコン画像（サムネイル）の署名付き URL。無ければ省く（09 §2）。
+	IconURL string `json:"iconUrl,omitempty"`
 }
 
 type NearbyInsideItem struct {
@@ -88,6 +96,7 @@ type NearbyInsideItem struct {
 	IsMember    bool   `json:"isMember"`
 	Persistent  bool   `json:"persistent"`
 	RadiusM     int    `json:"radiusM"`
+	IconURL     string `json:"iconUrl,omitempty"`
 }
 
 type NearbyNearItem struct {
@@ -95,6 +104,7 @@ type NearbyNearItem struct {
 	Name           string `json:"name"`
 	MemberCount    int    `json:"memberCount"`
 	DistanceBucket string `json:"distanceBucket"`
+	IconURL        string `json:"iconUrl,omitempty"`
 }
 
 type NearbyResult struct {
@@ -151,6 +161,12 @@ func (s *GroupService) Create(ctx context.Context, did string, in CreateGroupInp
 		return nil, httpx.ErrModerationBlocked.With("categories", cats)
 	}
 
+	if in.IconMediaID != "" {
+		if err := s.checkIcon(ctx, did, in.IconMediaID); err != nil {
+			return nil, err
+		}
+	}
+
 	all, err := groupmodel.ListActiveGroups(ctx, s.DB)
 	if err != nil {
 		return nil, err
@@ -187,6 +203,19 @@ func (s *GroupService) Create(ctx context.Context, did string, in CreateGroupInp
 		if err := spacemodel.InsertSpaceMember(ctx, tx, member); err != nil {
 			return err
 		}
+		if in.IconMediaID != "" {
+			// 確認から添付までの間に他で使われていたら、作成ごと取り消す
+			attached, err := spacemodel.AttachMedia(ctx, tx, in.IconMediaID, did, id)
+			if err != nil {
+				return err
+			}
+			if !attached {
+				return invalidIcon()
+			}
+			if err := groupmodel.SetGroupIcon(ctx, tx, id, in.IconMediaID); err != nil {
+				return err
+			}
+		}
 		var err error
 		parent, err = s.assignParent(ctx, tx, id, group, all)
 		return err
@@ -198,7 +227,7 @@ func (s *GroupService) Create(ctx context.Context, did string, in CreateGroupInp
 		return nil, err
 	}
 	group.ParentSpaceID = parent
-	return groupDetail(&space, &group, 1, "owner"), nil
+	return s.withIcon(ctx, groupDetail(&space, &group, 1, "owner"))
 }
 
 // Get は 09 §4。メンバーには全項目、非メンバーには open のときだけ限られた項目を返す。
@@ -216,12 +245,12 @@ func (s *GroupService) Get(ctx context.Context, viewer, id string) (*GroupDetail
 		return nil, err
 	}
 	if member != nil {
-		return groupDetail(sp, group, count, member.Role), nil
+		return s.withIcon(ctx, groupDetail(sp, group, count, member.Role))
 	}
 	if sp.State != "active" || group.Visibility != "open" {
 		return nil, httpx.ErrNotFound
 	}
-	return limitedGroupDetail(sp, group, count), nil
+	return s.withIcon(ctx, limitedGroupDetail(sp, group, count))
 }
 
 // Update は 09 §9。owner だけが name / description / schedule / inviteQuorum を変えられる。
@@ -336,7 +365,7 @@ func (s *GroupService) Update(ctx context.Context, did, id string, in UpdateGrou
 	if err != nil {
 		return nil, err
 	}
-	return groupDetail(sp, group, count, member.Role), nil
+	return s.withIcon(ctx, groupDetail(sp, group, count, member.Role))
 }
 
 // Nearby は 09 §5。呼び出し元の最新位置から 2 km 以内の active・open・schedule 有効なグループを返す。
@@ -385,15 +414,24 @@ func (s *GroupService) Nearby(ctx context.Context, did string) (*NearbyResult, e
 			if err != nil {
 				return nil, err
 			}
+			icon, err := s.iconURL(ctx, sp.ID)
+			if err != nil {
+				return nil, err
+			}
 			res.Inside = append(res.Inside, NearbyInsideItem{
 				ID: sp.ID, Name: sp.Name, MemberCount: count, IsMember: mem != nil,
-				Persistent: group.Persistent, RadiusM: group.RadiusM,
+				Persistent: group.Persistent, RadiusM: group.RadiusM, IconURL: icon,
 			})
 			continue
 		}
 		if d := proximity.Haversine(loc.Lat, loc.Lon, group.CenterLat, group.CenterLon); d <= 500 {
+			icon, err := s.iconURL(ctx, sp.ID)
+			if err != nil {
+				return nil, err
+			}
 			res.Near = append(res.Near, NearbyNearItem{
 				ID: sp.ID, Name: sp.Name, MemberCount: count, DistanceBucket: distanceBucket(d),
+				IconURL: icon,
 			})
 		}
 	}
@@ -763,6 +801,56 @@ func groupDetail(sp *spacemodel.Space, g *groupmodel.Group, memberCount int, rol
 	d.ParentSpaceID = g.ParentSpaceID
 	d.Schedule = parseSchedule(g.ScheduleJSON)
 	return d
+}
+
+// invalidIcon はアイコンに使えない画像を指定されたときの 400（09 §2）。
+func invalidIcon() error {
+	return httpx.ErrInvalidRequest.With("fields", map[string]string{"iconMediaId": "使用できない画像です"})
+}
+
+// checkIcon はアイコンに使う画像が、作成者が上げたまだどこにも添付していないものか確かめる（09 §2）。
+func (s *GroupService) checkIcon(ctx context.Context, did, mediaID string) error {
+	m, err := spacemodel.GetMedia(ctx, s.DB, mediaID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return invalidIcon()
+	}
+	if err != nil {
+		return err
+	}
+	if m.OwnerDID != did || m.SpaceID != nil || m.DeletedAt != nil {
+		return invalidIcon()
+	}
+	return nil
+}
+
+// iconURL はグループのアイコン（サムネイル）の署名付き URL。アイコンが無い・消えていれば空文字。
+func (s *GroupService) iconURL(ctx context.Context, spaceID string) (string, error) {
+	mediaID, err := groupmodel.GetGroupIconMediaID(ctx, s.DB, spaceID)
+	if err != nil || mediaID == "" {
+		return "", err
+	}
+	m, err := spacemodel.GetMedia(ctx, s.DB, mediaID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if m.DeletedAt != nil {
+		return "", nil
+	}
+	exp := s.Clock.Now().Add(content.MediaURLTTL).Unix()
+	return s.Signer.URL(s.Config.PublicURL, m.ID, storage.VariantThumb, exp), nil
+}
+
+// withIcon は詳細にアイコンの URL を足す。
+func (s *GroupService) withIcon(ctx context.Context, d *GroupDetail) (*GroupDetail, error) {
+	icon, err := s.iconURL(ctx, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	d.IconURL = icon
+	return d, nil
 }
 
 // limitedGroupDetail は非メンバーに見せる最小の項目だけを返す（09 §4）。

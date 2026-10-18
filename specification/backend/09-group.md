@@ -26,7 +26,8 @@
   "geofence": { "lat": 35.0, "lon": 135.0, "radiusM": 40 },
   "schedule": { "tz": "Asia/Tokyo", "slots": [ { "weekday": 1, "start": "10:40", "end": "12:10" } ] },
   "inviteQuorum": 2,
-  "force": false
+  "force": false,
+  "iconMediaId": "0192..."
 }
 ```
 
@@ -34,6 +35,8 @@
 - name（40 文字）と description（500 文字）は moderation の対象（11）
 - 作成者は `role=owner` のメンバーになる
 - **重複の抑制**: draft の論点「教室で同じクラスに複数のグループが列挙される」への対応。active な open グループで、面積の重なり（IoU）が 0.8 以上かつ schedule の時間帯が重なるものがあれば、`409 conflict`（`details.similar` に候補）を返す。`force: true` なら作成する
+- `iconMediaId`（任意）は `POST /media`（10 §4.4）で上げた画像。作成者が上げた未添付のものに限り、違えば `400`（`fields.iconMediaId`）。作成と同じトランザクションでグループに添付し、`groups.icon_media_id` に持つ
+- グループの詳細（§4 の非メンバー向けも含む）と nearby（§5）は、アイコンがあれば `iconUrl`（サムネイルの署名付き URL、10 §4.4）を返す
 - 作成後、`parent_space_id`（自分を完全に含む最小のグループ）を計算する。自分が含むグループ群の `parent_space_id` も再計算する
 
 ## 3. schedule
@@ -51,7 +54,7 @@
 | --- | --- |
 | `read` | メンバー（`left_at IS NULL` かつ `can_read`）であり、かつ次のどちらか: `persistent = 1`、または「schedule が有効」かつ「geofence の中にいる（鮮度 `PresenceGrace` 10 分）」 |
 | `write` | `read` の条件に加えて `can_write` |
-| メンバーでない人 | name、description、メンバー数、visibility だけが見える（open のみ）。投稿は見えない |
+| メンバーでない人 | name、description、メンバー数、visibility、アイコンだけが見える（open のみ）。投稿は見えない |
 
 位置の鮮度を参加時（120 秒）より緩い 10 分にしているのは、教室内で GPS が途切れても閲覧できるようにするため。
 
@@ -65,8 +68,8 @@
 
 ```json
 {
-  "inside": [ { "id": "...", "name": "...", "memberCount": 23, "isMember": false, "persistent": false, "radiusM": 40 } ],
-  "near":   [ { "id": "...", "name": "...", "memberCount": 5, "distanceBucket": "<500m" } ]
+  "inside": [ { "id": "...", "name": "...", "memberCount": 23, "isMember": false, "persistent": false, "radiusM": 40, "iconUrl": "https://..." } ],
+  "near":   [ { "id": "...", "name": "...", "memberCount": 5, "distanceBucket": "<500m", "iconUrl": "https://..." } ]
 }
 ```
 

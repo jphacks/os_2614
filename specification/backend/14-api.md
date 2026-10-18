@@ -42,6 +42,8 @@
 | メソッド | パス | 内容 | 優先度 | 仕様 |
 | --- | --- | --- | --- | --- |
 | GET | `/api/v1/users/{did}` | プロフィール（接点のある相手のみ） | P0 | 13 §1.2 |
+| POST | `/api/v1/users/{did}/follow` | プロフィールからフォロー | P1 | 13 §1.2 |
+| DELETE | `/api/v1/users/{did}/follow` | フォロー解除（`DELETE /friends/{did}` と同じ） | P1 | 13 §1.2 |
 | GET / POST | `/api/v1/blocks` | ブロック一覧 / ブロック | P0 | 13 §4 |
 | DELETE | `/api/v1/blocks/{did}` | ブロック解除 | P0 | 13 §4 |
 

@@ -237,6 +237,8 @@ export function toProfile(dto: Maybe<ProfileDTO>): Profile {
     status: dto?.status,
     bannerUrl: dto?.bannerUrl,
     pdsHost: dto?.pdsHost || undefined,
+    following: dto?.following,
+    followedBy: dto?.followedBy,
   };
 }
 
@@ -387,6 +389,7 @@ export function toGroup(dto: Maybe<GroupDTO>): Group {
     role: dto?.role,
     inviteQuorum:
       typeof dto?.inviteQuorum === "number" ? dto.inviteQuorum : undefined,
+    iconUrl: dto?.iconUrl || undefined,
   };
 }
 
@@ -414,12 +417,14 @@ export function toGroupNearby(dto: Maybe<GroupNearbyDTO>): GroupNearby {
       isMember: item?.isMember ?? false,
       persistent: item?.persistent ?? false,
       radiusM: num(item?.radiusM),
+      iconUrl: item?.iconUrl || undefined,
     })),
     near: (dto?.near ?? []).map((item) => ({
       id: item?.id ?? "",
       name: item?.name ?? "",
       memberCount: num(item?.memberCount),
       distanceBucket: item?.distanceBucket ?? "",
+      iconUrl: item?.iconUrl || undefined,
     })),
   };
 }
