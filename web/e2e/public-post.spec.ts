@@ -27,7 +27,12 @@ type StoredSession = {
 
 type ApiMock = (route: Route, request: Request) => Promise<void> | void;
 
-type PostBody = { spaceIds: string[]; text: string; alsoPublic: boolean };
+type PostBody = {
+  spaceIds: string[];
+  text: string;
+  alsoPublic: boolean;
+  selfLabels?: string[];
+};
 
 const ME = {
   did: "did:plc:testuser",
@@ -218,5 +223,73 @@ test.describe("public post option", () => {
     await page.getByRole("button", { name: "投稿する" }).click();
 
     await expect(page).toHaveURL(/\/group\/\?id=g1$/);
+  });
+  test("sends selfLabels with POST /posts when 公開 is on", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    let body: PostBody | null = null;
+    await mockApi(page, async (route, request) => {
+      const pathname = apiPath(request.url());
+      if (pathname === "/api/v1/instances") {
+        await fulfillJson(route, 200, { items: [GROUP_INSTANCE] });
+        return;
+      }
+      if (pathname === "/api/v1/me") {
+        await fulfillJson(route, 200, ME);
+        return;
+      }
+      if (pathname === "/api/v1/posts" && request.method() === "POST") {
+        body = request.postDataJSON() as PostBody;
+        await fulfillJson(route, 201, {
+          items: [{ uri: "at://did:plc:testuser/app.bsky.feed.post/1", spaceId: "g1" }],
+          public: { error: "upstream" },
+        });
+        return;
+      }
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+
+    await readyToPost(page, "ネタバレあり");
+    // 公開を選ぶまで「注意を付ける」は出ない。
+    await expect(page.getByTestId("compose-self-labels")).toHaveCount(0);
+    await page.getByRole("button", { name: "公開", exact: true }).click();
+    await expect(page.getByTestId("compose-self-labels")).toBeVisible();
+    await page.getByRole("button", { name: "ネタバレ", exact: true }).click();
+    await page.getByRole("button", { name: "暴力的な内容", exact: true }).click();
+    await page.getByRole("button", { name: "投稿する" }).click();
+
+    await expect.poll(() => body).not.toBeNull();
+    expect((body as unknown as PostBody).selfLabels).toEqual(["spoiler", "violence"]);
+  });
+
+  test("sends selfLabels with POST /feed/posts for a public-only post", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    let body: { text: string; selfLabels?: string[] } | null = null;
+    await mockApi(page, async (route, request) => {
+      const pathname = apiPath(request.url());
+      if (pathname === "/api/v1/instances") {
+        await fulfillJson(route, 200, { items: [] });
+        return;
+      }
+      if (pathname === "/api/v1/me") {
+        await fulfillJson(route, 200, ME);
+        return;
+      }
+      if (pathname === "/api/v1/feed/posts" && request.method() === "POST") {
+        body = request.postDataJSON();
+        await fulfillJson(route, 201, { uri: "at://did:plc:testuser/jp.i32.chain.feed.post/1", cid: "bafy" });
+        return;
+      }
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+
+    await page.goto("/compose/?target=public");
+    await page.getByLabel("投稿本文").fill("注意つき");
+    await page.getByRole("button", { name: "自傷に関する内容", exact: true }).click();
+    await page.getByRole("button", { name: "投稿する" }).click();
+
+    await expect.poll(() => body).not.toBeNull();
+    expect(body).toEqual({ text: "注意つき", selfLabels: ["self_harm"] });
   });
 });

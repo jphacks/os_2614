@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { PostTarget, User } from "@/domain/types";
+import type { PostTarget, SelfLabel, User } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import {
   CharCounterRing,
+  SELF_LABEL_OPTIONS,
   TargetSelector,
   validateComposeInput,
   type ComposeAttachment,
@@ -121,6 +122,7 @@ export function ComposeScreen({
   const [body, setBody] = useState("");
   const [alsoPublic, setAlsoPublic] = useState(initialPublic);
   const [nearby, setNearby] = useState(false);
+  const [selfLabels, setSelfLabels] = useState<SelfLabel[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -155,6 +157,7 @@ export function ComposeScreen({
     format: "plain",
     attachments,
     alsoPublic,
+    selfLabels,
     nearby: nearbyOn,
   };
   const validation = validateComposeInput(input);
@@ -198,6 +201,12 @@ export function ComposeScreen({
   const togglePublic = () => {
     setNearby(false);
     setAlsoPublic((value) => !value);
+  };
+
+  const toggleSelfLabel = (value: SelfLabel) => {
+    setSelfLabels((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
+    );
   };
 
   const showReason =
@@ -388,6 +397,26 @@ export function ComposeScreen({
               </div>
               <p className={styles.hint}>{hintFor(selectedTargets, alsoPublic, nearbyOn)}</p>
             </div>
+
+            {alsoPublic && !nearbyOn && (
+              <div className={styles.targets} data-testid="compose-self-labels">
+                <span className={styles.caption}>注意を付ける</span>
+                <div className={styles.chipRow}>
+                  {SELF_LABEL_OPTIONS.map((option) => (
+                    <Chip
+                      key={option.value}
+                      label={option.label}
+                      selected={selfLabels.includes(option.value)}
+                      surface="surface"
+                      onClick={() => toggleSelfLabel(option.value)}
+                    />
+                  ))}
+                </div>
+                <p className={styles.hint}>
+                  付けた注意は公開投稿に残り、見る人にはぼかして表示されます
+                </p>
+              </div>
+            )}
 
             {consentRequired && (
               <div className={styles.errorBlock}>

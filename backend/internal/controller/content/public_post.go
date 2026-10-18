@@ -23,6 +23,7 @@ func (h *FeedPostController) Register(r fiber.Router) {
 type createFeedPostRequest struct {
 	Text        string   `json:"text"`
 	Langs       []string `json:"langs"`
+	SelfLabels  []string `json:"selfLabels"`
 	AlsoBluesky bool     `json:"alsoBluesky"`
 }
 
@@ -40,6 +41,9 @@ func (r *createFeedPostRequest) Validate() map[string]string {
 		if !utils.ValidLanguageTag(l) {
 			f["langs."+strconv.Itoa(i)] = "言語タグが不正です"
 		}
+	}
+	if _, ok := contentsvc.NormalizeSelfLabels(r.SelfLabels); !ok {
+		f["selfLabels"] = "sexual / violence / self_harm / spoiler のどれかを指定してください"
 	}
 	if len(f) == 0 {
 		return nil
@@ -65,6 +69,7 @@ func (h *FeedPostController) create(c fiber.Ctx) error {
 	res, err := h.Posts.Create(c.Context(), httpx.DID(c), httpx.SessionID(c), contentsvc.CreatePublicPostInput{
 		Text:        req.Text,
 		Langs:       req.Langs,
+		SelfLabels:  req.SelfLabels,
 		AlsoBluesky: req.AlsoBluesky,
 	})
 	if err != nil {

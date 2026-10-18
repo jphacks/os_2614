@@ -3,6 +3,7 @@
 package content_test
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -243,5 +244,106 @@ func TestInstancePostAlsoPublicFailure(t *testing.T) {
 	}
 	if res.Public == nil || res.Public.Error != "upstream_error" {
 		t.Fatalf("public = %+v, want error upstream_error", res.Public)
+	}
+}
+
+// selfLabels は feed.post と app.bsky.feed.post の labels に書く（19 §2.15.3）。
+func TestFeedPostSelfLabels(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	env.CreateUser(t, "did:plc:alice", "alice.test")
+	alice := env.Login(t, "did:plc:alice")
+
+	status, body := testutil.Request(t, app, http.MethodPost, "/api/v1/feed/posts",
+		`{"text":"ネタバレあり","alsoBluesky":true,"selfLabels":["spoiler","violence","spoiler"]}`, alice)
+	if status != http.StatusCreated {
+		t.Fatalf("create: status = %d, want 201 (body=%s)", status, body)
+	}
+	calls := env.Writer.CreateCalls()
+	if len(calls) != 2 {
+		t.Fatalf("create calls = %d, want 2", len(calls))
+	}
+	for _, c := range calls {
+		rec, _ := c.Record.(map[string]any)
+		labels, _ := rec["labels"].(map[string]any)
+		if labels["$type"] != "com.atproto.label.defs#selfLabels" {
+			t.Fatalf("%s labels = %+v", c.Collection, rec["labels"])
+		}
+		raw, _ := json.Marshal(labels["values"])
+		if string(raw) != `[{"val":"spoiler"},{"val":"violence"}]` {
+			t.Fatalf("%s values = %s", c.Collection, raw)
+		}
+	}
+
+	// ラベルなしの投稿には labels を書かない。
+	status, _ = testutil.Request(t, app, http.MethodPost, "/api/v1/feed/posts", `{"text":"ふつう"}`, alice)
+	if status != http.StatusCreated {
+		t.Fatalf("plain create: status = %d", status)
+	}
+	all := env.Writer.CreateCalls()
+	rec, _ := all[len(all)-1].Record.(map[string]any)
+	if _, ok := rec["labels"]; ok {
+		t.Fatalf("labels should be absent: %+v", rec)
+	}
+}
+
+func TestFeedPostSelfLabelsInvalid(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	env.CreateUser(t, "did:plc:alice", "alice.test")
+	env.Consent(t, "did:plc:alice")
+	alice := env.Login(t, "did:plc:alice")
+	testutil.Space(t, env, "sp1", "jp.i32.chain.space.group", "active", "did:plc:alice")
+	testutil.Group(t, env, "sp1", true)
+	testutil.Member(t, env, "sp1", "did:plc:alice", true)
+
+	for _, tc := range []struct{ path, body string }{
+		{"/api/v1/feed/posts", `{"text":"x","selfLabels":["porn"]}`},
+		{"/api/v1/feed/posts", `{"text":"x","selfLabels":["spoiler",""]}`},
+		{"/api/v1/posts", `{"spaceIds":["sp1"],"text":"x","alsoPublic":true,"selfLabels":["nudity"]}`},
+	} {
+		status, body := testutil.Request(t, app, http.MethodPost, tc.path, tc.body, alice)
+		if status != http.StatusBadRequest {
+			t.Fatalf("%s %s: status = %d, want 400 (body=%s)", tc.path, tc.body, status, body)
+		}
+		e := testutil.WantErrorCode(t, body, "invalid_request")
+		if e.Error.Details.Fields["selfLabels"] == "" {
+			t.Fatalf("details.fields[selfLabels] is empty (body=%s)", body)
+		}
+	}
+	if n := len(env.Writer.CreateCalls()); n != 0 {
+		t.Fatalf("create calls = %d, want 0", n)
+	}
+}
+
+func TestInstancePostAlsoPublicSelfLabels(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+	env.CreateUser(t, "did:plc:alice", "alice.test")
+	env.Consent(t, "did:plc:alice")
+	alice := env.Login(t, "did:plc:alice")
+	testutil.Space(t, env, "sp1", "jp.i32.chain.space.group", "active", "did:plc:alice")
+	testutil.Group(t, env, "sp1", true)
+	testutil.Member(t, env, "sp1", "did:plc:alice", true)
+
+	status, body := testutil.Request(t, app, http.MethodPost, "/api/v1/posts",
+		`{"spaceIds":["sp1"],"text":"公開もする","alsoPublic":true,"selfLabels":["self_harm"]}`, alice)
+	if status != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body=%s)", status, body)
+	}
+	var found bool
+	for _, c := range env.Writer.CreateCalls() {
+		if c.Collection != contentsvc.CollectionFeedPost {
+			continue
+		}
+		found = true
+		rec, _ := c.Record.(map[string]any)
+		raw, _ := json.Marshal(rec["labels"])
+		if string(raw) != `{"$type":"com.atproto.label.defs#selfLabels","values":[{"val":"self_harm"}]}` {
+			t.Fatalf("labels = %s", raw)
+		}
+	}
+	if !found {
+		t.Fatal("feed.post was not written")
 	}
 }

@@ -2,6 +2,7 @@
 
 import { deleteJson, postJson } from "./api";
 import type { NearbyPostResult } from "./dto";
+import type { SelfLabel } from "@/domain/types";
 
 /** POST /feed/posts の応答 (service.PublicPost、17 §2.1)。 */
 export type FeedPostRef = {
@@ -13,6 +14,8 @@ export type FeedPostRef = {
 export type CreateFeedPostInput = {
   text: string;
   langs?: string[];
+  /** 投稿者が付ける注意 (19 §2.15.3)。 */
+  selfLabels?: SelfLabel[];
   alsoBluesky?: boolean;
 };
 

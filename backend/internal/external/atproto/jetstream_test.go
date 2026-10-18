@@ -16,7 +16,7 @@ import (
 )
 
 func TestParseFeedPost(t *testing.T) {
-	valid := `{"text":"こんにちは","langs":["ja"],"bsky":{"uri":"at://did:plc:a/app.bsky.feed.post/1","cid":"bcid"},"createdAt":"2026-10-17T03:12:45.123Z"}`
+	valid := `{"text":"こんにちは","langs":["ja"],"bsky":{"uri":"at://did:plc:a/app.bsky.feed.post/1","cid":"bafyreib2rxk3rybk3aobmv5cjuql3bm2twh4jo5uxgf5kpqcsgz7soitae"},"createdAt":"2026-10-17T03:12:45.123Z"}`
 	rec, err := ParseFeedPost(json.RawMessage(valid))
 	if err != nil {
 		t.Fatalf("ParseFeedPost: %v", err)
@@ -24,7 +24,7 @@ func TestParseFeedPost(t *testing.T) {
 	if rec.Text != "こんにちは" || len(rec.Langs) != 1 || rec.Langs[0] != "ja" {
 		t.Fatalf("record = %+v", rec)
 	}
-	if rec.Bsky == nil || rec.Bsky.URI != "at://did:plc:a/app.bsky.feed.post/1" || rec.Bsky.CID != "bcid" {
+	if rec.Bsky == nil || rec.Bsky.URI != "at://did:plc:a/app.bsky.feed.post/1" || rec.Bsky.CID != "bafyreib2rxk3rybk3aobmv5cjuql3bm2twh4jo5uxgf5kpqcsgz7soitae" {
 		t.Fatalf("bsky = %+v", rec.Bsky)
 	}
 	if rec.CreatedAt.UTC().Format(time.RFC3339Nano) != "2026-10-17T03:12:45.123Z" {

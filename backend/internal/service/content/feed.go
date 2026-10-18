@@ -77,6 +77,7 @@ type FeedItem struct {
 	Media      []MediaItem         `json:"media,omitempty"`
 	Bsky       *BskyRef            `json:"bsky,omitempty"`
 	Moderation *ModerationInfo     `json:"moderation,omitempty"`
+	SelfLabels []string            `json:"selfLabels,omitempty"`
 	Hidden     string              `json:"hidden,omitempty"`
 	TakenAt    *time.Time          `json:"takenAt,omitempty"`
 	CreatedAt  time.Time           `json:"createdAt"`
@@ -574,7 +575,12 @@ func decorateItem(ctx context.Context, q *sql.DB, publicURL string, signer stora
 	if item.authorDID != "" && blocked[item.authorDID] {
 		return false, nil
 	}
-	switch item.modLabel {
+	// 投稿者が自分で付けた注意は warn と同じに扱う（19 §2.15.3、D2）。判定を緩める向きには効かない。
+	modLabel := item.modLabel
+	if len(item.SelfLabels) > 0 && modLabel != "block" {
+		modLabel = "warn"
+	}
+	switch modLabel {
 	case "block":
 		// block は投稿者本人にだけ hidden:"moderation" として返す（10 §4.2、11 §4）。
 		if item.authorDID != viewer {
@@ -623,13 +629,14 @@ func publicPostItems(posts []model.PublicPost) []FeedItem {
 
 func publicPostItem(p model.PublicPost) FeedItem {
 	it := FeedItem{
-		Kind:      "public_post",
-		URI:       p.URI,
-		Text:      p.Text,
-		Format:    "plain",
-		CreatedAt: p.CreatedAt,
-		authorDID: p.AuthorDID,
-		modLabel:  p.ModLabel,
+		Kind:       "public_post",
+		URI:        p.URI,
+		Text:       p.Text,
+		Format:     "plain",
+		CreatedAt:  p.CreatedAt,
+		authorDID:  p.AuthorDID,
+		modLabel:   p.ModLabel,
+		SelfLabels: p.SelfLabels,
 	}
 	if p.BskyURI != "" {
 		it.Bsky = &BskyRef{URI: p.BskyURI}

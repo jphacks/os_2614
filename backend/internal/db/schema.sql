@@ -284,7 +284,8 @@ CREATE TABLE public_posts (
   mod_label   TEXT NOT NULL DEFAULT 'ok',
   mod_state   TEXT NOT NULL DEFAULT 'pending',
   audience    TEXT NOT NULL DEFAULT 'public' CHECK (audience IN ('public','nearby')),  -- 17 §2。nearby は今近くにいる人だけに配信する限定投稿
-  expires_at  INTEGER                         -- nearby の失効時刻（unix ms）。NULL なら失効しない
+  expires_at  INTEGER,                        -- nearby の失効時刻（unix ms）。NULL なら失効しない
+  self_labels_json TEXT NOT NULL DEFAULT '[]' -- 19 §2.15.3。record の labels（selfLabels）の val の JSON 配列
 );
 CREATE INDEX public_posts_author ON public_posts(author_did, created_at);
 CREATE INDEX public_posts_audience ON public_posts(audience, created_at);

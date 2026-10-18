@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/fasthttp/websocket"
@@ -36,7 +35,7 @@ const (
 	// wantChainCollections は CHAIN の record をまとめて購読するワイルドカード（03 §5）。
 	wantChainCollections = "jp.i32.chain.*"
 
-	// MaxFeedPostRunes は feed.post の text の上限（03 §6 の maxGraphemes 1000）。
+	// MaxFeedPostRunes は feed.post の text の上限（03 §6 の maxGraphemes 1000）。検証は lexicon が行う。
 	MaxFeedPostRunes = 1000
 )
 
@@ -98,13 +97,15 @@ type BskyRef struct {
 
 // FeedPostRecord は検証済みの jp.i32.chain.feed.post の値（03 §6、17 §2.3）。
 type FeedPostRecord struct {
-	Text      string
-	Langs     []string
-	Bsky      *BskyRef
-	CreatedAt time.Time
+	Text  string
+	Langs []string
+	Bsky  *BskyRef
+	// SelfLabels は labels（selfLabels）の val（19 §2.15.3）。CHAIN 以外のクライアントが書いた値も入る。
+	SelfLabels []string
+	CreatedAt  time.Time
 }
 
-// ParseFeedPost は record を検証する。text が文字列で 1000 grapheme 以内、createdAt が日時であること（03 §6）。
+// ParseFeedPost は record を lexicon（jp.i32.chain.feed.post）で検証して読む（03 §6、19 §6.1）。
 // 本文はログに出さない（02 §7）ため、エラーには本文を含めない。
 func ParseFeedPost(raw json.RawMessage) (*FeedPostRecord, error) {
 	var v struct {
@@ -114,25 +115,20 @@ func ParseFeedPost(raw json.RawMessage) (*FeedPostRecord, error) {
 			URI string `json:"uri"`
 			CID string `json:"cid"`
 		} `json:"bsky"`
-		CreatedAt string `json:"createdAt"`
+		Labels    json.RawMessage `json:"labels"`
+		CreatedAt string          `json:"createdAt"`
+	}
+	if err := ValidateRawRecord(CollectionFeedPost, raw); err != nil {
+		return nil, err
 	}
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil, fmt.Errorf("feed.post: %w", err)
-	}
-	if v.Text == nil {
-		return nil, errors.New("feed.post: text is missing or not a string")
-	}
-	if n := utf8.RuneCountInString(*v.Text); n > MaxFeedPostRunes {
-		return nil, fmt.Errorf("feed.post: text has %d graphemes (max %d)", n, MaxFeedPostRunes)
-	}
-	if v.CreatedAt == "" {
-		return nil, errors.New("feed.post: createdAt is missing")
 	}
 	created, err := time.Parse(time.RFC3339, v.CreatedAt)
 	if err != nil {
 		return nil, errors.New("feed.post: createdAt is not a datetime")
 	}
-	rec := &FeedPostRecord{Text: *v.Text, Langs: v.Langs, CreatedAt: created}
+	rec := &FeedPostRecord{Text: *v.Text, Langs: v.Langs, SelfLabels: selfLabelValues(v.Labels), CreatedAt: created}
 	if v.Bsky != nil && v.Bsky.URI != "" {
 		rec.Bsky = &BskyRef{URI: v.Bsky.URI, CID: v.Bsky.CID}
 	}
@@ -168,10 +164,13 @@ func ParseBskyProfile(raw json.RawMessage) (*BskyProfileRecord, error) {
 	return p, nil
 }
 
-// ParseChainProfile は jp.i32.chain.actor.profile の status を読む（03 §6、13 §1.1）。
+// ParseChainProfile は jp.i32.chain.actor.profile を lexicon で検証して status を読む（03 §6、13 §1.1）。
 func ParseChainProfile(raw json.RawMessage) (string, error) {
 	var v struct {
 		Status string `json:"status"`
+	}
+	if err := ValidateRawRecord(CollectionChainProfile, raw); err != nil {
+		return "", err
 	}
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return "", fmt.Errorf("chain.profile: %w", err)

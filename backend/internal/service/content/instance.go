@@ -60,6 +60,7 @@ type CreatePostInput struct {
 	Reply       *ReplyInput
 	SessionID   string
 	AlsoPublic  bool
+	SelfLabels  []string // alsoPublic のときだけ使う（19 §2.15.3）
 	AlsoBluesky bool
 }
 
@@ -260,6 +261,7 @@ func (s *InstanceService) createPublicPost(ctx context.Context, did string, in C
 	}
 	res, err := s.Public.Create(ctx, did, in.SessionID, CreatePublicPostInput{
 		Text:        in.Text,
+		SelfLabels:  in.SelfLabels,
 		AlsoBluesky: in.AlsoBluesky,
 	})
 	if err != nil {

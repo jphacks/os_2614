@@ -181,6 +181,9 @@ export type Reply = {
   likedByMe: boolean;
 };
 
+/** 公開投稿に投稿者が付ける注意 (self-label、19 §2.15.3)。 */
+export type SelfLabel = "sexual" | "violence" | "self_harm" | "spoiler";
+
 /** 公開投稿 (service.FeedItem の表示用、17 §3.2)。 */
 export type FeedPost = {
   uri: string;
@@ -188,6 +191,8 @@ export type FeedPost = {
   text: string;
   createdAt: Timestamp;
   attachments: Media[];
+  /** 投稿者が付けた注意 (19 §2.15.3)。無ければ省略。 */
+  selfLabels?: SelfLabel[];
   /** instance の投稿のときだけ、どの Space の投稿か (17 §3.2)。 */
   space?: FeedSpace;
 };

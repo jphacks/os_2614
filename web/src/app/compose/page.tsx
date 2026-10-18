@@ -28,6 +28,7 @@ import {
   ACCEPTED_MEDIA_TYPES,
   MAX_MEDIA_COUNT,
   buildCreatePostBody,
+  effectiveSelfLabels,
   hasPendingAttachments,
   isNearbyOnly,
   isPublicOnly,
@@ -265,7 +266,11 @@ function ComposeForm() {
     }
     if (isPublicOnly(input)) {
       try {
-        await createFeedPost({ text: input.text });
+        const selfLabels = effectiveSelfLabels(input);
+        await createFeedPost({
+          text: input.text,
+          ...(selfLabels.length > 0 ? { selfLabels } : {}),
+        });
         router.push("/home/");
       } catch (e) {
         const classified = classifyPostError(e);

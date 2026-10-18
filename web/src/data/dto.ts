@@ -472,6 +472,8 @@ export type FeedItem = {
   system?: boolean;
   media?: Media[];
   moderation?: ModerationInfo;
+  /** 投稿者が付けた注意（19 §2.15.3）。公開投稿のみ。 */
+  selfLabels?: string[];
   hidden?: string;
   takenAt?: RFC3339;
   createdAt: RFC3339;

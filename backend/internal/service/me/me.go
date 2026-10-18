@@ -212,6 +212,10 @@ func (s *MeService) UpdateStatus(ctx context.Context, did, sid, status string) (
 		"status":    status,
 		"createdAt": core.FormatDateTime(now),
 	}
+	if err := atproto.ValidateRecord(core.CollectionActorProfile, record); err != nil { // lexicon（19 §6.1）
+		slog.WarnContext(ctx, "chain profile record rejected by lexicon", "err", err)
+		return nil, httpx.ErrInvalidRequest.With("fields", map[string]string{"status": "ステータスが長すぎます"})
+	}
 	if _, _, err := s.Writer.PutRecord(ctx, did, sess.ATProtoSessionID, core.CollectionActorProfile, actorProfileRKey, record, ""); err != nil {
 		return nil, profileWriteError(err)
 	}
