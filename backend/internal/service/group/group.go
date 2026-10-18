@@ -729,8 +729,8 @@ func validateCreateGroup(in CreateGroupInput) map[string]string {
 	if in.Lon < -180 || in.Lon > 180 {
 		fields["geofence.lon"] = "-180 から 180 の範囲で指定してください"
 	}
-	if in.RadiusM < 20 || in.RadiusM > 2000 {
-		fields["geofence.radiusM"] = "20〜2000 で指定してください"
+	if in.RadiusM < 5 || in.RadiusM > 2000 {
+		fields["geofence.radiusM"] = "5〜2000 で指定してください"
 	}
 	if in.InviteQuorum < 0 {
 		fields["inviteQuorum"] = "1 以上で指定してください"

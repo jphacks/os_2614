@@ -126,7 +126,8 @@
 | --- | --- | --- | --- | --- |
 | POST | `/api/v1/feed/posts` | 公開投稿（`alsoBluesky` で Bluesky にも） | P1 | 17 §2.1 |
 | DELETE | `/api/v1/feed/posts/{rkey}` | 公開投稿の削除（Bluesky 側も） | P1 | 17 §2.2 |
-| GET | `/api/v1/feed?source=` | 共通のフィード。source は `home` / `groups` / `space:{id}` / `user:{did}` | P1 | 17 §3 |
+| GET | `/api/v1/feed?source=` | 共通のフィード。source は `home` / `groups` / `space:{id}` / `user:{did}` / `nearby` | P1 | 17 §3 |
+| POST | `/api/v1/nearby/posts` | nearby 投稿（今近くにいる人だけに届く限定投稿。PDS には書かない。403 `consent_required` / 422 `moderation_blocked`） | P1 | 17 §2.6 |
 
 ## memory・通知・その他
 

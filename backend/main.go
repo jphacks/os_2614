@@ -119,7 +119,8 @@ func run() error {
 	notifications := &notify.NotificationService{Deps: deps}
 	revealer := &worker.EncounterRevealer{Deps: deps, Encounters: encounters}
 
-	store := spacemodel.NewSQLiteStore(conn, deps.Clock, idgen.NewTIDGenerator(deps.Clock, tidClockID(deps.IDs)))
+	tids := idgen.NewTIDGenerator(deps.Clock, tidClockID(deps.IDs))
+	store := spacemodel.NewSQLiteStore(conn, deps.Clock, tids)
 	mediaStore := storage.NewStore(cfg.MediaDir)
 	signer := storage.NewSigner(cfg.JWTKey)
 	account := &authsvc.AccountService{Deps: deps, OAuth: oauthApp, Storage: mediaStore}
@@ -130,7 +131,11 @@ func run() error {
 	pins := &content.PinService{Deps: deps, Store: store, Access: access, Broker: hub}
 	publicPosts := &content.PublicPostService{Deps: deps, Writer: pdsWriter, Moderator: moderator, Broker: hub}
 	instances := &content.InstanceService{Deps: deps, Store: store, Access: access, Assessor: assessor, Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
-	feed := &content.FeedService{Deps: deps, Access: access, Signer: signer}
+	feed := &content.FeedService{Deps: deps, Access: access, Signer: signer, Proximity: &proximity.BLEPeerProximity{Deps: deps}}
+	nearbyPosts := &content.NearbyPostService{
+		Deps: deps, Moderator: moderator, Broker: hub,
+		Proximity: &proximity.BLEPeerProximity{Deps: deps}, TID: tids,
+	}
 	groups := &groupsvc.GroupService{Deps: deps, Zones: &proximity.GPSZonePresence{Deps: deps}, Access: access, Moderator: moderator, Broker: hub}
 	naturalGroups := &naturalsvc.NaturalGroupService{Deps: deps, Moderator: moderator, Broker: hub}
 	groupVotes := &groupsvc.GroupVoteService{Deps: deps, Access: access, Broker: hub}
@@ -208,6 +213,7 @@ func run() error {
 			&controller.NotificationController{Notifications: notifications},
 			&contentctrl.InstanceController{Instances: instances, Pins: pins, Feed: feed},
 			&contentctrl.FeedPostController{Posts: publicPosts},
+			&contentctrl.NearbyPostController{Posts: nearbyPosts},
 			&contentctrl.FeedController{Feed: feed},
 			&contentctrl.MediaController{Media: mediaSvc},
 			&groupctrl.GroupController{Groups: groups},

@@ -75,6 +75,9 @@ type Env struct {
 	// Broker は feed.updated などのリアルタイム配信の宛先をテストから見るための差し込み口。
 	// nil なら配信しない（既定）。FakeBroker を入れると記録できる。
 	Broker realtime.Broker
+	// Proximity は近接判定（05 §1）。nil なら BLEPeerProximity を使う。
+	// FakePeerProximity を入れると、nearby フィードと feed.updated の宛先をテストから制御できる。
+	Proximity proximity.PeerProximity
 	// oauth は NewApp の AuthService と AccountService が共有する fake。
 	oauth *fakeOAuth
 }
@@ -120,6 +123,19 @@ func (e *Env) PublicPosts() *content.PublicPostService {
 		moderator = moderation.ModerationNoop{}
 	}
 	return &content.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator, Broker: e.Broker}
+}
+
+// NearbyPosts は main.go と同じ配線の nearby 投稿サービス（17 §2）。
+func (e *Env) NearbyPosts() *content.NearbyPostService {
+	moderator := e.Moderator
+	if moderator == nil {
+		moderator = moderation.ModerationNoop{}
+	}
+	prox := e.Proximity
+	if prox == nil {
+		prox = &proximity.BLEPeerProximity{Deps: e.Deps}
+	}
+	return &content.NearbyPostService{Deps: e.Deps, Moderator: moderator, Broker: e.Broker, Proximity: prox, TID: idgen.NewSeqTID()}
 }
 
 // Jetstream は main.go と同じ配線の Jetstream サービス（03 §5、17 §2.5）。
@@ -290,7 +306,12 @@ func NewApp(e *Env) *fiber.App {
 	pins := &content.PinService{Deps: e.Deps, Store: e.Store, Access: access, Broker: hub}
 	publicPosts := &content.PublicPostService{Deps: e.Deps, Writer: e.Writer, Moderator: moderator, Broker: hub}
 	instances := &content.InstanceService{Deps: e.Deps, Store: e.Store, Access: access, Assessor: assessorFor(e), Broker: hub, Signer: signer, Pins: pins, Public: publicPosts}
-	feed := &content.FeedService{Deps: e.Deps, Access: access, Signer: signer}
+	prox := e.Proximity
+	if prox == nil {
+		prox = &proximity.BLEPeerProximity{Deps: e.Deps}
+	}
+	feed := &content.FeedService{Deps: e.Deps, Access: access, Signer: signer, Proximity: prox}
+	nearbyPosts := &content.NearbyPostService{Deps: e.Deps, Moderator: moderator, Broker: hub, Proximity: prox, TID: idgen.NewSeqTID()}
 	groups := &groupsvc.GroupService{Deps: e.Deps, Zones: zones, Access: access, Moderator: moderator, Broker: hub}
 	groupVotes := &groupsvc.GroupVoteService{Deps: e.Deps, Access: access, Broker: hub}
 	groupInvites := &groupsvc.GroupInviteService{Deps: e.Deps, Zones: zones, Access: access, Broker: hub}
@@ -348,6 +369,7 @@ func NewApp(e *Env) *fiber.App {
 			&controller.NotificationController{Notifications: notifications},
 			&contentctrl.InstanceController{Instances: instances, Pins: pins, Feed: feed},
 			&contentctrl.FeedPostController{Posts: publicPosts},
+			&contentctrl.NearbyPostController{Posts: nearbyPosts},
 			&contentctrl.FeedController{Feed: feed},
 			&contentctrl.MediaController{Media: mediaSvc},
 			&groupctrl.GroupController{Groups: groups},

@@ -112,6 +112,8 @@ export type Encounter = {
   seenUntil: RFC3339;
   timesWithPeer: number;
   relation: EncounterRelation;
+  /** すれ違った場所の geohash 6 桁 (06 §7)。両者が記録を有効にしたときだけ入る。 */
+  place?: string;
 };
 
 /** POST /encounters/sightings の結果。誰とは返らない。 */
@@ -459,6 +461,7 @@ export type FeedReplyRef = { root: string; parent: string };
 
 /** GET /feed の 1 件（service.FeedItem、17 §3.2）。source=user:{did} で自分の投稿を取る。 */
 export type FeedItem = {
+  /** 種別。"nearby_post" は近くの人だけへの限定配信（17 §2.6）、それ以外は "post" など。 */
   kind: string;
   uri: string;
   space?: FeedSpace;
@@ -473,6 +476,12 @@ export type FeedItem = {
   takenAt?: RFC3339;
   createdAt: RFC3339;
 };
+
+/**
+ * POST /nearby/posts の応答（service.NearbyPostResult、17 §2.6）。
+ * 近くにいる人にだけ届く限定配信で、PDS には書かない（14「公開投稿・フィード」）。
+ */
+export type NearbyPostResult = { uri: string };
 
 // --- ここから下は backend 未実装（spec-only）の形。実装されたら json タグに合わせて直す。 ---
 

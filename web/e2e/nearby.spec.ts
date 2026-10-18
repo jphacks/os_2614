@@ -256,7 +256,7 @@ test.describe("nearby", () => {
     ).toBeVisible();
   });
 
-  test("joins a group from the focus card after dragging the canvas", async ({
+  test("joins a group from the focus card after tapping its bubble", async ({
     page,
   }) => {
     await useStoredSession(page, makeStoredSession());
@@ -291,25 +291,10 @@ test.describe("nearby", () => {
       .first()
       .waitFor({ state: "detached", timeout: 10_000 });
 
-    // グループの泡が表示され、キャンバス上にあることを確認する。
-    const canvas = page.getByRole("group", { name: "近くの人とグループ" });
+    // 泡をタップすると中央へ寄ってフォーカスが当たり、下のカードに操作が出る。
     const bubble = page.getByText("情報工学科 3年", { exact: true });
     await expect(bubble).toBeVisible();
-
-    const canvasBox = await canvas.boundingBox();
-    const bubbleBox = await bubble.boundingBox();
-    expect(canvasBox).not.toBeNull();
-    expect(bubbleBox).not.toBeNull();
-
-    // 泡を中央へドラッグすると、その泡にフォーカスが当たる。
-    const fromX = bubbleBox!.x + bubbleBox!.width / 2;
-    const fromY = bubbleBox!.y + bubbleBox!.height / 2;
-    const toX = canvasBox!.x + canvasBox!.width / 2;
-    const toY = canvasBox!.y + canvasBox!.height / 2;
-    await page.mouse.move(fromX, fromY);
-    await page.mouse.down();
-    await page.mouse.move(toX, toY, { steps: 12 });
-    await page.mouse.up();
+    await bubble.click();
 
     const join = page.getByRole("button", { name: "参加" });
     await expect(join).toBeVisible();

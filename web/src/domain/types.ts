@@ -93,6 +93,8 @@ export type Encounter = {
   seenUntil: Timestamp;
   timesWithPeer: number;
   relation: EncounterRelation;
+  /** すれ違った場所の geohash 6 桁 (06 §7)。記録していなければ undefined。 */
+  place?: string;
 };
 
 export type GroupVisibility = "open" | "closed";
