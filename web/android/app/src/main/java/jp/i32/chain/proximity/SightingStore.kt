@@ -14,26 +14,29 @@ import java.util.concurrent.TimeUnit
 /**
  * Room 版の sightings ストア。集約を SQLite に永続化し、プロセス死・OS kill・端末再起動を
  * またいでも失われないようにする。セマンティクスは純粋な [SightingAggregator] と同一:
- *  - record: first=min / last=max / maxRssi=max / count+1 で 1 行をマージ
- *  - drain: `lastMs <= nowMs - ttlMs` を送らずに捨て、残りを返したうえで全体を消す
+ *  - record: first=min / last=max / maxRssi=max / count+1 で 1 件にマージ
+ *  - drain: `lastMs <= nowMs - ttlMs` は返さずに捨て、返した token だけを DB から消す
  *
  * スレッド方針 (F-02): main thread では一切 SQLite I/O をしない。
- *  - 読み取り ([pending] / [drain]) は in-memory の [mirror] から返す。ディスクに触れない。
- *  - 書き込み ([record]) と hydration は [scope] へ非同期に投げ、呼び出し側をブロックしない。
- *    DAO はすべて suspend で、前の操作の完了に連結 (chain) して直列化する。
+ *  - [mirror] が読み取り・書き込みの権威状態。record のマージは呼び出しスレッドで同期に行い
+ *    (HashMap 操作のみ、ディスク I/O なし、μs)、DB への upsert だけを [scope] へ非同期に投げる。
+ *  - 読み取り ([pending] / [drain]) も [mirror] から返す。
  *
- * ミラーと DB の整合 (順序の明記):
- *  - [mirror] が読み取りの唯一のソース。全ての変更 (hydration → record → ミラー剪定) は
- *    前の操作の完了に join してから走るため、必ず hydration の後に record が適用される。
- *  - hydration は最初の操作。既存 DB 行をミラーに読み込み、以降の record と競合しない。
- *  - drain はミラーから生きた行を snapshot して全て消し、返した token だけの DB 削除を chain の末尾へ投げる。
+ * ミラーと DB の整合 (F-02c: 同期ミラー):
+ *  - [mirror] は同期の権威状態。record が返った時点で必ずミラーに反映されているので、drain の
+ *    snapshot は「既に record が返った」観測を取りこぼさない。旧実装はマージを chained job 内で
+ *    行っていたため snapshot と record job の順序が定まらず、committed 行を消す損失パスがあった。
+ *  - drain の後に来た record は snapshot に無いので削除対象にならず、その upsert job は delete job
+ *    の後に連結されるため消されない。
+ *  - hydration は put-if-absent: 既にミラーにある entry (record が同期 merge 済み) は DB 行より
+ *    新しいので上書きしない。
+ *  - record→upsert と drain→(token 削除 + 期限切れ掃除) は [scope] 上で前の操作に join して直列化する。
  *
  * 耐久性の窓 (F-02 の durability window):
- *  - record は「ミラーへのマージ + DB upsert」を enqueue して即座に返る。
- *    この upsert トランザクションが commit した時点でディスクに載り、以降の SIGKILL /
- *    process death / 再起動をまたいで残る (Room の durable ストアが唯一の真実)。
- *  - 窓 = record() が返ってから上の upsert が commit するまで。通常はミリ秒未満だが、
- *    この間にプロセスが死ぬとその 1 件はミラーごと失われる。drain の DB 削除も同様の窓を持つ。
+ *  - record は同期マージの後、DB upsert を enqueue して即座に返る。upsert が commit した時点で
+ *    ディスクに載り、以降の SIGKILL / process death / 再起動をまたいで残る。
+ *  - 窓 = record() が返ってから upsert が commit するまで (通常 μs〜ms)。この間にプロセスが死ぬと
+ *    その 1 件はミラーごと失われる。ミラーは同期なので、drain はこの窓の集約も正しく返せる。
  */
 class SightingStore(
     context: Context,
@@ -70,31 +73,36 @@ class SightingStore(
         }
     }
 
-    /** 破棄されたプロセスの DB 行をミラーへ読み込む。 */
+    /** 破棄されたプロセスの DB 行をミラーへ読み込む。既存のミラー entry は上書きしない。 */
     private suspend fun hydrate() {
         val rows = runCatching { dao.getAll() }.getOrElse { e ->
             Log.w(TAG, "sighting hydration failed", e)
             return
         }
         synchronized(lock) {
-            for (row in rows) mirror[row.token] = row.toAggregate()
+            for (row in rows) {
+                // put-if-absent: 既にミラーにある entry は record が同期 merge 済み = DB 行より新しい。
+                if (row.token !in mirror) mirror[row.token] = row.toAggregate()
+            }
         }
     }
 
     /**
      * first=min / last=max / maxRssi=max / count+1 でミラーをマージし、その行を DB へ upsert する。
-     * main thread から呼んでもディスクに触れない (enqueue のみ)。永続化の窓はクラス doc を参照。
+     * マージは呼び出しスレッドで [lock] の下に同期実行する (HashMap 操作のみ、ディスク I/O なし)。
+     * これにより drain の snapshot は「既に record が返った」観測を取りこぼさない。
+     * DB 書き込み (upsert + 期限切れ掃除) だけを [scope] の chain に投げ、呼び出し側はブロックしない。
      */
     fun record(token: String, nowMs: Long, rssi: Int) {
+        var prune = false
+        val merged = synchronized(lock) {
+            prune = shouldPruneLocked(nowMs)
+            if (prune) pruneLocked(nowMs)
+            val old = mirror[token]
+            merge(old, nowMs, rssi).also { mirror[token] = it }
+        }
         enqueue {
             runCatching {
-                var prune = false
-                val merged = synchronized(lock) {
-                    prune = shouldPruneLocked(nowMs)
-                    if (prune) pruneLocked(nowMs)
-                    val old = mirror[token]
-                    merge(old, nowMs, rssi).also { mirror[token] = it }
-                }
                 dao.upsert(merged.toEntity(token))
                 // F-04: 期限切れ行を record 時にも落とす (drain まで放置しない)。
                 if (prune) dao.deleteExpired(nowMs - ttlMs)
@@ -103,7 +111,7 @@ class SightingStore(
     }
 
     /**
-     * [nowMs] 時点で生きている entry を返し、ミラーを全消しする。
+     * [nowMs] 時点で生きている entry を返し、ミラーから消す。
      * `lastMs <= nowMs - ttlMs` の entry は返さずに捨てる (境界の等値は捨てる)。
      * 呼び出しスレッドではミラーの snapshot のみで、DB の後片付けは chain の末尾へ投げる。
      */
@@ -120,15 +128,21 @@ class SightingStore(
             result
         }
         // 返した token だけを DB から消す (full-table delete は IS-1 違反になるため禁止)。
-        //  - snapshot に無い record (chained job が未実行) は消さないので、その committed 行は残り、
-        //    次の drain で返る -> プロセス死でも失われない。
-        //  - hydration 前はミラーが空 = snapshot が空なので何も enqueue しない。永続化済みの行は
-        //    そのまま残り、hydration 後の drain が同じように返す (全消ししないので安全)。
+        //  - ミラーは同期 merge なので snapshot は「record が返った」観測を必ず含む。snapshot に
+        //    無い record (drain の後に来たもの) は削除対象にならず、その upsert は delete の後に連結。
+        //  - hydration 前はミラーが空 = snapshot が空なので何も enqueue しない (下の early return)。
+        //    永続化済みの行はそのまま残り、hydration 後の drain が同じように返す。
         if (live.isEmpty()) return live
         val tokens = live.keys.toList()
+        val cutoff = nowMs - ttlMs
         enqueue {
-            runCatching { dao.deleteByTokens(tokens) }
-                .onFailure { Log.w(TAG, "sighting drain cleanup failed", it) }
+            runCatching {
+                // SQLite の bind 変数上限 (旧 999) を超えないようチャンクして削除する。
+                // 空リストは上の `if (live.isEmpty()) return` で既に除外済み (IN () を作らない)。
+                for (chunk in tokens.chunked(DELETE_CHUNK_SIZE)) dao.deleteByTokens(chunk)
+                // 期限切れ行も drain 時に掃除する (record 時の剪定は 5s throttle のため)。
+                dao.deleteExpired(cutoff)
+            }.onFailure { Log.w(TAG, "sighting drain cleanup failed", it) }
         }
         return live
     }
@@ -180,6 +194,9 @@ class SightingStore(
 
         /** record 時の剪定を回す最短間隔 (これを超えない頻度では DB/ミラーを舐めない)。 */
         private const val PRUNE_INTERVAL_MS = 5_000L
+
+        /** deleteByTokens の 1 回あたりの token 数。旧 SQLite の bind 変数上限 (999) を下回る値。 */
+        private const val DELETE_CHUNK_SIZE = 500
         private const val TAG = "ChainProximity"
     }
 }

@@ -124,4 +124,18 @@ class SightingAggregatorTest {
         assertEquals(setOf("second"), aggregator.drain(150L).keys)
         assertEquals(0, aggregator.pending(150L))
     }
+
+    @Test
+    fun `a same-token record after drain starts a fresh aggregate`() {
+        val aggregator = SightingAggregator(ttlMs = 1000L)
+        aggregator.record("tok", 100L, -50)
+        assertEquals(1, aggregator.drain(100L).getValue("tok").count)
+
+        aggregator.record("tok", 200L, -60)
+        val agg = aggregator.drain(200L).getValue("tok")
+        assertEquals(1, agg.count)
+        assertEquals(200L, agg.firstMs)
+        assertEquals(200L, agg.lastMs)
+        assertEquals(-60, agg.maxRssi)
+    }
 }

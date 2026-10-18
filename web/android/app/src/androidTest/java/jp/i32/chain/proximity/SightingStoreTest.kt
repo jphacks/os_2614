@@ -36,12 +36,18 @@ class SightingStoreTest {
     private val ttlMs = 1000L
     private val dbName = "chain_sightings_test_${System.nanoTime()}"
 
+    /** この test が作った GatedDispatcher。@After で executor を閉じる。 */
+    private val dispatchers = mutableListOf<GatedDispatcher>()
+
+    private fun gatedDispatcher(): GatedDispatcher = GatedDispatcher().also { dispatchers += it }
+
     /** 同じファイルに対する新しい RoomDatabase 実例を作る (メモリキャッシュではない)。 */
     private fun newDb(): SightingDatabase =
         Room.databaseBuilder(appContext, SightingDatabase::class.java, dbName).build()
 
     @Before
     fun setUp() {
+        dispatchers.clear()
         appContext.deleteDatabase(dbName)
         clearPrefs()
         resetProximityState()
@@ -49,6 +55,8 @@ class SightingStoreTest {
 
     @After
     fun tearDown() {
+        dispatchers.forEach { it.close() }
+        dispatchers.clear()
         resetProximityState()
         clearPrefs()
         appContext.deleteDatabase(dbName)
@@ -245,26 +253,96 @@ class SightingStoreTest {
         }
     }
 
-    // ---- F-02b: drain must delete only the tokens it returned ----
+    // ---- F-02b/F-02c: drain must delete only the tokens it returned, with a synchronous mirror ----
 
     @Test
-    fun drainDoesNotDeleteRowsItDidNotReturn() {
+    fun drainDeletesOnlyReturnedTokensFromTheDatabase() {
         val db = newDb()
         try {
-            val dispatcher = GatedDispatcher()
+            val store = SightingStore(appContext, ttlMs, db)
+            store.awaitIdle() // hydration completes against the empty DB first
+            // A record merges into the mirror synchronously, so the following drain returns it.
+            store.record("returned", 100L, -50)
+            // A committed row whose token is NOT in the mirror snapshot (out-of-band/legacy row):
+            // the scoped delete must not touch it.
+            runBlocking { db.sightingDao().upsert(SightingEntity("unreturned", 120L, 120L, -40, 1)) }
+
+            val drained = store.drain(200L)
+            assertEquals(setOf("returned"), drained.keys)
+            store.awaitIdle()
+
+            val tokens = runBlocking { db.sightingDao().getAll() }.map { it.token }.toSet()
+            assertEquals("the drain must delete only the tokens it returned", setOf("unreturned"), tokens)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun sameTokenRecordBeforeDrainSnapshotIsReturned() {
+        val db = newDb()
+        try {
+            val dispatcher = gatedDispatcher()
             val store = SightingStore(appContext, ttlMs, db, dispatcher)
-            // record enqueues its chained job; the gated dispatcher keeps that job from running.
-            store.record("in-flight", 100L, -50)
-            // drain before the chained job runs: the aggregate is not in the mirror yet, so it is not returned.
-            val drained = store.drain(100L)
-            assertTrue("drain must not return an aggregate it has not merged yet", drained.isEmpty())
+
+            // 1st observation completes fully (mirror entry + committed DB row).
+            store.record("tok", 100L, -50)
+            dispatcher.resume()
+            store.awaitIdle()
+            assertEquals(1L, runBlocking { db.sightingDao().count().toLong() })
+
+            // 2nd observation for the SAME token, enqueued but held by the gate.
+            dispatcher.pause()
+            store.record("tok", 200L, -60)
+
+            // drain while the 2nd record's persist job is still gated. Because the merge is synchronous,
+            // the 2nd observation is already in the mirror, so the snapshot MUST include it.
+            val drained = store.drain(200L)
+            assertEquals(setOf("tok"), drained.keys)
+            val agg = drained.getValue("tok")
+            assertEquals("the returned aggregate must reflect the 2nd observation", 2, agg.count)
+            assertEquals(200L, agg.lastMs)
+            assertEquals(-50, agg.maxRssi)
 
             dispatcher.resume()
             store.awaitIdle()
 
-            // The just-committed row must survive: a scoped delete removes only returned tokens.
+            // loss-free: the returned token's row is gone (it was returned) and no live mirror entry remains.
+            assertEquals(0L, runBlocking { db.sightingDao().count().toLong() })
+            assertEquals(0, store.pending(200L))
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun recordAfterDrainSnapshotSurvivesTheDelete() {
+        val db = newDb()
+        try {
+            val dispatcher = gatedDispatcher()
+            val store = SightingStore(appContext, ttlMs, db, dispatcher)
+
+            store.record("tok", 100L, -50)
+            dispatcher.resume()
+            store.awaitIdle()
+
+            dispatcher.pause()
+            // drain FIRST: returns the 1st observation and enqueues the scoped delete.
+            val drained = store.drain(100L)
+            assertEquals(setOf("tok"), drained.keys)
+            assertEquals(1, drained.getValue("tok").count)
+
+            // 2nd observation AFTER the snapshot: its merge is synchronous and its upsert job is chained
+            // after the delete job, so its row must SURVIVE.
+            store.record("tok", 200L, -60)
+
+            dispatcher.resume()
+            store.awaitIdle()
+
             val rows = runBlocking { db.sightingDao().getAll() }
-            assertEquals(listOf("in-flight"), rows.map { it.token })
+            assertEquals(listOf("tok"), rows.map { it.token })
+            assertEquals(200L, rows[0].lastMs)
+            assertEquals(1, rows[0].count)
         } finally {
             db.close()
         }
@@ -275,7 +353,7 @@ class SightingStoreTest {
         val db = newDb()
         try {
             runBlocking { db.sightingDao().upsert(SightingEntity("persisted", 100L, 100L, -40, 1)) }
-            val dispatcher = GatedDispatcher()
+            val dispatcher = gatedDispatcher()
             val store = SightingStore(appContext, ttlMs, db, dispatcher)
 
             // hydration has not run, so the mirror is empty and this drain returns nothing.
@@ -301,7 +379,7 @@ class SightingStoreTest {
     fun recordReturnsWithoutTouchingTheDao() {
         val db = newDb()
         try {
-            val dispatcher = GatedDispatcher()
+            val dispatcher = gatedDispatcher()
             val store = SightingStore(appContext, ttlMs, db, dispatcher)
             dispatcher.resume()
             store.awaitIdle()
@@ -444,5 +522,10 @@ private class GatedDispatcher : CoroutineDispatcher() {
     fun resume() = synchronized(gate) {
         open = true
         gate.notifyAll()
+    }
+
+    fun close() {
+        resume()
+        executor.shutdown()
     }
 }
