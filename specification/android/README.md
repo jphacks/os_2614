@@ -104,13 +104,17 @@ party 中の写真の自動共有（backend 08 §5）のうち、端末の Media
 
 | API | 内容 |
 | --- | --- |
-| `checkPermissions()` / `requestPermissions()` | `{ photos }` を返す。値は `granted` / `denied` / `prompt` に加え、Android 14 以降で「選んだ写真だけ」を許可された状態（`READ_MEDIA_VISUAL_USER_SELECTED` のみ）の `limited`。`limited` では自動共有を使えない（WebView が案内する） |
+| `checkPermissions()` / `requestPermissions()` | `{ photos }` を返す。値は `granted` / `denied` / `prompt` / `prompt-with-rationale` に加え、Android 14 以降で「選んだ写真だけ」を許可された状態の `limited`。`limited` では自動共有を使えない（WebView が案内する）。判定は版ごとに分ける（下記） |
 | `startWatching({ since })` / `stopWatching()` | `since`（ISO 8601、本 party の `confirmed_at`）以降の写真を拾う。`granted` でなければ `denied` で失敗。`MediaStore.Images` を `ContentObserver` で見張り、`RELATIVE_PATH` が `DCIM/Camera/` で `DATE_TAKEN` が `since` から現在までの写真だけを待ち行列に積み、`photoCaptured` を発火する。開始時にも 1 回走査する（別の `since` で呼び直すと「見た」集合を空にする） |
 | `listPending()` / `removePending({ ids })` | 待ち行列 `{ items: [{ mediaStoreId, takenAt, uri }] }` の取得・削除。`removePending` で消した ID は永続化された「見た」集合に入り、以後 `startWatching` の走査で再び積まれない（取り消した写真・送信済みの写真を拾い直さないため） |
 | `readPhoto({ mediaStoreId })` | アップロード用の `{ data（base64）, mime }`。JPEG / PNG / WebP で 15 MB 以下ならそのまま返す。それ以外（HEIC など `BitmapFactory` が読めるもの）や 15 MB 超は、長辺 4096 px 以下に縮小して JPEG（品質 90 から 40 まで下げる）に変換して返す。15 MB 以下にできなければ `read_failed` |
 | `savePhoto({ url, album, takenAt, fileName })` | `url` を取得して `Pictures/CHAIN/{album}` に JPEG として保存し（`IS_PENDING` を使う）、`{ mediaStoreId }` を返す。書き込みは Android 10 以降では権限不要。`album` は制御文字と `/` `\` `:` を除き、`..` を `_` にして前後の空白を落とす（空なら `party`）。`fileName` は英数字と `._-` 以外を `_` にする |
 | `isSaved({ mediaStoreId })` | `{ saved }`。その ID の画像が MediaStore に残っているか |
 
+- 写真権限の判定（版ごと）: Capacitor の alias は、束ねた権限が**全部**許可のときだけ `granted` になる。`READ_EXTERNAL_STORAGE` は `maxSdkVersion=32` なので Android 13 以降では許可されず、3 つを 1 つの alias にまとめると決して `granted` にならない（14 以降で全許可しても `limited` になる）。そのため alias は `mediaImages`（`READ_MEDIA_IMAGES`）/ `mediaSelected`（`READ_MEDIA_VISUAL_USER_SELECTED`）/ `storage`（`READ_EXTERNAL_STORAGE`）に分け、次のように決める
+  - Android 13 以降: `READ_MEDIA_IMAGES` が許可なら `granted`。そうでなく 14 以降で `READ_MEDIA_VISUAL_USER_SELECTED` が許可なら `limited`。どちらでもなければ `mediaImages` の状態
+  - Android 12 以下: `storage` の状態
+  - `requestPermissions()` が要求する alias は、14 以降が `mediaImages` と `mediaSelected`（部分アクセスを選べるようにする Android の推奨）、13 が `mediaImages`、12 以下が `storage`。`startWatching` も同じ判定を使う（純関数 `photoPermission`、単体テストあり）
 - イベント: `photoCaptured`（`{ mediaStoreId, takenAt, uri }`）
 - 待ち行列、`since`、「見た」集合は SharedPreferences（`chain.photos`）に保存する。WebView やプロセスが止まっていても、監視している間は積む
 - 送信済みの記録（`(partyId, mediaStoreId)`）、保存済みの記録（media id）、設定は WebView の localStorage にあり、native は持たない

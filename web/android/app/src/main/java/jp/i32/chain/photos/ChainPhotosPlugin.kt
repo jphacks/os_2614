@@ -28,20 +28,41 @@ import java.util.concurrent.ExecutorService
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * 写真権限の状態を Android の版から決める（JS へ返す値: granted / denied / prompt / prompt-with-rationale / limited）。
+ * [fallback] は granted でも limited でもないときに返す、版に応じた alias の状態。
+ */
+internal fun photoPermission(sdk: Int, imagesGranted: Boolean, selectedGranted: Boolean, fallback: String): String =
+    when {
+        sdk >= 33 && imagesGranted -> "granted"
+        sdk >= 34 && selectedGranted -> "limited"
+        else -> fallback
+    }
+
+/** 版ごとに要求する alias。34+ は部分アクセスを選べるよう mediaSelected も一緒に要求する。 */
+internal fun requestAliases(sdk: Int): Array<String> = when {
+    sdk >= 34 -> arrayOf(ChainPhotosPlugin.MEDIA_IMAGES, ChainPhotosPlugin.MEDIA_SELECTED)
+    sdk >= 33 -> arrayOf(ChainPhotosPlugin.MEDIA_IMAGES)
+    else -> arrayOf(ChainPhotosPlugin.STORAGE)
+}
+
 /** 写真の監視・端末保存だけを担当するプラグイン。backend 通信は WebView が行う。 */
 @CapacitorPlugin(
     name = "ChainPhotos",
     permissions = [
-        Permission(alias = ChainPhotosPlugin.PHOTOS, strings = [
-            Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-        ]),
+        // 1 つの alias に束ねると Capacitor は「全部許可」でないと GRANTED にしない。
+        // Android 13+ では READ_EXTERNAL_STORAGE が決して許可されないので、版ごとに alias を分ける。
+        Permission(alias = ChainPhotosPlugin.MEDIA_IMAGES, strings = [Manifest.permission.READ_MEDIA_IMAGES]),
+        Permission(alias = ChainPhotosPlugin.MEDIA_SELECTED, strings = [Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED]),
+        Permission(alias = ChainPhotosPlugin.STORAGE, strings = [Manifest.permission.READ_EXTERNAL_STORAGE]),
     ],
 )
 class ChainPhotosPlugin : Plugin() {
     companion object {
         const val PHOTOS = "photos"
+        const val MEDIA_IMAGES = "mediaImages"
+        const val MEDIA_SELECTED = "mediaSelected"
+        const val STORAGE = "storage"
         private const val PREFS = "chain.photos"
         private const val SINCE = "since"
         private const val PENDING = "pending"
@@ -66,7 +87,7 @@ class ChainPhotosPlugin : Plugin() {
 
     @PluginMethod
     override fun requestPermissions(call: PluginCall) {
-        requestPermissionForAliases(arrayOf(PHOTOS), call, "permissionsCallback")
+        requestPermissionForAliases(requestAliases(Build.VERSION.SDK_INT), call, "permissionsCallback")
     }
 
     @PermissionCallback
@@ -75,16 +96,17 @@ class ChainPhotosPlugin : Plugin() {
     }
 
     private fun permissionStatus(): JSObject {
+        val sdk = Build.VERSION.SDK_INT
         val status = JSObject()
-        if (Build.VERSION.SDK_INT >= 34 &&
-            getPermissionState(PHOTOS) != PermissionState.GRANTED &&
-            context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            status.put(PHOTOS, "limited")
-        } else {
-            status.put(PHOTOS, getPermissionState(PHOTOS).toString())
-        }
+        status.put(
+            PHOTOS,
+            photoPermission(
+                sdk,
+                imagesGranted = getPermissionState(MEDIA_IMAGES) == PermissionState.GRANTED,
+                selectedGranted = getPermissionState(MEDIA_SELECTED) == PermissionState.GRANTED,
+                fallback = getPermissionState(if (sdk >= 33) MEDIA_IMAGES else STORAGE).toString(),
+            ),
+        )
         return status
     }
 
@@ -96,7 +118,7 @@ class ChainPhotosPlugin : Plugin() {
         } catch (_: Exception) {
             return call.reject("since must be ISO 8601")
         }
-        if (permissionStatus().getString(PHOTOS) != PermissionState.GRANTED.toString()) {
+        if (permissionStatus().getString(PHOTOS) != "granted") {
             return call.reject("写真の権限がありません", "denied")
         }
         synchronized(this) {
