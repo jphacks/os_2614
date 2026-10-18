@@ -67,7 +67,10 @@ export type ComposeScreenProps = {
   onCancel?: () => void;
 };
 
-function hintFor(targets: PostTarget[], alsoPublic: boolean): string {
+function hintFor(targets: PostTarget[], alsoPublic: boolean, nearby: boolean): string {
+  if (nearby) {
+    return "今この場にいる人に届きます";
+  }
   if (targets.length === 0) {
     return alsoPublic
       ? "フレンドやすれ違った人のホームに公開で表示されます"
@@ -117,6 +120,7 @@ export function ComposeScreen({
   const [override, setOverride] = useState<string[] | null>(null);
   const [body, setBody] = useState("");
   const [alsoPublic, setAlsoPublic] = useState(initialPublic);
+  const [nearby, setNearby] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -142,12 +146,16 @@ export function ComposeScreen({
     [selectedIds, targets],
   );
 
+  // 添付があるときは近くの人に届けられない (画像不可)。nearby が立っていても実効は off。
+  const nearbyOn = nearby && attachments.length === 0;
+
   const input: ComposeSubmitInput = {
     spaceIds: selectedIds,
     text: body,
     format: "plain",
     attachments,
     alsoPublic,
+    nearby: nearbyOn,
   };
   const validation = validateComposeInput(input);
 
@@ -167,6 +175,29 @@ export function ComposeScreen({
       }
       return base.length >= MAX_TARGETS ? base : [...base, spaceId];
     });
+  };
+
+  // 近くの人に届けるときは Space 送信先と公開を選べない (排他)。両方向に守る。
+  const toggleNearby = () => {
+    setNearby((prev) => {
+      const next = !prev;
+      if (next) {
+        setOverride([]);
+        setAlsoPublic(false);
+      }
+      return next;
+    });
+  };
+
+  // Space や公開を選んだら nearby は解除する (chip と dropdown の両方から使う)。
+  const selectTarget = (spaceId: string) => {
+    setNearby(false);
+    toggleTarget(spaceId);
+  };
+
+  const togglePublic = () => {
+    setNearby(false);
+    setAlsoPublic((value) => !value);
   };
 
   const showReason =
@@ -193,6 +224,7 @@ export function ComposeScreen({
 
   // 公開は送信先の 1 つとして数える (表示上だけ。POST の spaceIds には入らない)。
   const selectedNames = [
+    ...(nearbyOn ? ["近くの人"] : []),
     ...(alsoPublic ? ["公開"] : []),
     ...selectedTargets.map((target) => target.name),
   ];
@@ -205,9 +237,11 @@ export function ComposeScreen({
   const selectorIcon =
     selectedNames.length !== 1
       ? "hub"
-      : alsoPublic
-        ? "public"
-        : iconFor(selectedTargets[0]);
+      : nearbyOn
+        ? "location_on"
+        : alsoPublic
+          ? "public"
+          : iconFor(selectedTargets[0]);
 
   const remaining = HINT_LENGTH - body.length;
 
@@ -263,7 +297,7 @@ export function ComposeScreen({
                       role="menuitemcheckbox"
                       aria-checked={alsoPublic}
                       className={styles.menuItem}
-                      onClick={() => setAlsoPublic((value) => !value)}
+                      onClick={togglePublic}
                     >
                       <Icon name="public" size={18} />
                       <span className={styles.menuName}>公開</span>
@@ -276,7 +310,7 @@ export function ComposeScreen({
                         role="menuitemcheckbox"
                         aria-checked={selectedIds.includes(item.spaceId)}
                         className={styles.menuItem}
-                        onClick={() => toggleTarget(item.spaceId)}
+                        onClick={() => selectTarget(item.spaceId)}
                       >
                         <Icon name={iconFor(item)} size={18} />
                         <span className={styles.menuName}>{item.name}</span>
@@ -328,6 +362,13 @@ export function ComposeScreen({
               <span className={styles.caption}>送信先</span>
               <div className={styles.chipRow}>
                 <Chip
+                  label="近くの人"
+                  icon="location_on"
+                  selected={nearbyOn}
+                  surface="surface"
+                  onClick={toggleNearby}
+                />
+                <Chip
                   label="公開"
                   icon="public"
                   selected={alsoPublic}
@@ -345,7 +386,7 @@ export function ComposeScreen({
                   />
                 ))}
               </div>
-              <p className={styles.hint}>{hintFor(selectedTargets, alsoPublic)}</p>
+              <p className={styles.hint}>{hintFor(selectedTargets, alsoPublic, nearbyOn)}</p>
             </div>
 
             {consentRequired && (
@@ -411,7 +452,13 @@ export function ComposeScreen({
             onClick={onPickAttachment}
             disabled={!onPickAttachment}
           />
-          <IconButton icon="location_on" label="位置を追加" disabled />
+          <IconButton
+            icon="location_on"
+            label="近くの人に届ける"
+            onClick={toggleNearby}
+            disabled={attachments.length > 0}
+            variant={nearbyOn ? "surface" : "plain"}
+          />
           <IconButton icon="checklist" label="アンケートを追加" disabled />
         </div>
         <div className={styles.counter}>

@@ -323,6 +323,7 @@ export function toEncounter(dto: Maybe<EncounterDTO>): Encounter {
     seenUntil: dto?.seenUntil ?? "",
     timesWithPeer: num(dto?.timesWithPeer),
     relation: oneOf(dto?.relation, RELATIONS, "none"),
+    place: typeof dto?.place === "string" && dto.place !== "" ? dto.place : undefined,
   };
 }
 

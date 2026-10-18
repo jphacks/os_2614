@@ -8,6 +8,7 @@ export {
   MAX_MEDIA_COUNT,
   buildCreatePostBody,
   hasPendingAttachments,
+  isNearbyOnly,
   isPublicOnly,
   runeCount,
   validateComposeInput,

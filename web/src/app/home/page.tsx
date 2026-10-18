@@ -1,7 +1,7 @@
 "use client";
 
-// フィードタブ。GET /feed?source=home|groups (17 §3.1) をクライアントで取り、
-// ホーム / グループを切り替える。投稿は右下のボタンから Compose で行う。
+// フィードタブ。GET /feed?source=home|nearby|groups (17 §3.1) をクライアントで取り、
+// ホーム / 近く / グループを切り替える。投稿は右下のボタンから Compose で行う。
 //
 // ユーザー宛ての feed.updated (10 §7.3, 17 §3.4) は「表示中の source に新着が入った」
 // ことだけを知らせるので、同じ source のときだけ GET /feed を取り直す。Jetstream の

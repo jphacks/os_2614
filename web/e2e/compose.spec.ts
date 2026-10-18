@@ -344,6 +344,41 @@ test.describe("compose", () => {
     expect(body).not.toBeNull();
     expect((body as unknown as PostBody).alsoPublic).toBe(true);
   });
+
+  test("delivers to the nearby audience and opens the home feed", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    let body: { text: string } | null = null;
+    const base = baseMock([GROUP_INSTANCE]);
+    await mockApi(page, async (route, request) => {
+      const url = new URL(request.url());
+      if (url.pathname === "/api/v1/nearby/posts" && request.method() === "POST") {
+        body = request.postDataJSON() as { text: string };
+        await fulfillJson(route, 201, {
+          uri: "at://did:plc:testuser/jp.i32.chain.feed.nearby/1",
+        });
+        return;
+      }
+      await base(route, request);
+    });
+
+    await readyToPost(page, "近くの人へ");
+
+    // 近くの人が選ばれると TargetSelector の pill 名も「近くの人」になるため、
+    // button[aria-pressed] で chip だけに絞る (pill は aria-pressed を持たない)。
+    const nearbyChip = page.locator("button[aria-pressed]", { hasText: "近くの人" });
+    const publicChip = page.locator("button[aria-pressed]", { hasText: "公開" });
+    await nearbyChip.click();
+
+    await expect(nearbyChip).toHaveAttribute("aria-pressed", "true");
+    await expect(publicChip).toHaveAttribute("aria-pressed", "false");
+
+    await page.getByRole("button", { name: "投稿する" }).click();
+
+    await page.waitForURL(/\/home\/?$/);
+    expect(body).not.toBeNull();
+    expect(body).toEqual({ text: "近くの人へ" });
+  });
 });
 
 test.describe("compose input rules (純関数)", () => {

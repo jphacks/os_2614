@@ -9,7 +9,7 @@ export type VisibilityOptionProps = {
   title: string;
   description: string;
   selected: boolean;
-  tone?: "notice" | "accent";
+  tone?: "notice" | "accent" | "primary";
   onSelect: () => void;
 };
 

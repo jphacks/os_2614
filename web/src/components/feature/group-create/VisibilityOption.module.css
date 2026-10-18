@@ -27,6 +27,11 @@
   color: var(--color-accent);
 }
 
+.primary {
+  background: var(--color-surface-muted);
+  color: var(--color-primary);
+}
+
 .text {
   display: flex;
   flex-direction: column;

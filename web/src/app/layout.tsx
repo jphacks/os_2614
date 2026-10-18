@@ -6,6 +6,7 @@ import { StartupSplash } from "@/components/layout/StartupSplash";
 import { NotificationToast } from "@/components/feature/notification";
 import { PushBootstrap } from "@/device/push/PushBootstrap";
 import { DeviceRegistrar } from "@/device/push/DeviceRegistrar";
+import { ProximityDriver } from "@/components/layout/ProximityDriver";
 import { RealtimeProvider } from "@/realtime/provider";
 import "material-symbols/rounded.css";
 import "./globals.css";
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <RealtimeProvider>
               <PushBootstrap />
               <DeviceRegistrar />
+              <ProximityDriver />
               <NotificationToast />
               {children}
             </RealtimeProvider>

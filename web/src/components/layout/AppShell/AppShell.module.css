@@ -14,5 +14,9 @@
 }
 
 .withTab {
-  padding-bottom: var(--tab-bar-height);
+  /* タブバー高さ + セーフエリア + 重なる固定バナー + 余白。最後の要素が隠れないようにする。 */
+  padding-bottom: calc(
+    var(--tab-bar-height) + env(safe-area-inset-bottom) +
+      var(--proximity-banner-height, 0px) + var(--space-6)
+  );
 }

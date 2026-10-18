@@ -31,6 +31,8 @@ export type ComposeSubmitInput = {
   format: PostFormat;
   attachments: ComposeAttachment[];
   alsoPublic: boolean;
+  /** 今近くにいる人だけに届ける（nearby オーディエンス、17 §2.6）。Space 送信先・公開とは排他。 */
+  nearby: boolean;
 };
 
 /** 検証結果。NG のときだけ理由を持つ。 */
@@ -93,9 +95,33 @@ export function isPublicOnly(input: ComposeSubmitInput): boolean {
   return input.alsoPublic && input.spaceIds.length === 0;
 }
 
+/** Space も公開も選ばず、近くの人にだけ届ける（POST /nearby/posts、17 §2.6）か。 */
+export function isNearbyOnly(input: ComposeSubmitInput): boolean {
+  return input.nearby;
+}
+
 /** 送信可能かを検証する。サーバの 400 になる前にクライアントで拒否する。 */
 export function validateComposeInput(input: ComposeSubmitInput): ComposeValidation {
   const { spaceIds, text, attachments } = input;
+  if (input.nearby) {
+    // nearby は本文だけの限定配信。Space 送信先・公開とは排他（17 §2.6）。
+    if (input.alsoPublic) {
+      return { ok: false, message: "「公開」とは同時に選べません" };
+    }
+    if (spaceIds.length !== 0) {
+      return { ok: false, message: "近くの人に届けるときは送信先を選べません" };
+    }
+    if (attachments.length > 0) {
+      return { ok: false, message: "近くの人に届けるときは画像を付けられません" };
+    }
+    if (text.trim().length === 0) {
+      return { ok: false, message: "近くの人に届けるときは本文が必要です" };
+    }
+    if (graphemeCount(text) > MAX_PUBLIC_GRAPHEMES) {
+      return { ok: false, message: "近くの人に届ける投稿は 1000 文字までです" };
+    }
+    return { ok: true };
+  }
   if (isPublicOnly(input)) {
     if (attachments.length > 0) {
       return { ok: false, message: "公開だけの投稿には画像を付けられません" };
@@ -132,7 +158,7 @@ export function validateComposeInput(input: ComposeSubmitInput): ComposeValidati
 /**
  * 送信入力から body を作る。media は `id` を持つ添付（アップロード済み）だけを載せる。
  * 未アップロードの添付が混ざっていても黙って落とさないよう、呼び出し側が先に確認する
- * （page.tsx の submit を参照）。
+ * （page.tsx の submit を参照）。nearby は別エンドポイント（POST /nearby/posts）なので含めない。
  */
 export function buildCreatePostBody(input: ComposeSubmitInput): CreatePostBody {
   return {

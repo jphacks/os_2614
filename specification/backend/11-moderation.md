@@ -153,7 +153,7 @@ const (
 )
 
 type Content struct {
-	Kind string // "instance_post" | "public_post" | "group_name" | "party_name" | "status"
+	Kind string // "instance_post" | "public_post" | "nearby_post" | "group_name" | "party_name" | "status"
 	Text string
 }
 
