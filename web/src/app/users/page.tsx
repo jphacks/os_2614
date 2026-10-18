@@ -8,7 +8,13 @@
 
 import { Suspense, useCallback, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getJson, postJson, toResult } from "@/data/api";
+import {
+  deleteJson,
+  getJson,
+  postJson,
+  toResult,
+  type ResourceResult,
+} from "@/data/api";
 import type { Me, Profile as ProfileDTO } from "@/data/dto";
 import { useResource, type ResourceState } from "@/data/hooks";
 import { toProfile } from "@/data/mappers";
@@ -25,6 +31,12 @@ function parseRelation(value: string | null): EncounterRelation | undefined {
     value === "friend"
     ? value
     : undefined;
+}
+
+function toFollowResult(result: ResourceResult<unknown>): FriendRequestResult {
+  if (result.status === "ok") return { status: "ok" };
+  if (result.status === "unavailable") return { status: "unavailable" };
+  return { status: "error", message: result.error.message };
 }
 
 function UserProfile() {
@@ -58,6 +70,27 @@ function UserProfile() {
     return { status: "error", message: result.error.message };
   }, [did, encounterId]);
 
+  // POST / DELETE /users/{did}/follow。どちらも 204。表示は画面が結果で切り替える。
+  const onFollow = useCallback(
+    async (): Promise<FriendRequestResult> =>
+      toFollowResult(
+        await toResult(() =>
+          postJson<unknown>(`/users/${encodeURIComponent(did)}/follow`, {}),
+        ),
+      ),
+    [did],
+  );
+
+  const onUnfollow = useCallback(
+    async (): Promise<FriendRequestResult> =>
+      toFollowResult(
+        await toResult(() =>
+          deleteJson<unknown>(`/users/${encodeURIComponent(did)}/follow`),
+        ),
+      ),
+    [did],
+  );
+
   const { state, reload } = useResource<ProfileDTO>(
     (signal) =>
       getJson<ProfileDTO>(`/users/${encodeURIComponent(did)}`, { signal }),
@@ -84,6 +117,8 @@ function UserProfile() {
       isSelf={meState.status === "ok" && meState.data.did === did}
       relation={relation}
       onRequestFriend={encounterId ? onRequestFriend : undefined}
+      onFollow={onFollow}
+      onUnfollow={onUnfollow}
       onRetry={reload}
     />
   );

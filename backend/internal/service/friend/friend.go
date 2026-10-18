@@ -336,6 +336,52 @@ func (s *FriendService) CreateRequest(ctx context.Context, me, sid string, in Cr
 	}, nil
 }
 
+// Follow はプロフィールから相手を Bluesky でフォローする。プロフィールが見える相手（13 §1.2）だけに書ける。
+// 書いたフォローは申請と同じ扱いで、相手からのフォローがあればフレンドになる（07 §2.2）。
+func (s *FriendService) Follow(ctx context.Context, me, sid, peer string) error {
+	if peer == me {
+		return httpx.ErrInvalidRequest.With("fields", map[string]string{"did": "自分はフォローできません"})
+	}
+	target, err := model.GetUser(ctx, s.DB, peer)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && target.DeletedAt != nil) {
+		return httpx.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	blocked, err := model.IsBlocked(ctx, s.DB, me, peer)
+	if err != nil {
+		return err
+	}
+	if blocked {
+		return httpx.ErrBlocked
+	}
+	if related, err := model.HasRelationship(ctx, s.DB, me, peer); err != nil {
+		return err
+	} else if !related {
+		return httpx.ErrNotFound
+	}
+
+	uri, err := s.followAs(ctx, me, sid, peer)
+	if err != nil {
+		return err
+	}
+	if uri == "" {
+		// 既にフォローしている。
+		return nil
+	}
+	var effects followEffects
+	err = db.Transaction(ctx, s.DB, func(tx *sql.Tx) error {
+		_, err := s.indexFollow(ctx, tx, me, peer, uri, s.Clock.Now(), &effects)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	s.publish(ctx, effects.events, effects.notes)
+	return nil
+}
+
 // AcceptRequest は受信者として申請を承認する = フォローを返す（07 §2.2）。{id} は follows.id。
 func (s *FriendService) AcceptRequest(ctx context.Context, me, sid, id string) (*FriendItem, error) {
 	f, err := friendmodel.GetFollowByID(ctx, s.DB, id)

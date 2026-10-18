@@ -26,6 +26,8 @@ func (h *FriendController) Register(r fiber.Router) {
 	r.Delete("/friends/requests/:id", h.cancelRequest)
 	r.Get("/friends", h.list)
 	r.Delete("/friends/:did", h.delete)
+	r.Post("/users/:did/follow", h.follow)
+	r.Delete("/users/:did/follow", h.delete)
 }
 
 type userSummaryResponse struct {
@@ -189,6 +191,18 @@ func (h *FriendController) list(c fiber.Ctx) error {
 	return c.JSON(httpx.Page[friendResponse]{Items: out})
 }
 
+func (h *FriendController) follow(c fiber.Ctx) error {
+	did, err := syntax.ParseDID(c.Params("did"))
+	if err != nil {
+		return httpx.ErrInvalidRequest.With("fields", map[string]string{"did": "DID の形式が不正です"})
+	}
+	if err := h.Friends.Follow(c.Context(), httpx.DID(c), httpx.SessionID(c), did.String()); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// delete は DELETE /friends/{did} と DELETE /users/{did}/follow（自分のフォローを外す）の両方を受ける。
 func (h *FriendController) delete(c fiber.Ctx) error {
 	did, err := syntax.ParseDID(c.Params("did"))
 	if err != nil {

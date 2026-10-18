@@ -18,6 +18,9 @@ type UserService struct {
 type PublicUser struct {
 	User    model.User
 	Profile model.Profile
+	// Following は viewer が target を Bluesky でフォローしているか。FollowedBy はその逆。自分自身なら両方 false。
+	Following  bool
+	FollowedBy bool
 }
 
 func (s *UserService) Get(ctx context.Context, viewer, target string) (*PublicUser, error) {
@@ -50,6 +53,14 @@ func (s *UserService) Get(ctx context.Context, viewer, target string) (*PublicUs
 	}
 
 	pub := &PublicUser{User: *u}
+	if viewer != target {
+		rel, err := model.GetFriendRelation(ctx, s.DB, viewer, target)
+		if err != nil {
+			return nil, err
+		}
+		pub.Following = rel.Friend || rel.Requested
+		pub.FollowedBy = rel.Friend || rel.Incoming
+	}
 	p, err := model.GetProfile(ctx, s.DB, target)
 	switch {
 	case err == nil:

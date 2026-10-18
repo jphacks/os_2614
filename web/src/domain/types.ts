@@ -36,6 +36,10 @@ export type Profile = User & {
   bannerUrl?: string;
   /** 自分のプロフィールだけ。PDS のホスト名（O1）。 */
   pdsHost?: string;
+  /** 他人のプロフィールだけ。自分が相手を Bluesky でフォローしているか。 */
+  following?: boolean;
+  /** 他人のプロフィールだけ。相手が自分をフォローしているか。 */
+  followedBy?: boolean;
 };
 
 /** データの置き場所の 1 行 (GET /me/data-map、19 §7.1)。 */
@@ -363,6 +367,7 @@ export type GroupNearbyInside = {
   isMember: boolean;
   persistent: boolean;
   radiusM: number;
+  iconUrl?: string;
 };
 
 export type GroupNearbyNear = {
@@ -370,6 +375,7 @@ export type GroupNearbyNear = {
   name: string;
   memberCount: number;
   distanceBucket: string;
+  iconUrl?: string;
 };
 
 export type GroupNearby = {

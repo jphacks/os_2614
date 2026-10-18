@@ -81,6 +81,10 @@ export type Profile = User & {
   status?: string;
   /** GET /me のみ。自分の PDS のホスト名（O1）。 */
   pdsHost?: string;
+  /** GET /users/{did} のみ。自分が相手を Bluesky でフォローしているか。 */
+  following?: boolean;
+  /** GET /users/{did} のみ。相手が自分をフォローしているか。 */
+  followedBy?: boolean;
 };
 
 /** GET /me/data-map の 1 行（19 §7.1。定義は backend で固定）。 */
@@ -339,6 +343,8 @@ export type GroupCreateRequest = {
   schedule?: GroupSchedule;
   inviteQuorum: number;
   force: boolean;
+  /** POST /media で上げた画像の id。グループのアイコンになる (09 §2)。 */
+  iconMediaId?: string;
 };
 
 /** GET /groups/{id}（service.GroupDetail、09 §4）。中心座標はメンバーのときだけ入る。 */
@@ -360,6 +366,8 @@ export type Group = {
   schedule?: GroupSchedule;
   inviteQuorum?: number;
   parentSpaceId?: string;
+  /** アイコン (サムネイル) の署名付き URL。無ければ省かれる (09 §2)。 */
+  iconUrl?: string;
 };
 
 /** GET /groups/{id}/members の 1 件（service.MemberItem、09 §4）。 */
@@ -380,6 +388,8 @@ export type GroupNearbyInside = {
   isMember: boolean;
   persistent: boolean;
   radiusM: number;
+  /** アイコン (サムネイル) の署名付き URL。無ければ省かれる (09 §2)。 */
+  iconUrl?: string;
 };
 
 export type GroupNearbyNear = {
@@ -387,6 +397,7 @@ export type GroupNearbyNear = {
   name: string;
   memberCount: number;
   distanceBucket: string;
+  iconUrl?: string;
 };
 
 export type GroupNearby = {
