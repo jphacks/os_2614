@@ -1,0 +1,171 @@
+/* 近いものから順にふわっと出る */
+.appear {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  animation: bubbleIn 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+@keyframes bubbleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.wrap {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+/* 丸 ⇄ 角丸の四角。フォーカスで border-radius を詰める */
+.shape {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  transition:
+    border-radius 520ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 300ms ease;
+}
+
+/* フォーカスすると丸から角丸の四角へ、ぷにっと弾みながら変わる */
+.shape[data-focused] {
+  border-radius: 24%;
+  animation: focusPop 520ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes focusPop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.14, 0.9);
+  }
+  65% {
+    transform: scale(0.96, 1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.avatar {
+  background: var(--bubble-tone, var(--tone-blue));
+  color: var(--color-text);
+}
+
+/* どこかのグループの範囲にいる人は、そのグループの色で縁取る */
+.avatar[data-ring] {
+  box-shadow:
+    0 0 0 3px var(--color-bg),
+    0 0 0 6px color-mix(in srgb, var(--bubble-ring) 80%, var(--color-text) 20%);
+}
+
+.avatar[data-me] {
+  box-shadow:
+    0 0 0 3px var(--color-surface),
+    0 0 0 5px var(--color-primary);
+}
+
+.avatar[data-encounter]:not([data-ring]) {
+  box-shadow: 0 0 0 2px var(--color-surface);
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.initial {
+  font: var(--text-heading);
+  font-size: 24px;
+  line-height: 1;
+  color: var(--color-text);
+}
+
+.label {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  max-width: 96px;
+  transform: translateX(-50%);
+  overflow: hidden;
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.plus {
+  border: 2px dashed var(--color-placeholder-strong);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.party {
+  gap: 2px;
+  background: var(--color-surface-muted);
+  box-shadow: inset 0 0 0 2px var(--color-text-secondary);
+  color: var(--color-primary);
+}
+
+.group {
+  gap: 2px;
+  padding: var(--space-2);
+  background: var(--bubble-tone);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--bubble-tone) 80%, var(--color-text) 20%);
+  color: var(--color-text);
+  text-align: center;
+}
+
+.group[data-member] {
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--bubble-tone) 60%, var(--color-text) 40%);
+}
+
+.groupName {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  font: var(--text-caption);
+  font-weight: 700;
+  line-height: 1.25;
+  word-break: break-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.count {
+  font: var(--text-micro);
+  color: var(--color-text-secondary);
+}
+
+.party .count {
+  color: var(--color-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shape {
+    transition: none;
+  }
+
+  .appear,
+  .shape[data-focused] {
+    animation: none;
+  }
+}

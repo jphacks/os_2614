@@ -21,6 +21,8 @@ export type BubbleCanvasItem = {
   y: number;
   /** 直径 (px)。省略時は itemSize */
   size?: number;
+  /** true なら rotation で回さない (原点の周りに固定して置くもの) */
+  fixed?: boolean;
 };
 
 export type BubbleRenderState = {
@@ -47,8 +49,18 @@ export type BubbleCanvasProps<T extends BubbleCanvasItem> = {
   edgeScale?: number;
   /** 中央付近のアイテムを外側へ押し広げる量 (0 で押し広げない) */
   spread?: number;
+  /**
+   * 原点を中心にアイテムを回す角度 (度、時計回り)。変わると最短方向へなめらかに回る。
+   * 端末の向きに合わせて周りを回すときに使う。
+   */
+  rotation?: number;
   onFocusChange?: (id: string | null) => void;
   onItemPress?: (item: T) => void;
+  /**
+   * true を返したアイテムは、タップでまず中央へ寄せてフォーカスする。
+   * フォーカス済みのときにもう一度タップすると onItemPress を呼ぶ。
+   */
+  focusOnPress?: (item: T) => boolean;
   className?: string;
   ariaLabel?: string;
 };
@@ -60,6 +72,7 @@ type Config = Required<
   >
 > & {
   lensRadius?: number;
+  rotation: number;
   items: readonly BubbleCanvasItem[];
   onFocusChange?: (id: string | null) => void;
 };
@@ -73,6 +86,8 @@ type Sim = {
   vy: number;
   /** キーボードフォーカス等でアニメーション移動する先 */
   target: { x: number; y: number } | null;
+  /** target へ寄せている間のフォーカス先。途中で横切る泡にフォーカスを渡さない */
+  targetId: string | null;
   pointerId: number | null;
   startX: number;
   startY: number;
@@ -84,6 +99,8 @@ type Sim = {
   engaged: boolean;
   lens: number;
   focusedId: string | null;
+  /** いま描いている回転角 (度)。config.rotation へ寄せていく */
+  angle: number;
   raf: number;
   prevT: number;
 };
@@ -92,25 +109,47 @@ const TAP_SLOP = 6;
 const RUBBER_BAND = 0.35;
 const FRICTION_PER_MS = 0.995;
 const MIN_VELOCITY = 0.01;
+/** 回転を目標へ寄せる 1 フレームあたりの割合 */
+const ROTATION_EASE = 0.08;
 
-function bounds(items: readonly BubbleCanvasItem[]) {
+/** a から b への最短の角度差 (-180〜180) */
+function angleDelta(a: number, b: number) {
+  return ((((b - a) % 360) + 540) % 360) - 180;
+}
+
+/** rotation (度) を反映した座標 */
+function rotated(item: BubbleCanvasItem, angle: number) {
+  if (item.fixed || angle === 0) return { x: item.x, y: item.y };
+  const rad = (angle * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { x: item.x * cos - item.y * sin, y: item.x * sin + item.y * cos };
+}
+
+function bounds(items: readonly BubbleCanvasItem[], angle: number) {
   if (items.length === 0) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
   for (const item of items) {
-    minX = Math.min(minX, item.x);
-    maxX = Math.max(maxX, item.x);
-    minY = Math.min(minY, item.y);
-    maxY = Math.max(maxY, item.y);
+    const { x, y } = rotated(item, angle);
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
   }
   return { minX, maxX, minY, maxY };
 }
 
 /** offset の許容範囲: ビューポート中央が常にアイテムの外接矩形内に収まる */
-function clampOffset(items: readonly BubbleCanvasItem[], ox: number, oy: number) {
-  const b = bounds(items);
+function clampOffset(
+  items: readonly BubbleCanvasItem[],
+  angle: number,
+  ox: number,
+  oy: number,
+) {
+  const b = bounds(items, angle);
   return {
     x: Math.min(-b.minX, Math.max(-b.maxX, ox)),
     y: Math.min(-b.minY, Math.max(-b.maxY, oy)),
@@ -126,8 +165,10 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
   focusScale = 1.3,
   edgeScale = 0.9,
   spread = 0.35,
+  rotation = 0,
   onFocusChange,
   onItemPress,
+  focusOnPress,
   className,
   ariaLabel,
 }: BubbleCanvasProps<T>) {
@@ -141,6 +182,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     focusScale,
     edgeScale,
     spread,
+    rotation,
     onFocusChange,
   });
   const sim = useRef<Sim>({
@@ -151,6 +193,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     vx: 0,
     vy: 0,
     target: null,
+    targetId: null,
     pointerId: null,
     startX: 0,
     startY: 0,
@@ -162,6 +205,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     engaged: false,
     lens: lens === "always" ? 1 : 0,
     focusedId: null,
+    angle: rotation,
     raf: 0,
     prevT: 0,
   });
@@ -179,8 +223,9 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     for (const item of c.items) {
       const el = itemEls.current.get(item.id);
       if (!el) continue;
-      const px = item.x + s.ox;
-      const py = item.y + s.oy;
+      const pos = rotated(item, s.angle);
+      const px = pos.x + s.ox;
+      const py = pos.y + s.oy;
       const d = Math.hypot(px, py);
       // 中央で 1、離れるほど 0 に近づく
       const f = radius > 0 ? Math.exp(-(d * d) / (2 * radius * radius)) : 0;
@@ -204,7 +249,8 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
       }
     }
 
-    const nextFocus = s.engaged || c.lens === "always" ? nearestId : null;
+    const nextFocus =
+      s.engaged || c.lens === "always" ? (s.targetId ?? nearestId) : null;
     if (nextFocus !== s.focusedId) {
       s.focusedId = nextFocus;
       setFocusedId(nextFocus);
@@ -220,7 +266,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     let active = false;
 
     if (s.pointerId === null) {
-      const clamped = clampOffset(c.items, s.ox, s.oy);
+      const clamped = clampOffset(c.items, s.angle, s.ox, s.oy);
       if (s.target) {
         s.ox += (s.target.x - s.ox) * 0.2;
         s.oy += (s.target.y - s.oy) * 0.2;
@@ -228,6 +274,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
           s.ox = s.target.x;
           s.oy = s.target.y;
           s.target = null;
+          s.targetId = null;
         } else {
           active = true;
         }
@@ -251,6 +298,14 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
         s.vy *= decay;
         active = true;
       }
+    }
+
+    const turn = angleDelta(s.angle, c.rotation);
+    if (Math.abs(turn) > 0.05) {
+      s.angle += turn * ROTATION_EASE;
+      active = true;
+    } else {
+      s.angle = c.rotation;
     }
 
     const lensTarget = c.lens === "off" ? 0 : s.engaged || c.lens === "always" ? 1 : 0;
@@ -280,6 +335,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
       focusScale,
       edgeScale,
       spread,
+      rotation,
       onFocusChange,
     };
     paint();
@@ -307,6 +363,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       s.target = null;
+      s.targetId = null;
       s.engaged = true;
       s.ox -= event.deltaX;
       s.oy -= event.deltaY;
@@ -334,6 +391,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     s.vx = 0;
     s.vy = 0;
     s.target = null;
+    s.targetId = null;
     s.moved = false;
     s.suppressClick = false;
   };
@@ -358,7 +416,7 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     const dx = event.clientX - s.lastX;
     const dy = event.clientY - s.lastY;
     const dt = Math.max(1, event.timeStamp - s.lastT);
-    const clamped = clampOffset(config.current.items, s.ox, s.oy);
+    const clamped = clampOffset(config.current.items, s.angle, s.ox, s.oy);
     s.ox += clamped.x !== s.ox ? dx * RUBBER_BAND : dx;
     s.oy += clamped.y !== s.oy ? dy * RUBBER_BAND : dy;
     s.vx = s.vx * 0.2 + (dx / dt) * 0.8;
@@ -399,8 +457,18 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
     s.engaged = true;
     s.vx = 0;
     s.vy = 0;
-    s.target = { x: -item.x, y: -item.y };
+    const pos = rotated(item, s.angle);
+    s.target = { x: -pos.x, y: -pos.y };
+    s.targetId = item.id;
     kick();
+  };
+
+  const press = (item: T) => {
+    if (item.id !== focusedId && focusOnPress?.(item)) {
+      centerOn(item);
+      return;
+    }
+    onItemPress?.(item);
   };
 
   const classes = [styles.viewport, className].filter(Boolean).join(" ");
@@ -439,13 +507,13 @@ export function BubbleCanvas<T extends BubbleCanvasItem>({
               // タップ時のフォーカスでは動かさず、キーボード移動時だけ中央へ寄せる
               if (event.currentTarget.matches(":focus-visible")) centerOn(item);
             }}
-            onClick={onItemPress ? () => onItemPress(item) : undefined}
+            onClick={onItemPress ? () => press(item) : undefined}
             onKeyDown={
               onItemPress
                 ? (event: KeyboardEvent<HTMLDivElement>) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      onItemPress(item);
+                      press(item);
                     }
                   }
                 : undefined
