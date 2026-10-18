@@ -49,7 +49,8 @@ var aliceRows = []struct {
 	{"beacon_tokens", "SELECT count(*) FROM beacon_tokens WHERE did = ?", 1},
 	{"encounters", "SELECT count(*) FROM encounters WHERE user_a = ? OR user_b = ?", 2},
 	{"friendships", "SELECT count(*) FROM friendships WHERE user_a = ? OR user_b = ?", 2},
-	{"friend_requests", "SELECT count(*) FROM friend_requests WHERE from_did = ? OR to_did = ?", 2},
+	{"follows", "SELECT count(*) FROM follows WHERE author_did = ? OR subject_did = ?", 2},
+	{"follow_dismissals", "SELECT count(*) FROM follow_dismissals WHERE did = ? OR follower_did = ?", 2},
 	{"friend_invites", "SELECT count(*) FROM friend_invites WHERE did = ?", 1},
 	{"location_shares", "SELECT count(*) FROM location_shares WHERE owner = ? OR viewer = ?", 2},
 	{"areas", "SELECT count(*) FROM areas WHERE did = ?", 1},
@@ -75,8 +76,9 @@ func seedAccountData(t *testing.T, env *testutil.Env) {
 	exec(`INSERT INTO encounters(id, user_a, user_b, established_at, first_seen_at, last_seen_at, max_rssi, visibility, reveal_at) VALUES(?,?,?,?,?,?,?,?,?)`,
 		"enc-1", aliceDID, bobDID, ms, ms, ms, nil, "revealed", ms)
 	exec(`INSERT INTO friendships(user_a, user_b, created_at, via) VALUES(?,?,?,?)`, aliceDID, bobDID, ms, "encounter")
-	exec(`INSERT INTO friend_requests(id, from_did, to_did, via, status, created_at) VALUES(?,?,?,?,?,?)`,
-		"req-1", aliceDID, bobDID, "encounter", "accepted", ms)
+	exec(`INSERT INTO follows(id, uri, author_did, subject_did, created_at, indexed_at) VALUES(?,?,?,?,?,?)`,
+		"follow-1", "at://"+aliceDID+"/app.bsky.graph.follow/1", aliceDID, bobDID, ms, ms)
+	exec(`INSERT INTO follow_dismissals(did, follower_did, created_at) VALUES(?,?,?)`, bobDID, aliceDID, ms)
 	exec(`INSERT INTO friend_invites(code_hash, did, created_at, expires_at) VALUES(?,?,?,?)`,
 		"invite-alice", aliceDID, ms, ms)
 	exec(`INSERT INTO location_shares(owner, viewer, precision, areas_only, updated_at) VALUES(?,?,?,?,?)`,

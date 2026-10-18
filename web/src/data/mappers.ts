@@ -232,12 +232,15 @@ export function toProfile(dto: Maybe<ProfileDTO>): Profile {
   };
 }
 
-/** FriendItem → Friend。precision の既定は "area"。 */
+/** FriendItem → Friend (07 §2.3)。precision の既定は "area"、met の既定は true。 */
 export function toFriend(dto: Maybe<FriendDTO>): Friend {
   return {
     ...toUser(dto),
     since: dto?.since ?? "",
     precision: oneOf(dto?.precision, PRECISIONS, "area"),
+    // met を返さない古い backend は、従来どおり会った友達として扱う。
+    met: dto?.met ?? true,
+    via: dto?.via ?? null,
   };
 }
 

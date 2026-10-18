@@ -44,6 +44,8 @@ const (
 	refreshTTL = 30 * 24 * time.Hour
 	// handle を省略したときの認可サーバ（03 §2）。
 	defaultAuthServer = "https://bsky.social"
+	// GraphSyncTimeout はログイン時の follow / block の読み直しのタイムアウト。フォローが多い人は時間がかかる（Q15）。
+	GraphSyncTimeout = 2 * time.Minute
 )
 
 type AuthService struct {
@@ -53,6 +55,13 @@ type AuthService struct {
 	Profiles ProfileFetcher
 	// FirstLoad は初回ログインの公開投稿の読み込み（17 §2.5）。nil なら何もしない。
 	FirstLoad content.PublicPostBackfiller
+	// Graph はログイン時の follow / block の読み直しと、招待で書けなかったフォローの書き込み（07 §2.1・§2.5）。nil なら何もしない。
+	Graph GraphSyncer
+}
+
+// GraphSyncer はログインのたびに呼ぶ。*friend.FriendService が実装する。
+type GraphSyncer interface {
+	SyncOnLogin(ctx context.Context, did, pdsURL, atprotoSessionID string) error
 }
 
 type Tokens struct {
@@ -114,6 +123,7 @@ func (s *AuthService) CompleteLogin(ctx context.Context, params url.Values) (str
 	if firstLogin {
 		s.loadPublicPosts(did, sess.HostURL)
 	}
+	s.syncGraph(did, sess.HostURL, sess.SessionID)
 
 	code := base64.RawURLEncoding.EncodeToString(s.IDs.Bytes(24))
 	if err := model.SaveOneTimeCode(ctx, s.Redis, code, model.OneTimeCode{DID: did, ATProtoSessionID: sess.SessionID}); err != nil {
@@ -146,6 +156,21 @@ func (s *AuthService) loadPublicPosts(did, pdsURL string) {
 		defer cancel()
 		if err := s.FirstLoad.BackfillPublicPosts(ctx, did, pdsURL); err != nil {
 			slog.WarnContext(ctx, "first public post load failed", "did", did, "err", err)
+		}
+	}()
+}
+
+// syncGraph はフォローとブロックの読み直しを非同期で始める（07 §2.5）。loadPublicPosts と同じく、
+// ログインを遅らせないよう呼び出し元の context から切り離す。失敗はログだけにする。
+func (s *AuthService) syncGraph(did, pdsURL, atprotoSessionID string) {
+	if s.Graph == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), GraphSyncTimeout)
+		defer cancel()
+		if err := s.Graph.SyncOnLogin(ctx, did, pdsURL, atprotoSessionID); err != nil {
+			slog.WarnContext(ctx, "login graph sync failed", "did", did, "err", err)
 		}
 	}()
 }

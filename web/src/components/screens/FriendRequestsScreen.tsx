@@ -145,6 +145,9 @@ export function FriendRequestsScreen({
           <p className={styles.note}>
             対面でこのコードを渡すと、その場で友達になれます（10 分間・1 回だけ）。
           </p>
+          <p className={styles.note}>
+            コードを作ると、読み取った人を Bluesky でもフォローします（公開されます）。
+          </p>
           {invite ? (
             <div className={styles.inviteBox}>
               <span className={styles.inviteIcon} aria-hidden>
@@ -205,6 +208,9 @@ export function FriendRequestsScreen({
       )}
 
       <section className={styles.section}>
+        <p className={styles.note}>
+          承認すると、Bluesky でもフォローを返します（公開されます）。
+        </p>
         <SectionHeader
           title="受け取った申請"
           action={
@@ -295,7 +301,7 @@ export function FriendRequestsScreen({
 
       <div className={styles.footer}>
         <Notice tone="info" icon="info">
-          検索はありません。すれ違い・同じグループ・招待コードでだけ友達になれます。
+          検索はありません。すれ違い・同じグループ・招待コードで会った人にだけ申請できます。申請はその人を Bluesky でフォローすることで、相手がフォローを返すと友達になります。
         </Notice>
       </div>
     </AppShell>

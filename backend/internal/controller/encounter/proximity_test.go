@@ -286,6 +286,11 @@ func TestEncountersList(t *testing.T) {
 	fa, fb := testutil.Pair(viewer, friend)
 	oa, ob := testutil.Pair(viewer, other)
 	testutil.Exec(t, env, `INSERT INTO friendships (user_a, user_b, created_at, via) VALUES (?, ?, ?, 'encounter')`, fa, fb, now.UnixMilli())
+	// relation の friend は相互フォロー（07 §1）。
+	for _, f := range [][2]string{{viewer, friend}, {friend, viewer}} {
+		testutil.Exec(t, env, `INSERT INTO follows (id, uri, author_did, subject_did, created_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			"f-"+f[0]+f[1], "at://"+f[0]+"/app.bsky.graph.follow/x", f[0], f[1], now.UnixMilli(), now.UnixMilli())
+	}
 	testutil.Exec(t, env, `INSERT INTO encounters (id, user_a, user_b, established_at, first_seen_at, last_seen_at, visibility) VALUES (?, ?, ?, ?, ?, ?, 'revealed')`,
 		"enc-friend", fa, fb, now.Add(-time.Hour).UnixMilli(), now.Add(-time.Hour).UnixMilli(), now.Add(-time.Hour).Add(75*time.Second).UnixMilli())
 	testutil.Exec(t, env, `INSERT INTO encounters (id, user_a, user_b, established_at, first_seen_at, last_seen_at, visibility) VALUES (?, ?, ?, ?, ?, ?, 'revealed')`,
@@ -397,7 +402,8 @@ func TestBlocks(t *testing.T) {
 
 	ta, tb := testutil.Pair(viewer, target)
 	testutil.Exec(t, env, `INSERT INTO friendships (user_a, user_b, created_at, via) VALUES (?, ?, ?, 'encounter')`, ta, tb, now)
-	testutil.Exec(t, env, `INSERT INTO friend_requests (id, from_did, to_did, via, status, created_at) VALUES ('fr-1', ?, ?, 'encounter', 'pending', ?)`, viewer, target, now)
+	testutil.Exec(t, env, `INSERT INTO follows (id, uri, author_did, subject_did, created_at, indexed_at) VALUES ('f-1', 'at://viewer/app.bsky.graph.follow/1', ?, ?, ?, ?)`, viewer, target, now, now)
+	testutil.Exec(t, env, `INSERT INTO follows (id, uri, author_did, subject_did, created_at, indexed_at) VALUES ('f-2', 'at://target/app.bsky.graph.follow/1', ?, ?, ?, ?)`, target, viewer, now, now)
 	testutil.Exec(t, env, `INSERT INTO location_shares (owner, viewer, precision, updated_at) VALUES (?, ?, 'exact', ?)`, viewer, target, now)
 
 	status, body := testutil.Request(t, app, http.MethodPost, "/api/v1/blocks", `{"did":"`+target+`"}`, "")
@@ -421,7 +427,11 @@ func TestBlocks(t *testing.T) {
 		}
 	}
 	checkEmpty("SELECT count(*) FROM friendships WHERE user_a = ? AND user_b = ?", ta, tb)
-	checkEmpty("SELECT count(*) FROM friend_requests WHERE from_did = ? AND to_did = ?", viewer, target)
+	// Bluesky のフォローは書き換えない（07 §2.5）。ブロックの間は友達（会ったフレンド）にならないだけ。
+	var follows int
+	if err := env.DB.QueryRowContext(context.Background(), "SELECT count(*) FROM follows").Scan(&follows); err != nil || follows != 2 {
+		t.Fatalf("follows after block = %d, %v; want 2", follows, err)
+	}
 	checkEmpty("SELECT count(*) FROM location_shares WHERE owner = ? AND viewer = ?", viewer, target)
 
 	var audits int

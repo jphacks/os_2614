@@ -43,6 +43,10 @@ export type LocationPrecision = "exact" | "approx" | "area" | "direction" | "off
 export type Friend = User & {
   since: Timestamp;
   precision: LocationPrecision;
+  /** 会った友達か (07 §1)。false のときは位置共有・beacon・Party が使えない。 */
+  met: boolean;
+  /** 会った裏付けの経路 ("encounter" | "invite" | "space")。met=false なら null。 */
+  via: string | null;
 };
 
 /** フレンド申請の 1 件 (service.FriendRequestItem、07 §2.2)。 */

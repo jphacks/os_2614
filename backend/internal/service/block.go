@@ -8,12 +8,22 @@ import (
 	"github.com/applemango/chain/internal/db"
 	"github.com/applemango/chain/internal/httpx"
 	"github.com/applemango/chain/internal/model"
+	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service/core"
+	friendsvc "github.com/applemango/chain/internal/service/friend"
 )
+
+// PairReconciler は組ごとに会ったフレンドの条件を確かめる（friend.Reconciler、07 §2.4）。
+type PairReconciler interface {
+	ReconcileTx(ctx context.Context, q db.Querier, a, b string) (*friendsvc.ReconcileResult, error)
+	Publish(ctx context.Context, events []realtime.Event)
+}
 
 // BlockService はブロック（13 §4）。
 type BlockService struct {
 	core.Deps
+	// Recon は nil でもよい（その場合は friendships と位置共有を直接消すだけで、friend.changed は送らない）。
+	Recon PairReconciler
 }
 
 type BlockedUser struct {
@@ -38,41 +48,68 @@ func (s *BlockService) Create(ctx context.Context, blocker, blocked string) erro
 	}
 
 	now := s.Clock.Now()
-	return db.Transaction(ctx, s.DB, func(tx *sql.Tx) error {
+	var res *friendsvc.ReconcileResult
+	err = db.Transaction(ctx, s.DB, func(tx *sql.Tx) error {
 		if err := model.CreateBlock(ctx, tx, blocker, blocked, now); err != nil {
 			return err
 		}
-		a, b := core.OrderDIDs(blocker, blocked)
-		if _, err := model.DeleteFriendship(ctx, tx, a, b); err != nil {
-			return err
-		}
-		if _, err := model.DeleteFriendRequestsBetween(ctx, tx, blocker, blocked); err != nil {
-			return err
-		}
-		if _, err := model.DeleteLocationSharesBetween(ctx, tx, blocker, blocked); err != nil {
-			return err
+		// 会ったフレンドの条件にブロック無しがある（07 §2.4）ので、friendships と位置共有がここで消える。
+		if s.Recon != nil {
+			if res, err = s.Recon.ReconcileTx(ctx, tx, blocker, blocked); err != nil {
+				return err
+			}
+		} else {
+			a, b := core.OrderDIDs(blocker, blocked)
+			if _, err := model.DeleteFriendship(ctx, tx, a, b); err != nil {
+				return err
+			}
+			if _, err := model.DeleteLocationSharesBetween(ctx, tx, blocker, blocked); err != nil {
+				return err
+			}
 		}
 		return model.InsertAuditLog(ctx, tx, model.AuditEntry{
 			ID: s.IDs.NewID(), ActorDID: blocker, Action: "block.create", Target: blocked, CreatedAt: now,
 		})
 	})
+	if err == nil && res != nil {
+		s.Recon.Publish(ctx, res.Events)
+	}
+	return err
 }
 
 // Delete はブロックを解除する。冪等（行がなくてもエラーにしない）。
+// Bluesky のブロック（source = 'bsky'）は CHAIN からは解除できない（07 §2.5）。
 func (s *BlockService) Delete(ctx context.Context, blocker, blocked string) error {
 	now := s.Clock.Now()
-	return db.Transaction(ctx, s.DB, func(tx *sql.Tx) error {
-		deleted, err := model.DeleteBlock(ctx, tx, blocker, blocked)
+	var res *friendsvc.ReconcileResult
+	err := db.Transaction(ctx, s.DB, func(tx *sql.Tx) error {
+		existing, err := model.GetBlock(ctx, tx, blocker, blocked)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
-		if !deleted {
-			return nil
+		if existing.Source == "bsky" {
+			return httpx.ErrConflict.With("reason", "Bluesky のブロックは Bluesky のアプリで解除してください")
+		}
+		if _, err := model.DeleteBlock(ctx, tx, blocker, blocked); err != nil {
+			return err
+		}
+		// 解除でブロックが無くなるので、相互フォローと会った裏付けが残っていれば会ったフレンドに戻る。
+		if s.Recon != nil {
+			if res, err = s.Recon.ReconcileTx(ctx, tx, blocker, blocked); err != nil {
+				return err
+			}
 		}
 		return model.InsertAuditLog(ctx, tx, model.AuditEntry{
 			ID: s.IDs.NewID(), ActorDID: blocker, Action: "block.delete", Target: blocked, CreatedAt: now,
 		})
 	})
+	if err == nil && res != nil {
+		s.Recon.Publish(ctx, res.Events)
+	}
+	return err
 }
 
 func (s *BlockService) List(ctx context.Context, blocker string) ([]BlockedUser, error) {

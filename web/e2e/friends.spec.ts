@@ -36,12 +36,16 @@ const FRIENDS = {
       displayName: "アリス",
       since: "2026-09-01T00:00:00Z",
       precision: "area",
+      met: true,
+      via: "encounter",
     },
     {
       did: "did:plc:bob",
       handle: "bob.bsky.social",
       since: "2026-09-02T00:00:00Z",
       precision: "exact",
+      met: true,
+      via: "invite",
     },
   ],
 };
@@ -231,7 +235,43 @@ test.describe("friends", () => {
 
     await expect(page.getByText("まだ友達はいません")).toBeVisible();
     await expect(
-      page.getByText("すれ違ったことのある人とだけ友達になれます。"),
+      page.getByText(/Bluesky で相互フォローになった人が並びます/),
     ).toBeVisible();
+  });
+
+  test("hides the location settings for a friend who is not met (D6)", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    await mockApi(page, async (route, request) => {
+      const pathname = apiPath(request.url());
+      if (request.method() === "GET" && pathname === "/api/v1/friends") {
+        await fulfillJson(route, 200, {
+          items: [
+            ...FRIENDS.items,
+            {
+              did: "did:plc:carol",
+              handle: "carol.bsky.social",
+              displayName: "キャロル",
+              since: "2026-09-03T00:00:00Z",
+              precision: "off",
+              met: false,
+              via: null,
+            },
+          ],
+        });
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/friends/");
+    await expect(page.getByText("キャロル", { exact: true })).toBeVisible();
+    await expect(page.getByText("Bluesky で相互フォロー")).toBeVisible();
+    // 会った友達には位置の見せ方を出し、会っていない友達には出さない。
+    await expect(page.getByRole("button", { name: "アリスの位置の見せ方" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "キャロルの位置の見せ方" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "キャロルを友達から削除" })).toBeVisible();
   });
 });

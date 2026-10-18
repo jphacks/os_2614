@@ -123,7 +123,22 @@ test.describe("toFriend", () => {
       tone: avatarToneFor("did:plc:kenta"),
       since: "2026-05-01T10:00:00Z",
       precision: "direction",
+      met: true,
+      via: null,
     });
+  });
+
+  test("maps met and via (07 §2.3)", () => {
+    const friend = toFriend({
+      did: "did:plc:k",
+      handle: "k",
+      precision: "off",
+      met: false,
+      via: null,
+    });
+    expect(friend.met).toBe(false);
+    expect(friend.via).toBeNull();
+    expect(toFriend({ did: "did:plc:k", handle: "k", met: true, via: "invite" }).via).toBe("invite");
   });
 
   test("defaults a missing precision to area", () => {
@@ -138,6 +153,8 @@ test.describe("toFriend", () => {
       tone: "peach",
       since: "",
       precision: "area",
+      met: true,
+      via: null,
     });
   });
 });

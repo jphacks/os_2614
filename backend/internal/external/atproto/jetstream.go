@@ -331,6 +331,8 @@ func (j *Jetstream) subscribeURL(ctx context.Context) (string, error) {
 	q := u.Query()
 	q.Add("wantedCollections", wantChainCollections)
 	q.Add("wantedCollections", CollectionBskyProfile)
+	q.Add("wantedCollections", CollectionBskyFollow)
+	q.Add("wantedCollections", CollectionBskyBlock)
 	if j.cursor != nil {
 		stored, err := j.cursor(ctx)
 		if err != nil {

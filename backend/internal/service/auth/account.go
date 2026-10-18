@@ -151,7 +151,7 @@ func (s *AccountService) Delete(ctx context.Context, did string, deletePdsRecord
 			maintenancemodel.DeleteBeaconTokensByDID,
 			maintenancemodel.DeleteEncountersByDID,
 			maintenancemodel.DeleteFriendshipsByDID,
-			maintenancemodel.DeleteFriendRequestsByDID,
+			maintenancemodel.DeleteFollowsByDID,
 			maintenancemodel.DeleteFriendInvitesByDID,
 			maintenancemodel.DeleteLocationSharesByDID,
 			maintenancemodel.DeleteAreasByDID,

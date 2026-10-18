@@ -7,7 +7,7 @@ import (
 )
 
 // HasRelationship は a と b の間に CHAIN 上の接点があるかを返す（13 §1.2）。
-// 自分自身は service が判断する。SQL は friendships / friend_requests / encounters / 同じ Space のメンバーを見る。
+// 自分自身は service が判断する。SQL は friendships / 相互フォロー（07 §1）/ encounters / 同じ Space のメンバーを見る。
 func HasRelationship(ctx context.Context, q db.Querier, a, b string) (bool, error) {
 	if a > b {
 		a, b = b, a
@@ -17,9 +17,9 @@ func HasRelationship(ctx context.Context, q db.Querier, a, b string) (bool, erro
 		SELECT EXISTS(
 			SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ?
 			UNION ALL
-			SELECT 1 FROM friend_requests
-			  WHERE status = 'pending'
-			    AND ((from_did = ? AND to_did = ?) OR (from_did = ? AND to_did = ?))
+			SELECT 1 FROM follows f1
+			  WHERE f1.author_did = ? AND f1.subject_did = ?
+			    AND EXISTS (SELECT 1 FROM follows f2 WHERE f2.author_did = ? AND f2.subject_did = ?)
 			UNION ALL
 			SELECT 1 FROM encounters
 			  WHERE user_a = ? AND user_b = ? AND visibility = 'revealed'
@@ -38,25 +38,24 @@ func HasRelationship(ctx context.Context, q db.Querier, a, b string) (bool, erro
 }
 
 // FriendRelation は GET /encounters の relation を決める材料（06 §6）。
+// フレンドは相互フォロー（07 §1）、申請は片方向のフォロー（07 §2.2）。
 type FriendRelation struct {
-	Friend    bool // friendships の行がある
-	Requested bool // 自分から相手への pending 申請がある
-	Incoming  bool // 相手から自分への pending 申請がある
+	Friend    bool // 相互フォロー
+	Requested bool // 自分から相手へのフォローだけがある
+	Incoming  bool // 相手から自分へのフォローだけがある
 }
 
 func GetFriendRelation(ctx context.Context, q db.Querier, me, peer string) (*FriendRelation, error) {
-	a, b := me, peer
-	if a > b {
-		a, b = b, a
-	}
-	r := &FriendRelation{}
+	var mine, theirs bool
 	err := q.QueryRowContext(ctx, `
 		SELECT
-		  EXISTS(SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ?),
-		  EXISTS(SELECT 1 FROM friend_requests WHERE from_did = ? AND to_did = ? AND status = 'pending'),
-		  EXISTS(SELECT 1 FROM friend_requests WHERE from_did = ? AND to_did = ? AND status = 'pending')`,
-		a, b, me, peer, peer, me).Scan(&r.Friend, &r.Requested, &r.Incoming)
-	return r, err
+		  EXISTS(SELECT 1 FROM follows WHERE author_did = ? AND subject_did = ?),
+		  EXISTS(SELECT 1 FROM follows WHERE author_did = ? AND subject_did = ?)`,
+		me, peer, peer, me).Scan(&mine, &theirs)
+	if err != nil {
+		return nil, err
+	}
+	return &FriendRelation{Friend: mine && theirs, Requested: mine && !theirs, Incoming: theirs && !mine}, nil
 }
 
 // IsBlocked はどちら向きでも blocks の行があるかを返す。

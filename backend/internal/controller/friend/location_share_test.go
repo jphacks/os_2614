@@ -327,10 +327,10 @@ func TestLocationShareSetPrecisionErrors(t *testing.T) {
 	bobToken := env.Login(t, "did:plc:bob")
 	beFriend(t, app, aliceToken, bobToken)
 
-	// フレンドでない相手は 404。
+	// 会ったフレンドでない相手は 403（07 §4.2）。
 	status, body := setPrecision(t, app, aliceToken, "did:plc:carol", "area", false)
-	if status != http.StatusNotFound {
-		t.Fatalf("non-friend: status = %d, want 404 (body=%s)", status, body)
+	if status != http.StatusForbidden {
+		t.Fatalf("non-friend: status = %d, want 403 (body=%s)", status, body)
 	}
 	// 自分自身も 404。
 	status, body = setPrecision(t, app, aliceToken, "did:plc:alice", "area", false)

@@ -278,7 +278,7 @@ test.describe("buildNearbyModel", () => {
   }
 
   function friend(did: string, name: string, precision: Friend["precision"]): Friend {
-    return { ...user(did, name), since: "2026-01-01T00:00:00Z", precision };
+    return { ...user(did, name), since: "2026-01-01T00:00:00Z", precision, met: true, via: "encounter" };
   }
 
   const friends: Friend[] = [

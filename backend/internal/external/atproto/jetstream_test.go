@@ -90,7 +90,8 @@ func TestSubscribeURLUsesSavedCursorMinusFiveSeconds(t *testing.T) {
 		t.Fatalf("cursor = %q, want 995000000", got)
 	}
 	cols := q["wantedCollections"]
-	if len(cols) != 2 || cols[0] != "jp.i32.chain.*" || cols[1] != "app.bsky.actor.profile" {
+	if len(cols) != 4 || cols[0] != "jp.i32.chain.*" || cols[1] != "app.bsky.actor.profile" ||
+		cols[2] != "app.bsky.graph.follow" || cols[3] != "app.bsky.graph.block" {
 		t.Fatalf("wantedCollections = %v", cols)
 	}
 

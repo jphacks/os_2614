@@ -15,7 +15,8 @@ import styles from "./FriendsScreen.module.css";
 import { PressableLink } from "@/components/ui/Pressable";
 
 const EMPTY_TITLE = "まだ友達はいません";
-const EMPTY_DESCRIPTION = "すれ違ったことのある人とだけ友達になれます。";
+const EMPTY_DESCRIPTION =
+  "Bluesky で相互フォローになった人が並びます。位置を見せ合えるのは、すれ違いなどで会った友達だけです。";
 
 export type FriendsScreenProps = {
   /**
@@ -179,7 +180,7 @@ export function FriendsScreen({
       )}
 
       <p className={styles.footer}>
-        検索はありません。すれ違ったことのある人とだけ友達になれます
+        検索はありません。CHAIN からフォローできるのは、すれ違い・同じグループ・招待コードで会った人だけです
       </p>
     </AppShell>
   );

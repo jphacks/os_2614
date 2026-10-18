@@ -173,6 +173,12 @@ function ProfileBody({
         )}
       </div>
 
+      {!isSelf && relation === "none" && onRequestFriend && (
+        <p className={styles.friendActionMessage}>
+          申請すると、Bluesky でもフォローします（公開されます）。
+        </p>
+      )}
+
       {!isSelf && message && (
         <p className={styles.friendActionMessage} role="alert">
           {message}

@@ -27,8 +27,12 @@ func DeleteFriendshipsByDID(ctx context.Context, q db.Querier, did string) (int6
 	return model.Affected(db.Execute(ctx, q, "DELETE FROM friendships WHERE user_a = ? OR user_b = ?", did, did))
 }
 
-func DeleteFriendRequestsByDID(ctx context.Context, q db.Querier, did string) (int64, error) {
-	return model.Affected(db.Execute(ctx, q, "DELETE FROM friend_requests WHERE from_did = ? OR to_did = ?", did, did))
+// DeleteFollowsByDID は did が書いた・向けられたフォローの索引と、受信箱の拒否を消す（PDS の record は消さない）。
+func DeleteFollowsByDID(ctx context.Context, q db.Querier, did string) (int64, error) {
+	if _, err := db.Execute(ctx, q, "DELETE FROM follow_dismissals WHERE did = ? OR follower_did = ?", did, did); err != nil {
+		return 0, err
+	}
+	return model.Affected(db.Execute(ctx, q, "DELETE FROM follows WHERE author_did = ? OR subject_did = ?", did, did))
 }
 
 func DeleteFriendInvitesByDID(ctx context.Context, q db.Querier, did string) (int64, error) {

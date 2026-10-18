@@ -6,7 +6,8 @@ CREATE TABLE users (
   handle      TEXT NOT NULL,
   pds_url     TEXT NOT NULL,
   created_at  INTEGER NOT NULL,
-  deleted_at  INTEGER                       -- 削除済みは Jetstream のイベントも無視する
+  deleted_at  INTEGER,                      -- 削除済みは Jetstream のイベントも無視する
+  graph_synced_at INTEGER                   -- follow / block を listRecords で読み直した時刻（07 §2.5）。NULL は未読み込み
 );
 CREATE INDEX users_handle ON users(handle);
 
@@ -108,18 +109,25 @@ CREATE TABLE friendships (
 ) WITHOUT ROWID;
 CREATE INDEX friendships_b ON friendships(user_b);
 
-CREATE TABLE friend_requests (
-  id          TEXT PRIMARY KEY,
-  from_did    TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,
-  to_did      TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,
-  via         TEXT NOT NULL CHECK (via IN ('encounter','space')),
-  via_ref     TEXT,                           -- encounters.id または spaces.id
-  status      TEXT NOT NULL CHECK (status IN ('pending','accepted','declined','canceled')),
-  created_at  INTEGER NOT NULL,
-  decided_at  INTEGER
+-- Bluesky のフォロー（app.bsky.graph.follow）の索引（07 §5）。subject は CHAIN の利用者とは限らない。
+CREATE TABLE follows (
+  id           TEXT PRIMARY KEY,               -- UUIDv7。申請の ID として使う
+  uri          TEXT NOT NULL UNIQUE,           -- at://{author}/app.bsky.graph.follow/{rkey}
+  author_did   TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,
+  subject_did  TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,               -- record の createdAt
+  indexed_at   INTEGER NOT NULL
 );
-CREATE UNIQUE INDEX friend_requests_pending ON friend_requests(from_did, to_did) WHERE status = 'pending';
-CREATE INDEX friend_requests_to ON friend_requests(to_did, status);
+CREATE UNIQUE INDEX follows_pair ON follows(author_did, subject_did);
+CREATE INDEX follows_subject ON follows(subject_did);
+
+-- 受信箱で拒否したフォロー（07 §2.2）。
+CREATE TABLE follow_dismissals (
+  did          TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,   -- 拒否した人
+  follower_did TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  PRIMARY KEY (did, follower_did)
+) WITHOUT ROWID;
 
 CREATE TABLE friend_invites (
   code_hash   TEXT PRIMARY KEY,               -- SHA-256 hex
@@ -127,7 +135,8 @@ CREATE TABLE friend_invites (
   created_at  INTEGER NOT NULL,
   expires_at  INTEGER NOT NULL,
   used_by     TEXT,
-  used_at     INTEGER
+  used_at     INTEGER,
+  follow_pending INTEGER NOT NULL DEFAULT 0   -- 作成者のフォローを次のログインで書く（07 §2.1）
 );
 
 CREATE TABLE location_shares (
@@ -314,9 +323,12 @@ CREATE TABLE blocks (
   blocker     TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,
   blocked     TEXT NOT NULL REFERENCES users(did) ON DELETE CASCADE,
   created_at  INTEGER NOT NULL,
+  source      TEXT NOT NULL DEFAULT 'chain' CHECK (source IN ('chain','bsky')),
+  uri         TEXT,                           -- source = 'bsky' のときの app.bsky.graph.block の record
   PRIMARY KEY (blocker, blocked)
 ) WITHOUT ROWID;
 CREATE INDEX blocks_blocked ON blocks(blocked);
+CREATE UNIQUE INDEX blocks_uri ON blocks(uri) WHERE uri IS NOT NULL;
 
 CREATE TABLE notifications (
   id          TEXT PRIMARY KEY,

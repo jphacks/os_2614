@@ -103,8 +103,11 @@ func run() error {
 
 	sessions := &authsvc.SessionService{Deps: deps}
 	health := &service.HealthService{Deps: deps}
-	jetstreamSvc := &content.JetstreamService{Deps: deps, Posts: atproto.NewFirstLoadFetcher(), Broker: hub}
-	authSvc := &authsvc.AuthService{Deps: deps, OAuth: oauthApp, Dir: oauthApp.Dir, Profiles: atproto.NewProfileFetcher(), FirstLoad: jetstreamSvc}
+	pdsFetcher := atproto.NewFirstLoadFetcher()
+	reconciler := &friendsvc.Reconciler{Deps: deps, Broker: hub}
+	friends := &friendsvc.FriendService{Deps: deps, Broker: hub, Writer: pdsWriter, Lister: pdsFetcher, Recon: reconciler}
+	jetstreamSvc := &content.JetstreamService{Deps: deps, Posts: pdsFetcher, Broker: hub, Graph: friends}
+	authSvc := &authsvc.AuthService{Deps: deps, OAuth: oauthApp, Dir: oauthApp.Dir, Profiles: atproto.NewProfileFetcher(), FirstLoad: jetstreamSvc, Graph: friends}
 	me := &mesvc.MeService{Deps: deps, Moderator: moderator, Writer: pdsWriter}
 	schedule := &naturalsvc.ScheduleService{Deps: deps, Embedder: embedderFor(cfg)}
 	user := &service.UserService{Deps: deps}
@@ -114,8 +117,7 @@ func run() error {
 	encounters := &encountersvc.EncounterService{Deps: deps, Proximity: &proximity.BLEPeerProximity{Deps: deps}, Broker: hub}
 	stats := &encountersvc.StatsService{Deps: deps, Encounters: encounters}
 	digest := &notify.Digest{Deps: deps}
-	blocks := &service.BlockService{Deps: deps}
-	friends := &friendsvc.FriendService{Deps: deps, Broker: hub}
+	blocks := &service.BlockService{Deps: deps, Recon: reconciler}
 	notifications := &notify.NotificationService{Deps: deps}
 	revealer := &worker.EncounterRevealer{Deps: deps, Encounters: encounters}
 
@@ -231,6 +233,7 @@ func run() error {
 	}
 
 	go runEvery(ctx, time.Minute, revealer.Tick)
+	go runEvery(ctx, time.Minute, reconciler.Sweep)
 	go runEvery(ctx, 5*time.Second, partyEngine.Tick)
 	go runEvery(ctx, 2*time.Second, notifyWorker.Tick)
 	go runEvery(ctx, 5*time.Second, requeueWorker.Tick)

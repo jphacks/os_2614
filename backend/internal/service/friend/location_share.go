@@ -63,7 +63,7 @@ type LocationShareService struct {
 }
 
 // SetPrecision は owner が viewer に見せる精度と areasOnly を保存する（07 §4.1、§4.2）。
-// viewer とフレンドでなければ 404。
+// viewer と会ったフレンド（07 §1）でなければ 403。
 func (s *LocationShareService) SetPrecision(ctx context.Context, owner, viewer, precision string, areasOnly bool) error {
 	if viewer == owner {
 		return httpx.ErrNotFound
@@ -74,7 +74,7 @@ func (s *LocationShareService) SetPrecision(ctx context.Context, owner, viewer, 
 		})
 	}
 	if _, err := friendmodel.GetFriendship(ctx, s.DB, owner, viewer); errors.Is(err, sql.ErrNoRows) {
-		return httpx.ErrNotFound
+		return httpx.ErrForbidden
 	} else if err != nil {
 		return err
 	}

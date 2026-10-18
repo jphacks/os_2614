@@ -202,6 +202,8 @@ export type MediaUpload = {
 export type Friend = User & {
   since: RFC3339;
   precision: LocationPrecision;
+  met: boolean;
+  via: string | null;
 };
 
 /**

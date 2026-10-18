@@ -2,8 +2,10 @@ package testutil
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -230,6 +232,9 @@ type FakeRecordWriter struct {
 	DeleteErrs  map[string]error
 	seq         int
 	blobSeq     int
+	// repos は PDS の repo にある record（follow / block など）。ListRecords が返す。did → uri → 値。
+	repos   map[string]map[string]json.RawMessage
+	ListErr error
 }
 
 // fakeRecord は PDS にある record の現在の値と cid。
@@ -275,6 +280,7 @@ func NewFakeRecordWriter() *FakeRecordWriter {
 		URI:        "at://did:plc:fake/jp.i32.chain.actor.profile/self",
 		CID:        "bafyfake",
 		records:    map[string]fakeRecord{},
+		repos:      map[string]map[string]json.RawMessage{},
 		CreateErrs: map[string]error{},
 		DeleteErrs: map[string]error{},
 	}
@@ -394,14 +400,78 @@ func (f *FakeRecordWriter) CreateRecord(_ context.Context, did, sessionID, colle
 	}
 	f.seq++
 	n := strconv.Itoa(f.seq)
-	return "at://" + did + "/" + collection + "/fake" + n, "cid-fake" + n, nil
+	uri := "at://" + did + "/" + collection + "/fake" + n
+	f.putRepoLocked(did, uri, record)
+	return uri, "cid-fake" + n, nil
+}
+
+func (f *FakeRecordWriter) putRepoLocked(did, uri string, record any) {
+	b, err := json.Marshal(record)
+	if err != nil {
+		return
+	}
+	if f.repos[did] == nil {
+		f.repos[did] = map[string]json.RawMessage{}
+	}
+	f.repos[did][uri] = b
+}
+
+// SeedRepoRecord は PDS の repo に record を置く（ListRecords が返す。Bluesky のアプリで書いたフォローなど）。
+func (f *FakeRecordWriter) SeedRepoRecord(did, collection, rkey string, record any) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	uri := "at://" + did + "/" + collection + "/" + rkey
+	f.putRepoLocked(did, uri, record)
+	return uri
+}
+
+// RemoveRepoRecord は repo から record を消す（Bluesky のアプリで外した場合）。
+func (f *FakeRecordWriter) RemoveRepoRecord(did, uri string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.repos[did], uri)
+}
+
+// RepoURIs は did の repo にある collection の record の URI を返す。
+func (f *FakeRecordWriter) RepoURIs(did, collection string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for uri := range f.repos[did] {
+		if strings.HasPrefix(uri, "at://"+did+"/"+collection+"/") {
+			out = append(out, uri)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ListRecords は repo にある collection の record を返す（friend.RecordLister）。
+func (f *FakeRecordWriter) ListRecords(_ context.Context, _ string, did, collection string) ([]atproto.Record, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ListErr != nil {
+		return nil, f.ListErr
+	}
+	var out []atproto.Record
+	for uri, v := range f.repos[did] {
+		if strings.HasPrefix(uri, "at://"+did+"/"+collection+"/") {
+			out = append(out, atproto.Record{URI: uri, CID: "cid", Value: v})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].URI < out[j].URI })
+	return out, nil
 }
 
 func (f *FakeRecordWriter) DeleteRecord(_ context.Context, did, sessionID, collection, rkey string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.deleteCalls = append(f.deleteCalls, DeleteRecordCall{DID: did, SessionID: sessionID, Collection: collection, RKey: rkey})
-	return f.DeleteErrs[collection]
+	if err := f.DeleteErrs[collection]; err != nil {
+		return err
+	}
+	delete(f.repos[did], "at://"+did+"/"+collection+"/"+rkey)
+	return nil
 }
 
 // Calls は記録した PutRecord の呼び出しのコピーを返す。

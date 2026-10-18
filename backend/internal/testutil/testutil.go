@@ -141,7 +141,17 @@ func (e *Env) NearbyPosts() *content.NearbyPostService {
 // Jetstream は main.go と同じ配線の Jetstream サービス（03 §5、17 §2.5）。
 // posts は初回の読み込みに使う。nil なら listRecords は呼ばれない。
 func (e *Env) Jetstream(posts content.PublicPostLister) *content.JetstreamService {
-	return &content.JetstreamService{Deps: e.Deps, Posts: posts, Broker: e.Broker}
+	return &content.JetstreamService{Deps: e.Deps, Posts: posts, Broker: e.Broker, Graph: e.Friends()}
+}
+
+// Friends は main.go と同じ配線のフレンドサービス（07）。PDS は Writer の fake。
+func (e *Env) Friends() *friendsvc.FriendService {
+	return &friendsvc.FriendService{Deps: e.Deps, Broker: e.Broker, Writer: e.Writer, Lister: e.Writer, Recon: e.Reconciler()}
+}
+
+// Reconciler は main.go と同じ配線の friend.Reconciler（07 §2.4）。
+func (e *Env) Reconciler() *friendsvc.Reconciler {
+	return &friendsvc.Reconciler{Deps: e.Deps, Broker: e.Broker}
 }
 
 // NewEnv は Redis と SQLite を用意する。Redis に接続できなければテストを skip する。
@@ -277,7 +287,7 @@ func assessorFor(e *Env) moderation.PostAssessor {
 // NewApp は controller まで含めた fiber.App を fake の外部依存で組み立てる。
 // main.go と同じ配線だが、OAuth と identity はテスト用の fake に差し替える。
 func NewApp(e *Env) *fiber.App {
-	authSvc := &authsvc.AuthService{Deps: e.Deps, OAuth: e.oauth, Dir: fakeDir{}, Profiles: &fakeProfiles{}, FirstLoad: fakeFirstLoad{}}
+	authSvc := &authsvc.AuthService{Deps: e.Deps, OAuth: e.oauth, Dir: fakeDir{}, Profiles: &fakeProfiles{}, FirstLoad: fakeFirstLoad{}, Graph: e.Friends()}
 	sessions := &authsvc.SessionService{Deps: e.Deps}
 	health := &service.HealthService{Deps: e.Deps}
 	moderator := e.Moderator
@@ -293,8 +303,8 @@ func NewApp(e *Env) *fiber.App {
 	locationShares := &friendsvc.LocationShareService{Deps: e.Deps}
 	encounters := &encountersvc.EncounterService{Deps: e.Deps, Proximity: &proximity.BLEPeerProximity{Deps: e.Deps}, Broker: hub}
 	stats := &encountersvc.StatsService{Deps: e.Deps, Encounters: encounters}
-	blocks := &service.BlockService{Deps: e.Deps}
-	friends := &friendsvc.FriendService{Deps: e.Deps, Broker: hub}
+	blocks := &service.BlockService{Deps: e.Deps, Recon: &friendsvc.Reconciler{Deps: e.Deps, Broker: hub}}
+	friends := &friendsvc.FriendService{Deps: e.Deps, Broker: hub, Writer: e.Writer, Lister: e.Writer, Recon: &friendsvc.Reconciler{Deps: e.Deps, Broker: hub}}
 	notifications := &notify.NotificationService{Deps: e.Deps}
 
 	mediaStore := e.Storage()

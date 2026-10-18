@@ -318,6 +318,8 @@ func TestGetUser(t *testing.T) {
 		"friend":          "did:plc:friend",
 		"requested":       "did:plc:requested",
 		"incoming":        "did:plc:incoming",
+		"mutual":          "did:plc:mutual",
+		"oneWayFollower":  "did:plc:onewayfollower",
 		"revealed":        "did:plc:revealed",
 		"pendingEnc":      "did:plc:pendingenc",
 		"space":           "did:plc:spacemate",
@@ -330,6 +332,8 @@ func TestGetUser(t *testing.T) {
 		"friend":          "friend.test",
 		"requested":       "requested.test",
 		"incoming":        "incoming.test",
+		"mutual":          "mutual.test",
+		"oneWayFollower":  "onewayfollower.test",
 		"revealed":        "revealed.test",
 		"pendingEnc":      "pendingenc.test",
 		"space":           "spacemate.test",
@@ -348,13 +352,30 @@ func TestGetUser(t *testing.T) {
 	fa, fb := testutil.Pair(viewer, targets["friend"])
 	testutil.Exec(t, env, `INSERT INTO friendships (user_a, user_b, created_at, via) VALUES (?, ?, ?, 'encounter')`, fa, fb, now)
 
-	// requested: viewer から相手への pending 申請。
-	testutil.Exec(t, env, `INSERT INTO friend_requests (id, from_did, to_did, via, status, created_at) VALUES (?, ?, ?, 'encounter', 'pending', ?)`,
-		"fr-requested", viewer, targets["requested"], now)
+	follow := func(author, subject string) {
+		testutil.Exec(t, env, `INSERT INTO follows (id, uri, author_did, subject_did, created_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			"f-"+author+"-"+subject, "at://"+author+"/app.bsky.graph.follow/"+subject, author, subject, now, now)
+	}
+	met := func(did string) {
+		x, y := testutil.Pair(viewer, did)
+		testutil.Exec(t, env, `INSERT INTO encounters (id, user_a, user_b, established_at, first_seen_at, last_seen_at, visibility) VALUES (?, ?, ?, ?, ?, ?, 'revealed')`,
+			"enc-"+did, x, y, now, now, now)
+	}
 
-	// incoming: 相手から viewer への pending 申請。
-	testutil.Exec(t, env, `INSERT INTO friend_requests (id, from_did, to_did, via, status, created_at) VALUES (?, ?, ?, 'encounter', 'pending', ?)`,
-		"fr-incoming", targets["incoming"], viewer, now)
+	// requested: viewer から相手へのフォロー（会った裏付けがある申請）。
+	follow(viewer, targets["requested"])
+	met(targets["requested"])
+
+	// incoming: 相手から viewer へのフォロー（会った裏付けがある申請）。
+	follow(targets["incoming"], viewer)
+	met(targets["incoming"])
+
+	// mutual: Bluesky で相互フォローなだけ（会った裏付けは無い）。プロフィールは見られる（13 §1.2）。
+	follow(viewer, targets["mutual"])
+	follow(targets["mutual"], viewer)
+
+	// oneWayFollower: Bluesky で片方向にフォローされているだけ。CHAIN の接点ではない。
+	follow(targets["oneWayFollower"], viewer)
 
 	// revealed: 公開済みの encounter。
 	ra, rb := testutil.Pair(viewer, targets["revealed"])
@@ -408,6 +429,8 @@ func TestGetUser(t *testing.T) {
 		{"friend", targets["friend"], http.StatusOK, handles["friend"]},
 		{"requested", targets["requested"], http.StatusOK, handles["requested"]},
 		{"incoming", targets["incoming"], http.StatusOK, handles["incoming"]},
+		{"mutual", targets["mutual"], http.StatusOK, handles["mutual"]},
+		{"oneWayFollower", targets["oneWayFollower"], http.StatusNotFound, ""},
 		{"revealed", targets["revealed"], http.StatusOK, handles["revealed"]},
 		{"pendingEnc", targets["pendingEnc"], http.StatusNotFound, ""},
 		{"space", targets["space"], http.StatusOK, handles["space"]},

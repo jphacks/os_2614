@@ -89,7 +89,9 @@ export function FriendRow({
     }
   };
 
-  const text = locationText(location);
+  // 会っていない友達 (met=false) には位置の設定を出さない (openness-implementation D6)。
+  const text = friend.met ? locationText(location) : "";
+  const canShare = friend.met && Boolean(onShare);
 
   return (
     <>
@@ -102,7 +104,9 @@ export function FriendRow({
             <span className={styles.sep} aria-hidden>
               ·
             </span>
-            <span className={styles.precision}>{PRECISION_LABEL[friend.precision]}</span>
+            <span className={styles.precision}>
+              {friend.met ? PRECISION_LABEL[friend.precision] : "Bluesky で相互フォロー"}
+            </span>
             {text && (
               <>
                 <span className={styles.sep} aria-hidden>
@@ -118,7 +122,7 @@ export function FriendRow({
         }
         trailing={
           <span className={styles.trailing}>
-            {onShare && (
+            {canShare && (
               <IconButton
                 icon="tune"
                 label={`${friend.name}の位置の見せ方`}
@@ -134,7 +138,7 @@ export function FriendRow({
           </span>
         }
       />
-      {editing && onShare && (
+      {editing && canShare && onShare && (
         <li className={styles.editor}>
           <p className={styles.editorLabel}>位置の見せ方</p>
           <div className={styles.chips}>

@@ -11,7 +11,7 @@ import (
 	friendsvc "github.com/applemango/chain/internal/service/friend"
 )
 
-// FriendController はフレンドの 3 経路・申請・一覧・削除（07 §2）。
+// FriendController はフレンド（Bluesky の相互フォロー）の申請・招待・一覧・削除（07 §2）。
 type FriendController struct {
 	Friends *friendsvc.FriendService
 }
@@ -42,6 +42,8 @@ type friendResponse struct {
 	AvatarURL   string    `json:"avatarUrl,omitempty"`
 	Since       time.Time `json:"since"`
 	Precision   string    `json:"precision"`
+	Met         bool      `json:"met"`
+	Via         *string   `json:"via"`
 }
 
 type friendRequestResponse struct {
@@ -68,7 +70,7 @@ func userSummary(s core.UserSummary) userSummaryResponse {
 func friendResponseFrom(f friendsvc.FriendItem) friendResponse {
 	return friendResponse{
 		DID: f.DID, Handle: f.Handle, DisplayName: f.DisplayName, AvatarURL: f.AvatarURL,
-		Since: f.Since, Precision: f.Precision,
+		Since: f.Since, Precision: f.Precision, Met: f.Met, Via: f.Via,
 	}
 }
 
@@ -90,7 +92,7 @@ func (h *FriendController) createInvite(c fiber.Ctx) error {
 }
 
 func (h *FriendController) acceptInvite(c fiber.Ctx) error {
-	friend, err := h.Friends.AcceptInvite(c.Context(), httpx.DID(c), c.Params("code"))
+	friend, err := h.Friends.AcceptInvite(c.Context(), httpx.DID(c), httpx.SessionID(c), c.Params("code"))
 	if err != nil {
 		return err
 	}
@@ -124,7 +126,7 @@ func (h *FriendController) createRequest(c fiber.Ctx) error {
 	if err := httpx.Bind(c, &req); err != nil {
 		return err
 	}
-	item, err := h.Friends.CreateRequest(c.Context(), httpx.DID(c), friendsvc.CreateRequestInput{
+	item, err := h.Friends.CreateRequest(c.Context(), httpx.DID(c), httpx.SessionID(c), friendsvc.CreateRequestInput{
 		DID: req.DID, Via: req.Via, ViaRef: req.ViaRef,
 	})
 	if err != nil {
@@ -154,7 +156,7 @@ func (h *FriendController) listRequests(c fiber.Ctx) error {
 }
 
 func (h *FriendController) acceptRequest(c fiber.Ctx) error {
-	friend, err := h.Friends.AcceptRequest(c.Context(), httpx.DID(c), c.Params("id"))
+	friend, err := h.Friends.AcceptRequest(c.Context(), httpx.DID(c), httpx.SessionID(c), c.Params("id"))
 	if err != nil {
 		return err
 	}
@@ -169,7 +171,7 @@ func (h *FriendController) declineRequest(c fiber.Ctx) error {
 }
 
 func (h *FriendController) cancelRequest(c fiber.Ctx) error {
-	if err := h.Friends.CancelRequest(c.Context(), httpx.DID(c), c.Params("id")); err != nil {
+	if err := h.Friends.CancelRequest(c.Context(), httpx.DID(c), httpx.SessionID(c), c.Params("id")); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -192,7 +194,7 @@ func (h *FriendController) delete(c fiber.Ctx) error {
 	if err != nil {
 		return httpx.ErrInvalidRequest.With("fields", map[string]string{"did": "DID の形式が不正です"})
 	}
-	if err := h.Friends.Delete(c.Context(), httpx.DID(c), did.String()); err != nil {
+	if err := h.Friends.Delete(c.Context(), httpx.DID(c), httpx.SessionID(c), did.String()); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)

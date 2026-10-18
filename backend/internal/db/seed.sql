@@ -25,6 +25,17 @@ INSERT INTO friendships (user_a, user_b, created_at, via) VALUES
   ('did:web:seed-1.chain.i32.jp', 'did:web:seed-2.chain.i32.jp', 1792022400000, 'invite'),
   ('did:web:seed-2.chain.i32.jp', 'did:web:seed-3.chain.i32.jp', 1792022400000, 'invite');
 
+-- 会ったフレンドは相互フォロー（07 §2.4）と会った裏付け（使用済みの招待）が前提。friend.Reconciler が無いものは消す。
+INSERT INTO follows (id, uri, author_did, subject_did, created_at, indexed_at) VALUES
+  ('01900000-0000-7000-8000-0000000000f1', 'at://did:web:seed-1.chain.i32.jp/app.bsky.graph.follow/seed12', 'did:web:seed-1.chain.i32.jp', 'did:web:seed-2.chain.i32.jp', 1792022400000, 1792022400000),
+  ('01900000-0000-7000-8000-0000000000f2', 'at://did:web:seed-2.chain.i32.jp/app.bsky.graph.follow/seed21', 'did:web:seed-2.chain.i32.jp', 'did:web:seed-1.chain.i32.jp', 1792022400000, 1792022400000),
+  ('01900000-0000-7000-8000-0000000000f3', 'at://did:web:seed-2.chain.i32.jp/app.bsky.graph.follow/seed23', 'did:web:seed-2.chain.i32.jp', 'did:web:seed-3.chain.i32.jp', 1792022400000, 1792022400000),
+  ('01900000-0000-7000-8000-0000000000f4', 'at://did:web:seed-3.chain.i32.jp/app.bsky.graph.follow/seed32', 'did:web:seed-3.chain.i32.jp', 'did:web:seed-2.chain.i32.jp', 1792022400000, 1792022400000);
+
+INSERT INTO friend_invites (code_hash, did, created_at, expires_at, used_by, used_at) VALUES
+  ('seed-invite-1-2', 'did:web:seed-1.chain.i32.jp', 1792022400000, 1792023000000, 'did:web:seed-2.chain.i32.jp', 1792022400000),
+  ('seed-invite-2-3', 'did:web:seed-2.chain.i32.jp', 1792022400000, 1792023000000, 'did:web:seed-3.chain.i32.jp', 1792022400000);
+
 -- open グループ 2 つ。演習室は大学に含まれる（parent_space_id）。
 INSERT INTO spaces (id, type, authority, ref, name, state, created_by, created_at) VALUES
   ('01900000-0000-7000-8000-000000000001', 'jp.i32.chain.space.group', 'did:web:chain.i32.jp',

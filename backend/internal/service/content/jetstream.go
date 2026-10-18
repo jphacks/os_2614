@@ -41,6 +41,13 @@ type JetstreamService struct {
 	core.Deps
 	Posts  PublicPostLister
 	Broker realtime.Broker
+	// Graph は app.bsky.graph.follow / block のイベントを取り込む（07 §2.5）。nil なら捨てる。
+	Graph GraphIngester
+}
+
+// GraphIngester は Bluesky のフォロー・ブロックの取り込み先。*friend.FriendService が実装する。
+type GraphIngester interface {
+	HandleGraphCommit(ctx context.Context, did string, c *atproto.JetstreamCommit) error
 }
 
 var _ PublicPostBackfiller = (*JetstreamService)(nil)
@@ -95,6 +102,11 @@ func (s *JetstreamService) handleCommit(ctx context.Context, did string, c *atpr
 		case "delete":
 			return model.MarkPublicPostDeleted(ctx, s.DB, atproto.FeedPostURI(did, c.RKey), s.Clock.Now())
 		}
+	case atproto.CollectionBskyFollow, atproto.CollectionBskyBlock:
+		if s.Graph == nil {
+			return nil
+		}
+		return s.Graph.HandleGraphCommit(ctx, did, c)
 	case core.CollectionBskyProfile:
 		return s.updateBskyProfile(ctx, did, c.Record)
 	case core.CollectionActorProfile:
