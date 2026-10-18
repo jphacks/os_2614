@@ -1,7 +1,7 @@
 # CHAIN
 
 [![クリックしてスライドを表示](https://pub-64789ce940c149c9a267731997ad2d23.r2.dev/slide_1.png)](https://pub-64789ce940c149c9a267731997ad2d23.r2.dev/CHAIN%20slide.pdf)
-画像をクリックするとスライドに飛べます。
+画像をクリックするとスライドに飛べます。またReleasesからapkをダウンロードできますが、自宅サーバーの性質上サーバーが不安定なため使えない場合がございます。
 
 > [動画リンク](https://pub-64789ce940c149c9a267731997ad2d23.r2.dev/chain-demo.mp4)
 
