@@ -240,6 +240,18 @@
   color: var(--color-text-secondary);
 }
 
+.pdsHost {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.pdsHostLink {
+  margin-left: var(--space-2);
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
 .section {
   display: flex;
   flex-direction: column;

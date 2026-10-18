@@ -34,6 +34,29 @@ export type Profile = User & {
   /** 例: "図書館でもくもく中" */
   status?: string;
   bannerUrl?: string;
+  /** 自分のプロフィールだけ。PDS のホスト名（O1）。 */
+  pdsHost?: string;
+};
+
+/** データの置き場所の 1 行 (GET /me/data-map、19 §7.1)。 */
+export type DataMapRow = {
+  id: string;
+  data: string;
+  storage: "pds" | "chain" | "external";
+  place: string;
+  visibleTo: string;
+  retention: string;
+  export: string;
+  /** 件数があるものは、(ラベル, 件数) の並び。 */
+  counts: { label: string; value: number }[];
+};
+
+/** データの置き場所 (GET /me/data-map、O4)。scopes が null なら OAuth セッションが失効している。 */
+export type DataMap = {
+  pdsUrl: string;
+  pdsHost: string;
+  scopes: string[] | null;
+  rows: DataMapRow[];
 };
 
 /** 位置の見せ方 (07 §4.1)。フレンドごとに設定する。 */

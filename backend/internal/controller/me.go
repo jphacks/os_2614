@@ -22,6 +22,7 @@ type MeController struct {
 
 func (h *MeController) Register(r fiber.Router) {
 	r.Get("/me", h.get)
+	r.Get("/me/data-map", h.dataMap)
 	r.Patch("/me/settings", h.updateSettings)
 	r.Put("/me/consents", h.updateConsent)
 	r.Put("/me/status", h.updateStatus)
@@ -39,6 +40,7 @@ type meResponse struct {
 	Description string             `json:"description,omitempty"`
 	AvatarURL   string             `json:"avatarUrl,omitempty"`
 	BannerURL   string             `json:"bannerUrl,omitempty"`
+	PDSHost     string             `json:"pdsHost,omitempty"`
 	Status      string             `json:"status,omitempty"`
 	Settings    meSettingsResponse `json:"settings"`
 }
@@ -103,6 +105,7 @@ func (h *MeController) meResponse(me *mesvc.Me) (meResponse, error) {
 		Description: me.Profile.Description,
 		AvatarURL:   atproto.AvatarURL(did, me.Profile.AvatarCID),
 		BannerURL:   atproto.BannerURL(did, me.Profile.BannerCID),
+		PDSHost:     mesvc.PDSHost(me.User.PDSURL),
 		Status:      me.Profile.Status,
 		Settings:    st,
 	}, nil
@@ -118,6 +121,43 @@ func (h *MeController) get(c fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(resp)
+}
+
+type dataMapRowResponse struct {
+	ID        string   `json:"id"`
+	Data      string   `json:"data"`
+	Storage   string   `json:"storage"`
+	Place     string   `json:"place"`
+	VisibleTo string   `json:"visibleTo"`
+	Retention string   `json:"retention"`
+	Export    string   `json:"export"`
+	CountKeys []string `json:"countKeys"`
+}
+
+type dataMapResponse struct {
+	PDSURL  string               `json:"pdsUrl"`
+	PDSHost string               `json:"pdsHost"`
+	Scopes  []string             `json:"scopes"`
+	Counts  map[string]int       `json:"counts"`
+	Rows    []dataMapRowResponse `json:"rows"`
+}
+
+// dataMap は GET /me/data-map（19 §7.1）。scopes は OAuth セッションが失効していれば null。
+func (h *MeController) dataMap(c fiber.Ctx) error {
+	m, err := h.Me.DataMap(c.Context(), httpx.DID(c), httpx.SessionID(c))
+	if err != nil {
+		return err
+	}
+	rows := make([]dataMapRowResponse, len(m.Rows))
+	for i, r := range m.Rows {
+		keys := r.CountKeys
+		if keys == nil {
+			keys = []string{}
+		}
+		rows[i] = dataMapRowResponse{ID: r.ID, Data: r.Data, Storage: r.Storage, Place: r.Place,
+			VisibleTo: r.VisibleTo, Retention: r.Retention, Export: r.Export, CountKeys: keys}
+	}
+	return c.JSON(dataMapResponse{PDSURL: m.PDSURL, PDSHost: m.PDSHost, Scopes: m.Scopes, Counts: m.Counts, Rows: rows})
 }
 
 type settingsPatchRequest struct {

@@ -24,6 +24,7 @@ import { Icon } from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/IconButton";
 import { List, ListItem } from "@/components/ui/List";
 import { Notice } from "@/components/ui/Notice";
+import { PressableLink } from "@/components/ui/Pressable";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { StatTriple } from "@/components/ui/StatTriple";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -539,6 +540,15 @@ function ProfileBody({
       )}
 
       <p className={styles.bio}>{me.bio}</p>
+
+      {me.pdsHost && (
+        <p className={styles.pdsHost}>
+          あなたのデータは <strong>{me.pdsHost}</strong> にあります。
+          <PressableLink href="/settings/data/" className={styles.pdsHostLink}>
+            データの置き場所
+          </PressableLink>
+        </p>
+      )}
 
       {notice && (
         <div role="status">

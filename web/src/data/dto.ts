@@ -79,6 +79,30 @@ export type Profile = User & {
   description?: string;
   bannerUrl?: string;
   status?: string;
+  /** GET /me のみ。自分の PDS のホスト名（O1）。 */
+  pdsHost?: string;
+};
+
+/** GET /me/data-map の 1 行（19 §7.1。定義は backend で固定）。 */
+export type DataMapRow = {
+  id: string;
+  data: string;
+  storage: "pds" | "chain" | "external";
+  place: string;
+  visibleTo: string;
+  retention: string;
+  export: string;
+  /** DataMap.counts のキー。 */
+  countKeys: string[];
+};
+
+/** GET /me/data-map（O4）。scopes は OAuth セッションが失効していれば null。 */
+export type DataMap = {
+  pdsUrl: string;
+  pdsHost: string;
+  scopes: string[] | null;
+  counts: Record<string, number>;
+  rows: DataMapRow[];
 };
 
 /** GET /me の設定（controller.meSettingsResponse、06 §5.1 / 07 §4 / 12 §3）。 */
