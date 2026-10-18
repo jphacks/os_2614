@@ -15,7 +15,6 @@ import { Capacitor } from "@capacitor/core";
 import { API_BASE, REFRESH_MARGIN_MS } from "./config";
 import { ApiError, SignedOutError, toApiError } from "./errors";
 import { clearPhotoSettings } from "@/device/photos/settings";
-import { ChainPhotos } from "@/device/photos";
 
 /** POST /api/v1/auth/exchange と /auth/refresh の応答 (backend/internal/service/auth.go Tokens)。 */
 interface TokensResponse {
@@ -292,11 +291,6 @@ export class SessionManager {
   private signOut(reason: SignedOutReason): void {
     this.store.write(null);
     clearPhotoSettings();
-    void ChainPhotos.listPending().then((pending) =>
-      pending.items.length > 0
-        ? ChainPhotos.removePending({ ids: pending.items.map((item) => item.mediaStoreId) })
-        : undefined,
-    );
     this.adopt(null, reason);
   }
 

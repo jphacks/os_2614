@@ -4,15 +4,12 @@ import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "chain.party.photos.settings.v1";
 const CHANGE_EVENT = "chain-party-photo-settings-changed";
-const PERMISSION_NOTICE_KEY = "chain.party.photos.permission-notice";
 
 export type PhotoSettings = {
-  autoShare: boolean;
   saveToDevice: boolean;
 };
 
 export const DEFAULT_PHOTO_SETTINGS: PhotoSettings = {
-  autoShare: false,
   saveToDevice: false,
 };
 
@@ -24,7 +21,6 @@ export function readPhotoSettings(): PhotoSettings {
     }
     const parsed = JSON.parse(raw) as Partial<PhotoSettings>;
     return {
-      autoShare: parsed.autoShare === true,
       saveToDevice: parsed.saveToDevice === true,
     };
   } catch {
@@ -44,23 +40,10 @@ export function writePhotoSettings(next: PhotoSettings): void {
 export function clearPhotoSettings(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(PERMISSION_NOTICE_KEY);
     window.dispatchEvent(new Event(CHANGE_EVENT));
   } catch {
     // logout は保存失敗でも続行する。
   }
-}
-
-export function setPhotoPermissionNotice(): void {
-  try { localStorage.setItem(PERMISSION_NOTICE_KEY, "1"); } catch { /* ignore */ }
-}
-
-export function consumePhotoPermissionNotice(): boolean {
-  try {
-    const present = localStorage.getItem(PERMISSION_NOTICE_KEY) === "1";
-    if (present) localStorage.removeItem(PERMISSION_NOTICE_KEY);
-    return present;
-  } catch { return false; }
 }
 
 export function usePhotoSettings(): [PhotoSettings, (next: PhotoSettings) => void] {

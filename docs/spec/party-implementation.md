@@ -2,7 +2,7 @@
 
 `specification/backend/08-party.md`（以下 08）を、いまのコードに合わせて実装できる粒度まで具体化する。
 08・10・13・`docs/spec/ui-v2.md` §4.5・`specification/android` §8 と矛盾しないことを前提にし、足りない決めごとだけをここで足す。
-既存仕様書の変更が要るところは §8 にまとめる。返信の見せ方と写真の自動共有は §11 を正とする（§6.2 の返信・写真の記述より優先する）。
+既存仕様書の変更が要るところは §8 にまとめる。返信の見せ方と写真の端末保存は §11 を正とする（§6.2 の返信・写真の記述より優先する）。
 
 ## 1. 前提（いまの構成）
 
@@ -186,7 +186,7 @@ group のタイムライン（`ui-v2.md` §4.3）と同じ部品を使う。
 | --- | --- | --- | --- |
 | Space とメンバー（`model/space`） | 共通 | — | — |
 | 投稿・返信・削除（`POST /posts`、`/instances/:id/posts`） | 共通 | 使う | 写真だけを 1 ページ読む |
-| 写真の共有（`POST /instances/:id/media`） | 共通 | `SpacePhotoShareScreen`（`/group/photo/?id=`） | 自動共有（§11.2）。手動の入口は無い |
+| 写真の共有（`POST /instances/:id/media`） | 共通 | `SpacePhotoShareScreen`（`/group/photo/?id=`） | compose で写真を付けて投稿する。自動共有は廃止（§11.2） |
 | Pin | 共通 | `PinList`、`PinnedPostCard` | 無い |
 | 返信 | 共通 | `GroupReplyScreen` / `ReplySheet` | `/party/replies/`（§11.1） |
 | リアルタイム（Space チャンネル） | 共通 | 購読する | 購読しない |
@@ -279,8 +279,8 @@ on party.updated(d):
 | 13 | §2 `GET /instances` | `canWrite` を足す |
 | `ui-v2.md` | §4.5 | §6.1 の出し分け、タイムライン、`/party/replies/` |
 | 10 | §4.2・§4.2.1・§4.4・§5・§7.3 | `roots=1`、`replyCount`、スレッド API、写真の重複、終了後 24 時間の例外、返信の `post.created` |
-| 08 | §5 | 写真の自動共有（設定、60 秒待ち、自動保存） |
-| android | §3.1・§4・§12 | `ChainPhotos`、写真の権限、未検証点 V7〜V10 |
+| 08 | §5 | 写真の端末保存（設定、自動保存） |
+| android | §3.1・§12 | `ChainPhotos`（端末保存のみ） |
 | android | §1・§8 | presence の送信はいまは JS が前面だけで行う。native への移動は P1 |
 | 15 | Party の表 | P11〜P20 |
 
@@ -302,7 +302,7 @@ on party.updated(d):
 4. §5（presence の送信）。実機での確認（§7.3）を含む
 5. §8 の仕様書への反映
 
-## 11. 返信のスレッドと写真の自動共有（追加）
+## 11. 返信のスレッドと写真の端末保存（追加）
 
 本書の §6.2・§6.5 のうち、返信と写真に関わる部分はここで置き換える。仕様の本体は backend の 10・08・13 と android README にある。
 
@@ -319,16 +319,10 @@ on party.updated(d):
 | 送信 | `POST /posts` の `reply: { root, parent }`。送信中は末尾に仮の行を出し、失敗したら消して本文を入力欄に戻す。成功したら背景の元の投稿のコメント数を +1 | 10 §4.1 |
 | リアルタイム | シートを開いている間、`reply.root` が開いているスレッドの root の `post.created` を末尾に足す | 10 §7.3 |
 
-### 11.2 写真の自動共有
+### 11.2 写真の端末保存
 
-- 設定（端末ごと、既定オフ）でオンにしたときだけ、本 party 中にカメラで撮った写真を 60 秒の取り消し待ちの後に自動でアップロードし、他のメンバーの写真を `Pictures/CHAIN/{party 名}` に自動保存する。仕様は backend 08 §5、native は android README §3.1
-- 実装は `web/src/device/photos/`（`settings.ts`、`autoshare.ts`、`download.ts`）と `ChainPhotos` プラグイン。前面にいる間だけ送る・保存する。§5.4 の presence と同じく、背面では動かない
-- アップロードの待ち行列は、モジュール単位の `PhotoUploadController`（`uploadQueue.ts`）が持つ。React の再描画では作り直さず、`PhotoShareDriver` は設定と party の変化を渡すだけにする
-  - 送信の期限は native が積んだ時刻 `foundAt` + 60 秒。再描画やアプリの再起動をまたいで保たれる（再起動後は native の待ち行列から復元する）
-  - 同時に送るのは 1 枚。失敗したら 30 秒から 10 分まで間隔を延ばして再試行し、`foundAt` から 24 時間で諦めて捨てる
-  - `ChainPhotos` の監視を張り直すのは、自動共有・party ID・`confirmedAt` のどれかが変わったときだけ。`startWatching` が失敗したら、前面に戻ったときに再試行する
-  - 起動時に自動共有がオフなら、native プラグインには何も触れない
-  - 待ち行列を捨てるのは、自動共有がオンからオフに変わったときとログアウト時だけ（再描画・起動時の一時的な状態では捨てない）
-  - 一時ファイルは `readPhoto` で作り、送信の成否にかかわらず `releasePhoto` で消す。native の `watchError`（`permission_revoked` は監視停止、`query_failed` は継続）も受ける
+- 写真の自動共有（カメラの写真の監視と自動アップロード、写真の読み取り権限）は廃止した。party への写真は compose から手動で共有する
+- 設定（端末ごと、既定オフ）でオンにしたときだけ、他のメンバーの写真を `Pictures/CHAIN/{party 名}` に自動保存する。終了の Notice の「写真を保存」からは設定に関係なく保存できる。仕様は backend 08 §5、native は android README §3.1
+- 実装は `web/src/device/photos/`（`settings.ts`、`download.ts`）と `ChainPhotos` プラグイン（`savePhoto` のみ）。前面にいる間だけ保存する
 - §6.5 の「archived は書けない」は、写真の共有だけ例外がある。終了から 24 時間以内、終了時に未離脱、`takenAt` が party の期間内の写真は archived でも追加できる（10 §5）。memory 一覧の `confirmedAt` / `endedAt`（13 §2）が、どの party に送るかの判定に使われる
 - 同じ写真の再送は `200` で既存の record が返る（10 §4.4）

@@ -49,7 +49,7 @@ BLE で配るのはユーザー ID ではなく、サーバーが発行する 15
 
 ### 注力したこと（こだわり等）
 * **プライバシーを設計の中心に置いたこと。** 使い捨ての beacon token、双方向での成立、公開の遅延、位置共有の粒度（エリア名だけ等）、写真の EXIF の削除、Party のメンバーでない人に投稿や写真が漏れないための所属の不変条件などを、仕様書に書いてから実装しました
-* **実機で止まらないこと。** BLE の常駐サービス、再起動後の復帰、権限の取り消し、端末とサーバーの時刻のずれ、写真の監視とアップロードの再試行などを、Android の実機で落ちないように作り込みました
+* **実機で止まらないこと。** BLE の常駐サービス、再起動後の復帰、権限の取り消し、端末とサーバーの時刻のずれなどを、Android の実機で落ちないように作り込みました
 * **ATProto の考え方（credible exit、データを自分で持つ）に沿うこと。** 独自の関係表を作らず Bluesky のフォローを使い、lexicon を公開し、データの置き場所を見せています
 * **仕様書から作ったこと。** `specification/` に 19 章の backend 仕様と Android の取り決めを書き、それに沿って実装・テストしています
 
@@ -77,9 +77,9 @@ BLE で配るのはユーザー ID ではなく、サーバーが発行する 15
   * 8c226df（sighting の Room 保存）、f6e8fa1（token と時刻ずれの暗号化保存）、41d6809（時刻ずれの推定）、3ed2de4（再起動後の復帰）
 * **BLE と GPS を切り替えられる近接判定の共通 interface**: すれ違い・Party（`PeerProximity`）とグループ（`ZonePresence`）を、BLE / GPS のどちらでも実装できる形に分けた
   * [specification/backend/05-proximity.md](specification/backend/05-proximity.md)、[backend/internal/service/proximity/](backend/internal/service/proximity/)
-* **Party の自動成立と写真の自動共有**: 友達の近接グラフから 5 秒ごとに仮 Party → 本 Party → 終了を判定する。撮った写真を検出し、60 秒待ってから順に Party へアップロードする
-  * [backend/internal/service/party/](backend/internal/service/party/)、[web/src/device/proximity/party.ts](web/src/device/proximity/party.ts)、[web/src/device/photos/uploadQueue.ts](web/src/device/photos/uploadQueue.ts)
-  * b302078（presence の報告）、6b3fa94・87b8766（写真の監視とアップロードの待ち行列）
+* **Party の自動成立**: 友達の近接グラフから 5 秒ごとに仮 Party → 本 Party → 終了を判定する
+  * [backend/internal/service/party/](backend/internal/service/party/)、[web/src/device/proximity/party.ts](web/src/device/proximity/party.ts)
+  * b302078（presence の報告）
 * **「ちかく」画面の泡のグラフ**: 自分を中心に、友達・知らない人・グループを泡で配置する
   * [web/src/app/page.tsx](web/src/app/page.tsx)、120f448（BubbleCanvas）
 * **ATProto との統合**: 友達＝相互フォロー、lexicon の検証と公開投稿の self-label、PDS とデータの置き場所の表示

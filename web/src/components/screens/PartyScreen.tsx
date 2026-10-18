@@ -50,9 +50,6 @@ export type PartyScreenProps = {
   onReply?: (post: Post) => void;
   endedNotice?: boolean;
   overlay?: ReactNode;
-  autoShareEnabled?: boolean;
-  pendingPhotoCount?: number;
-  onCancelPhotoShare?: () => void;
   onSavePhotos?: () => void;
   savingPhotos?: boolean;
 };
@@ -74,9 +71,6 @@ export function PartyScreen({
   onReply,
   endedNotice = false,
   overlay,
-  autoShareEnabled = false,
-  pendingPhotoCount = 0,
-  onCancelPhotoShare,
   onSavePhotos,
   savingPhotos = false,
 }: PartyScreenProps) {
@@ -98,9 +92,6 @@ export function PartyScreen({
           onRename={onRename}
           onCompose={onCompose}
           onReply={onReply}
-          autoShareEnabled={autoShareEnabled}
-          pendingPhotoCount={pendingPhotoCount}
-          onCancelPhotoShare={onCancelPhotoShare}
           onSavePhotos={onSavePhotos}
           savingPhotos={savingPhotos}
         />
@@ -167,9 +158,6 @@ type PartyBodyProps = {
   onRename?: PartyScreenProps["onRename"];
   onCompose?: PartyScreenProps["onCompose"];
   onReply?: PartyScreenProps["onReply"];
-  autoShareEnabled: boolean;
-  pendingPhotoCount: number;
-  onCancelPhotoShare?: () => void;
   onSavePhotos?: () => void;
   savingPhotos: boolean;
 };
@@ -209,9 +197,6 @@ function PartyBody({
   onRename,
   onCompose,
   onReply,
-  autoShareEnabled,
-  pendingPhotoCount,
-  onCancelPhotoShare,
   onSavePhotos,
   savingPhotos,
 }: PartyBodyProps) {
@@ -369,14 +354,6 @@ function PartyBody({
             <h2 className={styles.sectionTitle}>共有された写真</h2>
             <span className={styles.hint}>{photos.length}枚</span>
           </div>
-          <div className={styles.row}>
-            <span className={styles.rowNote}>
-              自動共有: {autoShareEnabled ? "オン" : "オフ"}
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => router.push("/settings/")}>
-              設定
-            </Button>
-          </div>
         </div>
       )}
       {tentative ? (
@@ -388,14 +365,6 @@ function PartyBody({
       ) : (
         <>
           <div className={styles.gutter}>
-            {pendingPhotoCount > 0 && (
-              <Notice tone="info" icon="photo_camera">
-                {pendingPhotoCount} 枚を共有します{" "}
-                <Button variant="ghost" size="sm" onClick={onCancelPhotoShare}>
-                  取り消す
-                </Button>
-              </Notice>
-            )}
             {party.phase === "ended" && onSavePhotos && (
               <Button variant="secondary" onClick={onSavePhotos} disabled={savingPhotos}>
                 {savingPhotos ? "保存中…" : "写真を保存"}

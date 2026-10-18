@@ -17,7 +17,7 @@ backend 側の対応する仕様は `specification/backend/` の 03・05・06・
 | 位置の取得と送信 | native | `isMock` は native でしか取れない（backend 05 §4） |
 | 端末のカレンダーの読み取りと送信 | native | 自動グループの予定（backend 09 §8.2）。WebView が閉じていても、FGS の中で同期を続けるため（§11） |
 | 予定の手入力 | WebView | 画面から `PUT /me/schedule-today`（`source: "manual"`）を直接呼ぶ |
-| 写真の監視と端末への保存（`ChainPhotos`、§3.1） | native | MediaStore と `ContentObserver` は native でしか触れない。アップロードの判断と通信は WebView が前面の間だけ行う |
+| 写真の端末への保存（`ChainPhotos`、§3.1） | native | MediaStore への書き込みは native でしか行えない。保存の判断は WebView が前面の間だけ行う |
 | Foreground Service | native | |
 | プッシュ通知の受信 | Capacitor Push Notifications プラグイン | 既製品で足りる |
 
@@ -100,34 +100,11 @@ backend 03 §3 のトークンは **native だけが保持する**。WebView は
 
 ## 3.1 写真のプラグイン（`ChainPhotos`）
 
-party 中の写真の自動共有（backend 08 §5）のうち、端末の MediaStore に触る部分だけを native が持つ。backend との通信、60 秒の取り消し待ち、送信先の判定、再試行は WebView（`web/src/device/photos/`）が行う。Android 10 以降が対象で、`savePhoto` は 9 以下では `unavailable` で失敗する。
+party の写真の端末保存（backend 08 §5）のうち、MediaStore に書く部分だけを native が持つ。保存する写真の選び方と保存済みの記録は WebView（`web/src/device/photos/`）が行う。Android 10 以降が対象で、9 以下では `unavailable` で失敗する。写真の読み取り権限は使わない（自動共有は廃止した）。
 
 | API | 内容 |
 | --- | --- |
-| `checkPermissions()` / `requestPermissions()` | `{ photos }` を返す。値は `granted` / `denied` / `prompt` / `prompt-with-rationale` に加え、Android 14 以降で「選んだ写真だけ」を許可された状態の `limited`。`limited` では自動共有を使えない（WebView が案内する）。判定は版ごとに分ける（下記） |
-| `startWatching({ since })` / `stopWatching()` | `since`（ISO 8601、本 party の `confirmed_at`）以降の写真を拾う。`granted` でなければ `denied` で失敗。`MediaStore.Images` を `ContentObserver` で見張り、`RELATIVE_PATH` が `DCIM/Camera/` で `DATE_TAKEN` が `since` から現在までの写真だけを待ち行列に積み、`photoCaptured` を発火する。開始時にも 1 回走査する（別の `since` で呼び直すと「見た」集合と走査の cursor を空にする）。走査の方式は下記 |
-| `listPending()` / `removePending({ ids })` | 待ち行列 `{ items: [{ mediaStoreId, takenAt, uri, foundAt }] }`（`foundAt` は native が最初に積んだ時刻（ISO 8601、永続化する）。`foundAt` の無い古い項目は `takenAt` を返す） の取得・削除。`removePending` で消した ID は永続化された「見た」集合に入り、以後 `startWatching` の走査で再び積まれない（取り消した写真・送信済みの写真を拾い直さないため） |
-| `readPhoto({ mediaStoreId })` | アップロード用の一時ファイル `{ path, mime, size }`（`cacheDir/chain-photos/{id}.{拡張子}`。base64 は返さない）。JPEG / PNG / WebP で 15 MB 以下ならそのままコピーする。それ以外（HEIC など `BitmapFactory` が読むもの）や 15 MB 超は、長辺 4096 px 以下に縮小して JPEG（品質 90 から 40 まで下げる）に変換して書く。15 MB 以下にできなければ `read_failed`。読み書きは走査と同じ単一スレッドで行う。WebView は `path` を `Capacitor.convertFileSrc` で読む |
-| `releasePhoto({ path })` | `readPhoto` の一時ファイルを消す。すでに無くても成功する。`cacheDir/chain-photos` の外のパスは `invalid_path` で拒否する。消し忘れは `startWatching` のたびに、24 時間より古い一時ファイルを掃除する |
 | `savePhoto({ url, album, takenAt, fileName })` | `url` を取得して `Pictures/CHAIN/{album}` に JPEG として保存し（`IS_PENDING` を使う）、`{ mediaStoreId }` を返す。書き込みは Android 10 以降では権限不要。`album` は制御文字と `/` `\` `:` を除き、`..` を `_` にして前後の空白を落とす（空なら `party`）。`fileName` は英数字と `._-` 以外を `_` にする |
-| `isSaved({ mediaStoreId })` | `{ saved }`。その ID の画像が MediaStore に残っているか |
-
-- 写真権限の判定（版ごと）: Capacitor の alias は、束ねた権限が**全部**許可のときだけ `granted` になる。`READ_EXTERNAL_STORAGE` は `maxSdkVersion=32` なので Android 13 以降では許可されず、3 つを 1 つの alias にまとめると決して `granted` にならない（14 以降で全許可しても `limited` になる）。そのため alias は `mediaImages`（`READ_MEDIA_IMAGES`）/ `mediaSelected`（`READ_MEDIA_VISUAL_USER_SELECTED`）/ `storage`（`READ_EXTERNAL_STORAGE`）に分け、次のように決める
-  - Android 13 以降: `READ_MEDIA_IMAGES` が許可なら `granted`。そうでなく 14 以降で `READ_MEDIA_VISUAL_USER_SELECTED` が許可なら `limited`。どちらでもなければ `mediaImages` の状態
-  - Android 12 以下: `storage` の状態
-  - `requestPermissions()` が要求する alias は、14 以降が `mediaImages` と `mediaSelected`（部分アクセスを選べるようにする Android の推奨）、13 が `mediaImages`、12 以下が `storage`。`startWatching` も同じ判定を使う（純関数 `photoPermission`、単体テストあり）
-- イベント: `photoCaptured`（`{ mediaStoreId, takenAt, uri, foundAt }`）と `watchError`（`{ reason }`）
-  - `permission_revoked`: 走査中に `SecurityException` が出た、または写真権限が `granted` でなくなっていた。native は監視を止めている
-  - `query_failed`: それ以外の走査の失敗。監視は続け、次の変更通知で再試行する
-  - 走査スレッドから例外は外へ出さない（すべて捕まえて `watchError` にする）
-- 走査（`PhotoScanLogic.kt` の純関数に単体テストあり）:
-  - MediaStore の列は `MediaStore.Images.Media` の定数で指定する（文字列の直書きは機種により "Invalid token date_taken" で例外になるため）。`DATE_ADDED`（秒）で検索し、フォルダと期間は Kotlin 側で絞る
-  - 撮影時刻 `takenAt` は `DATE_TAKEN`（0 以下なら `DATE_ADDED` × 1000）。カメラのフォルダは、Android 10 以降は `RELATIVE_PATH` が `DCIM/Camera/` で始まる行、9 以下は `DATA` に `/DCIM/Camera/` を含む行。`takenAt` が `since` から現在までの行だけを積む
-  - 変更通知は 1.5 秒（通知が続けば延長）まとめてから 1 回走査する。走査は単一スレッドで、待ちは最大 1 件
-  - 差分走査: 最後に見た `DATE_ADDED` と `_ID` を cursor として SharedPreferences に保存し、次回は cursor の 120 秒前から検索する。カメラアプリは `IS_PENDING` の行を先に挿入し、あとから確定するため、重ねて拾い直す。重複は「見た」集合と待ち行列で防ぐ。下限は `since` の 60 秒前
-  - 限界: 挿入から 120 秒を超えて確定した行は、cursor が先へ進んでいると拾えない
-  - 自分の `savePhoto` が作った写真の通知は無視する（直近 50 件・5 分まで uri を覚える）
-- 待ち行列、`since`、「見た」集合は SharedPreferences（`chain.photos`）に保存する。WebView やプロセスが止まっていても、監視している間は積む
 - 送信済みの記録（`(partyId, mediaStoreId)`）、保存済みの記録（media id）、設定は WebView の localStorage にあり、native は持たない
 - backend は JPEG / PNG / WebP 以外を `400`、15 MB 超を `413` にする（backend 10 §4.4）ので、`readPhoto` が変換と縮小を済ませてから返す。EXIF の除去は backend が行う
 - アップロードは JS が前面にあるときだけ行う。背面ではアップロードしない
@@ -144,9 +121,6 @@ party 中の写真の自動共有（backend 08 §5）のうち、端末の Media
 | `FOREGROUND_SERVICE_LOCATION` | install | FGS 内での位置取得（type `location`） | P1 |
 | `ACCESS_BACKGROUND_LOCATION` | runtime | バックグラウンドでの位置共有・入場通知 | 後回し（backend README L2） |
 | `READ_CALENDAR` | runtime | 自動グループのための今日・明日の予定の読み取り（§11） | P2（自動グループと同時） |
-| `READ_MEDIA_IMAGES` | runtime（13+） | party 中の写真の自動共有（§3.1）。設定でオンにしたときに求める | P0 |
-| `READ_MEDIA_VISUAL_USER_SELECTED` | runtime（14+） | 「選んだ写真だけ」を許可された状態の検出（§3.1 の `limited`）。この状態では自動共有を使えない | P0 |
-| `READ_EXTERNAL_STORAGE`（`maxSdkVersion="32"`） | runtime（12 以下） | 同上（Android 12 以下の写真の読み取り） | P0 |
 
 - `BLUETOOTH_SCAN` には **`neverForLocation` を付けない**。付けると一部の beacon 型の advertise が scan 結果から除かれ得る（research E2）。位置権限はグループのために結局取るので、付けない方を選ぶ
 - `BLUETOOTH_CONNECT` は使わない（GATT 接続をしない）
@@ -265,7 +239,7 @@ Google Calendar API は使わない（Google の審査が重い権限になる�
 | V4 | 画面オフ時に、manufacturer data のフィルタ付き scan で結果が届き続けるか | §7 |
 | V5 | 再起動後の FGS 再開が Android 15 以降で許されるか | §5 |
 | V6 | 各社のカレンダーアプリ（Samsung カレンダーなど）の予定が `CalendarContract` から同じように読めるか。カレンダーの変更の `ContentObserver` が FGS の中で届くか | §11 |
-| V7 | `ChainPhotos`: HEIC など `BitmapFactory` が読む形式の JPEG 変換と、15 MB 超の縮小が機種を問わず動くか | §3.1 |
-| V8 | `ChainPhotos`: アプリが背面の間に撮った写真を、`ContentObserver`（と前面に戻ったときの再走査）が取りこぼさず待ち行列に積むか。プロセスが終了した後も同じか | §3.1 |
-| V9 | 写真・動画の権限（`READ_MEDIA_IMAGES`）について、Google Play の写真・動画権限のポリシー審査を通るか（自動共有が中核機能として認められるか。通らない場合は Photo Picker への変更を検討する） | §4 |
-| V10 | `limited`（選んだ写真だけ）の検出と案内、各社の MediaStore の `DATE_TAKEN` / `RELATIVE_PATH`（`DCIM/Camera/` 以外にカメラが保存する機種がないか） | §3.1 |
+| V7 | ~~`ChainPhotos` の JPEG 変換と縮小~~（自動共有の廃止で不要） | — |
+| V8 | ~~`ChainPhotos` の背面での写真の監視~~（自動共有の廃止で不要） | — |
+| V9 | ~~写真・動画の権限のポリシー審査~~（読み取り権限を使わなくなったので不要） | — |
+| V10 | ~~`limited` の検出と各社の MediaStore の列~~（自動共有の廃止で不要） | — |

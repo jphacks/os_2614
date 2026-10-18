@@ -28,7 +28,6 @@ import { useRealtimeCache } from "@/realtime/store";
 import { PartyScreen, type PartyActionResult } from "@/components/screens/PartyScreen";
 import { usePhotoSettings } from "@/device/photos/settings";
 import { usePartyPhotoDownload, type DownloadableMedia } from "@/device/photos/download";
-import { usePhotoShare } from "@/components/layout/PhotoShareDriver";
 
 function classify(result: ResourceResult<unknown>): PartyActionResult {
   return result.status === "ok" ? { status: "ok" } : { status: result.status };
@@ -181,7 +180,6 @@ export default function PartyPage() {
       : state;
 
   const party = partyState.status === "ok" ? partyState.data : null;
-  const autoShare = usePhotoShare();
   const photoDownload = usePartyPhotoDownload(
     partyId ? downloadablePhotos : endedDownloadablePhotos,
     photoSettings.saveToDevice && (party !== null || endedNotice),
@@ -244,9 +242,6 @@ export default function PartyPage() {
         }
       }}
       endedNotice={endedNotice}
-      autoShareEnabled={autoShare.autoShareEnabled}
-      pendingPhotoCount={autoShare.pendingCount}
-      onCancelPhotoShare={() => void autoShare.cancel()}
       onSavePhotos={() => void photoDownload.save()}
       savingPhotos={photoDownload.saving}
     />
