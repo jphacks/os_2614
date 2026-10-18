@@ -49,6 +49,8 @@ export { MemoryScreen } from "./MemoryScreen";
 export type { MemoryScreenProps } from "./MemoryScreen";
 export { StatsScreen } from "./StatsScreen";
 export type { StatsScreenProps } from "./StatsScreen";
+export { DataMapScreen } from "./DataMapScreen";
+export type { DataMapScreenProps } from "./DataMapScreen";
 export { SettingsScreen } from "./SettingsScreen";
 export type { SettingsScreenProps, AccountDeleteResult } from "./SettingsScreen";
 // 差し戻し用に残している旧画面。ページの import を差し替えれば元の UI に戻る。

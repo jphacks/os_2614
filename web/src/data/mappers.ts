@@ -48,6 +48,7 @@ import type {
   PostTarget,
   Profile,
   Reply,
+  DataMap,
   Settings,
   Stats,
   User,
@@ -77,6 +78,7 @@ import type {
   Party as PartyDTO,
   PartyMember as PartyMemberDTO,
   Pin as PinDTO,
+  DataMap as DataMapDTO,
   Profile as ProfileDTO,
   Settings as SettingsDTO,
   Stats as StatsDTO,
@@ -229,6 +231,40 @@ export function toProfile(dto: Maybe<ProfileDTO>): Profile {
     bio: dto?.description ?? "",
     status: dto?.status,
     bannerUrl: dto?.bannerUrl,
+    pdsHost: dto?.pdsHost || undefined,
+  };
+}
+
+const DATA_MAP_COUNT_LABELS: Record<string, string> = {
+  publicPosts: "公開投稿",
+  spacePosts: "投稿",
+  photos: "写真",
+  encounters: "すれ違い",
+  friends: "フレンド",
+};
+
+const STORAGES = ["pds", "chain", "external"] as const;
+
+/** GET /me/data-map → DataMap (19 §7.1)。件数は行ごとのラベル付きに畳む。 */
+export function toDataMap(dto: Maybe<DataMapDTO>): DataMap {
+  const counts = dto?.counts ?? {};
+  return {
+    pdsUrl: dto?.pdsUrl ?? "",
+    pdsHost: dto?.pdsHost ?? "",
+    scopes: Array.isArray(dto?.scopes) ? dto.scopes : null,
+    rows: (dto?.rows ?? []).map((row) => ({
+      id: row.id ?? "",
+      data: row.data ?? "",
+      storage: oneOf(row.storage, STORAGES, "chain"),
+      place: row.place ?? "",
+      visibleTo: row.visibleTo ?? "",
+      retention: row.retention ?? "",
+      export: row.export ?? "",
+      counts: (row.countKeys ?? []).map((key) => ({
+        label: DATA_MAP_COUNT_LABELS[key] ?? key,
+        value: num(counts[key]),
+      })),
+    })),
   };
 }
 

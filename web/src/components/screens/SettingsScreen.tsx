@@ -138,6 +138,13 @@ export function SettingsScreen({
                 trailing={<Icon name="chevron_right" size={20} />}
                 href="/blocks/"
               />
+              <ListItem
+                leading={<Icon name="database" size={20} />}
+                title="データの置き場所"
+                subtitle="あなたのデータがどこにあるか"
+                trailing={<Icon name="chevron_right" size={20} />}
+                href="/settings/data/"
+              />
             </List>
           </Card>
         </section>
