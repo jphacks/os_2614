@@ -6,6 +6,7 @@ import { useAuth, WELCOME_PATH } from "@/auth";
 import type { ApiError } from "@/auth/errors";
 import type { NotificationType, Settings, WarnDisplay } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
+import type { PhotoSettings } from "@/device/photos/settings";
 import { AppShell } from "@/components/layout/AppShell";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
@@ -71,6 +72,10 @@ export type SettingsScreenProps = {
   areas?: AreaManagerProps;
   /** アカウント削除 (13 §5)。未指定なら節を出さない。 */
   onDeleteAccount?: (opts: { deletePdsRecords: boolean }) => Promise<AccountDeleteResult>;
+  photoSettings?: PhotoSettings;
+  photoPermissionNotice?: string | null;
+  onToggleAutoShare?: (enabled: boolean) => void;
+  onToggleSaveToDevice?: (enabled: boolean) => void;
 };
 
 /** アカウント削除 (DELETE /me, 13 §5) の結果。 */
@@ -91,6 +96,10 @@ export function SettingsScreen({
   onRetry,
   areas,
   onDeleteAccount,
+  photoSettings,
+  photoPermissionNotice,
+  onToggleAutoShare,
+  onToggleSaveToDevice,
 }: SettingsScreenProps) {
   return (
     <AppShell>
@@ -100,7 +109,14 @@ export function SettingsScreen({
         {state.status === "ok" ? (
           <>
             <SaveStatus saving={saving} error={saveError} onRetry={onRetrySave} />
-            <SettingsBody settings={state.data} onChange={onChange} />
+            <SettingsBody
+              settings={state.data}
+              onChange={onChange}
+              photoSettings={photoSettings}
+              photoPermissionNotice={photoPermissionNotice}
+              onToggleAutoShare={onToggleAutoShare}
+              onToggleSaveToDevice={onToggleSaveToDevice}
+            />
           </>
         ) : state.status === "loading" ? (
           <SettingsSkeleton />
@@ -151,6 +167,10 @@ export function SettingsScreen({
 type SettingsBodyProps = {
   settings: Settings;
   onChange?: (patch: Partial<Settings>) => void;
+  photoSettings?: PhotoSettings;
+  photoPermissionNotice?: string | null;
+  onToggleAutoShare?: (enabled: boolean) => void;
+  onToggleSaveToDevice?: (enabled: boolean) => void;
 };
 
 type SaveStatusProps = {
@@ -184,7 +204,15 @@ function SaveStatus({ saving, error, onRetry }: SaveStatusProps) {
   return null;
 }
 
-function SettingsBody({ settings, onChange }: SettingsBodyProps) {
+function SettingsBody({
+  settings,
+  onChange,
+  photoSettings,
+  photoPermissionNotice,
+  onToggleAutoShare,
+  onToggleSaveToDevice,
+}: SettingsBodyProps) {
+  const [photoPermissionPrompt, setPhotoPermissionPrompt] = useState(false);
   const patch = (partial: Partial<Settings>) => {
     onChange?.(partial);
   };
@@ -198,6 +226,60 @@ function SettingsBody({ settings, onChange }: SettingsBodyProps) {
 
   return (
     <>
+      {photoSettings && (
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>パーティの写真</h2>
+            <p className={styles.sectionDesc}>端末の写真をパーティで共有・保存します</p>
+          </div>
+          <Card padding="md">
+            <ToggleRow
+              title="写真を自動共有"
+              note="カメラで撮った写真を確認後にパーティへ共有します"
+              checked={photoSettings.autoShare}
+              onChange={(enabled) => {
+                if (enabled) {
+                  setPhotoPermissionPrompt(true);
+                } else {
+                  onToggleAutoShare?.(false);
+                }
+              }}
+            />
+            <div className={styles.divider} />
+            <ToggleRow
+              title="写真を端末に保存"
+              note="パーティの写真を端末のアルバムに保存します"
+              checked={photoSettings.saveToDevice}
+              onChange={(enabled) => onToggleSaveToDevice?.(enabled)}
+            />
+          </Card>
+          {photoPermissionPrompt && (
+            <Card padding="md">
+              <Notice tone="info" icon="photo_camera">
+                パーティ中に撮った写真を、確認後にパーティへ共有します。写真へのアクセスを許可してください。
+                <span className={styles.row}>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      setPhotoPermissionPrompt(false);
+                      onToggleAutoShare?.(true);
+                    }}
+                  >
+                    許可してオン
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setPhotoPermissionPrompt(false)}>
+                    キャンセル
+                  </Button>
+                </span>
+              </Notice>
+            </Card>
+          )}
+          {photoPermissionNotice && (
+            <p className={styles.saveNote} role="alert">{photoPermissionNotice}</p>
+          )}
+        </section>
+      )}
       <section className={styles.section}>
         <div className={styles.sectionHead}>
           <h2 className={styles.sectionTitle}>すれ違いの公開</h2>

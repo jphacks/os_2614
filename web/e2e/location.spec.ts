@@ -6,10 +6,12 @@ import {
   LOCATION_FOREGROUND_INTERVAL_MS,
   LOCATION_MAX_ACCURACY_M,
   LOCATION_MIN_UPLOAD_INTERVAL_MS,
+  LOCATION_SMOOTHING_RESET_MS,
   LOCATION_SOURCE,
   isLocationUploadable,
   locationSkipReason,
   locationUploadDue,
+  smoothLocationFix,
   toLocationUploadBody,
   uploadLocation,
 } from "../src/device/proximity/location";
@@ -179,5 +181,68 @@ test.describe("uploadLocation (data layer)", () => {
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(400);
+  });
+});
+
+test.describe("smoothLocationFix", () => {
+  const t0 = Date.parse("2026-01-01T00:00:00.000Z");
+
+  function at(msFromT0: number, overrides: Partial<LocationFix> = {}): LocationFix {
+    return fix({ recordedAt: new Date(t0 + msFromT0).toISOString(), ...overrides });
+  }
+
+  test("returns next unchanged when there is no previous fix", () => {
+    const next = at(0, { lat: 35.1, lon: 135.1 });
+    expect(smoothLocationFix(null, next)).toBe(next);
+  });
+
+  test("returns next when the mock flag changes", () => {
+    const prev = at(0, { isMock: false });
+    const next = at(3_000, { isMock: true, lat: 35.0001, lon: 135.0001 });
+    expect(smoothLocationFix(prev, next)).toBe(next);
+  });
+
+  test("resets to next when the fix is older than the reset window", () => {
+    const prev = at(0, { lat: 35, lon: 135 });
+    const next = at(LOCATION_SMOOTHING_RESET_MS + 1, { lat: 35.0001, lon: 135.0001 });
+    expect(smoothLocationFix(prev, next)).toBe(next);
+  });
+
+  test("keeps prev when next is older than prev", () => {
+    const prev = at(5_000, { lat: 35, lon: 135 });
+    const next = at(0, { lat: 35.0001, lon: 135.0001 });
+    expect(smoothLocationFix(prev, next)).toBe(prev);
+  });
+
+  test("blends two close fixes, landing between them with a smaller accuracy", () => {
+    const prev = at(0, { lat: 35, lon: 135, accuracyM: 10 });
+    const next = at(3_000, { lat: 35.0001, lon: 135.0001, accuracyM: 10 });
+    const smoothed = smoothLocationFix(prev, next);
+
+    expect(smoothed).not.toBe(next);
+    expect(smoothed.lat).toBeGreaterThan(prev.lat);
+    expect(smoothed.lat).toBeLessThan(next.lat);
+    expect(smoothed.lon).toBeGreaterThan(prev.lon);
+    expect(smoothed.lon).toBeLessThan(next.lon);
+    expect(smoothed.accuracyM).toBeLessThan(prev.accuracyM);
+    expect(smoothed.accuracyM).toBeLessThan(next.accuracyM);
+    expect(smoothed.recordedAt).toBe(next.recordedAt);
+  });
+
+  test("barely moves for a coarse next fix", () => {
+    const prev = at(0, { lat: 35, lon: 135, accuracyM: 10 });
+    const next = at(3_000, { lat: 35.001, lon: 135, accuracyM: 150 });
+    const smoothed = smoothLocationFix(prev, next);
+
+    const moved = smoothed.lat - prev.lat;
+    const gap = next.lat - prev.lat;
+    expect(moved).toBeGreaterThan(0);
+    expect(moved).toBeLessThan(gap * 0.05);
+  });
+
+  test("snaps to next when the jump is far beyond the error range", () => {
+    const prev = at(0, { lat: 35, lon: 135, accuracyM: 10 });
+    const next = at(3_000, { lat: 35.045, lon: 135, accuracyM: 10 });
+    expect(smoothLocationFix(prev, next)).toBe(next);
   });
 });

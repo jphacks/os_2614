@@ -2,7 +2,12 @@ package jp.i32.chain.proximity
 
 import android.Manifest
 import android.bluetooth.BluetoothManager
+import android.content.Intent
+import android.location.LocationManager
+import android.net.wifi.WifiManager
 import android.os.Build
+import android.provider.Settings
+import androidx.core.location.LocationManagerCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
@@ -34,6 +39,7 @@ class ChainProximityPlugin : Plugin() {
         private const val TOKEN_LENGTH = 16
         private const val DEFAULT_LOCATION_TIMEOUT_MS = 10_000L
         private const val DEFAULT_LOCATION_MAX_AGE_MS = 30_000L
+        private const val DEFAULT_LOCATION_DESIRED_ACCURACY_M = 20f
     }
 
     private lateinit var location: LocationController
@@ -178,6 +184,7 @@ class ChainProximityPlugin : Plugin() {
         location.current(
             timeoutMs = call.number("timeoutMs")?.toLong() ?: DEFAULT_LOCATION_TIMEOUT_MS,
             maxAgeMs = call.number("maxAgeMs")?.toLong() ?: DEFAULT_LOCATION_MAX_AGE_MS,
+            desiredAccuracyM = call.number("desiredAccuracyM")?.toFloat() ?: DEFAULT_LOCATION_DESIRED_ACCURACY_M,
             onFix = { call.resolve(LocationController.toJson(it)) },
             onError = { code, message -> call.reject(message, code) },
         )
@@ -197,6 +204,32 @@ class ChainProximityPlugin : Plugin() {
     @PluginMethod
     fun stopLocationUpdates(call: PluginCall) {
         location.stopUpdates()
+        call.resolve()
+    }
+
+    /**
+     * 屋内の精度を左右する端末設定。Wi-Fi が OFF でも「Wi-Fi スキャン」が ON なら
+     * Fused Location は周囲の AP を位置推定に使える。両方 OFF だと屋内では基地局頼みになる。
+     */
+    @PluginMethod
+    fun getLocationAccuracySettings(call: PluginCall) {
+        val locationManager = context.getSystemService(LocationManager::class.java)
+        val wifi = context.applicationContext.getSystemService(WifiManager::class.java)
+        call.resolve(
+            JSObject()
+                .put("locationEnabled", locationManager != null && LocationManagerCompat.isLocationEnabled(locationManager))
+                .put("wifiScanAvailable", wifi != null && (wifi.isWifiEnabled || wifi.isScanAlwaysAvailable)),
+        )
+    }
+
+    /** 位置情報の設定画面 (「Wi-Fi スキャン」はこの画面の「位置情報サービス」の中にある) */
+    @PluginMethod
+    fun openLocationSettings(call: PluginCall) {
+        try {
+            activity.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        } catch (e: Exception) {
+            return call.reject("設定画面を開けませんでした", "unavailable", e)
+        }
         call.resolve()
     }
 }

@@ -19,6 +19,9 @@ function ReplyRow({ reply }: { reply: Reply }) {
           <span className={styles.name}>{reply.author.name}</span>
           <span className={styles.time}>・{clockTime(reply.createdAt)}</span>
         </div>
+        {reply.parent && reply.root && reply.parent !== reply.root && (
+          <p className={styles.time}>{reply.parentAuthorName ?? "投稿者"} への返信</p>
+        )}
         <p className={styles.body}>{reply.body}</p>
       </div>
     </li>
@@ -42,7 +45,7 @@ function replyErrorText(error: unknown): string {
 }
 
 export type ReplySheetProps = {
-  post: Post;
+  post: Post | null;
   replies: Reply[];
   me: User;
   onClose: () => void;
@@ -52,6 +55,14 @@ export type ReplySheetProps = {
    * (無言の no-op にしない)。
    */
   onSubmit?: (text: string) => Promise<void>;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  loading?: boolean;
+  notFound?: boolean;
+  canReply?: boolean;
+  threadError?: string;
+  onRetry?: () => void;
 };
 
 export function ReplySheet({
@@ -60,10 +71,19 @@ export function ReplySheet({
   me,
   onClose,
   onSubmit,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+  loading = false,
+  notFound = false,
+  canReply = true,
+  threadError,
+  onRetry,
 }: ReplySheetProps) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<Reply | null>(null);
 
   const writable = onSubmit !== undefined;
   const canSend = writable && text.trim() !== "" && !sending;
@@ -76,11 +96,21 @@ export function ReplySheet({
     }
     setSending(true);
     setError(null);
+    setPending({
+      id: "pending",
+      author: me,
+      body: value,
+      createdAt: new Date().toISOString(),
+      likeCount: 0,
+      likedByMe: false,
+    });
     void onSubmit(value)
       .then(() => {
         setText("");
+        setPending(null);
       })
       .catch((e: unknown) => {
+        setPending(null);
         setError(replyErrorText(e));
       })
       .finally(() => {
@@ -105,7 +135,19 @@ export function ReplySheet({
         </header>
 
         <div className={styles.scroll}>
-          <div className={styles.original}>
+          {loading && <p className={styles.body}>読み込み中…</p>}
+          {notFound && <p className={styles.body}>この投稿は見つかりません</p>}
+          {threadError && (
+            <Notice tone="warning" icon="error">
+              {threadError}
+              {onRetry && (
+                <Pressable type="button" className={styles.send} onClick={onRetry}>
+                  再試行
+                </Pressable>
+              )}
+            </Notice>
+          )}
+          {!loading && !notFound && !threadError && post && <div className={styles.original}>
             <Avatar user={post.author} size={40} />
             <div className={styles.originalMain}>
               <div className={styles.head}>
@@ -114,18 +156,24 @@ export function ReplySheet({
               </div>
               <p className={styles.body}>{post.body}</p>
             </div>
-          </div>
-          <ul className={styles.replies}>
+          </div>}
+          {!loading && !notFound && !threadError && <ul className={styles.replies}>
             {replies.map((reply) => (
               <ReplyRow key={reply.id} reply={reply} />
             ))}
-          </ul>
+            {pending && <ReplyRow reply={pending} />}
+          </ul>}
+          {hasMore && (
+            <Pressable type="button" className={styles.send} onClick={onLoadMore} disabled={loadingMore}>
+              {loadingMore ? "読み込み中…" : "もっと見る"}
+            </Pressable>
+          )}
         </div>
 
         {/* 返信は POST /posts の reply:{root,parent} (10 §3, 10 §4.1)。
             送信不可 (onSubmit 未指定) のときだけ操作不能 + 「準備中」を出す。 */}
-        <form className={styles.composer} onSubmit={submit}>
-          <span className={styles.composerLabel}>{post.author.name} に返信</span>
+        {canReply && !loading && !notFound && !threadError && <form className={styles.composer} onSubmit={submit}>
+          <span className={styles.composerLabel}>{post ? `${post.author.name} に返信` : "返信"}</span>
           <div className={styles.composerRow}>
             <Avatar user={me} size={32} />
             <input
@@ -156,7 +204,7 @@ export function ReplySheet({
               返信は準備中です
             </Notice>
           )}
-        </form>
+        </form>}
       </div>
     </div>
   );

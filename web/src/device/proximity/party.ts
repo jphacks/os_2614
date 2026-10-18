@@ -3,7 +3,7 @@
 // party の presence 送信 (backend 08 §2)。sighting の native リスナーは
 // useNearbyTokens と共有し、ここはフレンド表・45 秒窓・送信間隔だけを持つ。
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/auth/errors";
 import { getJson, postJson } from "@/data/api";
 import { useRealtimeEvent } from "@/realtime/provider";
@@ -185,6 +185,54 @@ export class PartyPresenceReporter {
   }
 }
 
+// ---- 近く画面へ渡す BLE の観測 ----
+// presence と同じ表で token を DID に引けたフレンドを、近く画面が「すぐそば」として並べる。
+// GPS は屋内やビルの間で数十 m ずれるが、BLE が届く距離 (おおむね数〜数十 m) にいることは確か。
+
+/** did → 端末時計での最後の観測時刻 (ms) */
+const bleFriendSeenAt = new Map<string, number>();
+const bleFriendListeners = new Set<() => void>();
+
+function notifyBleFriends(): void {
+  for (const listener of [...bleFriendListeners]) {
+    listener();
+  }
+}
+
+function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((did) => b.has(did));
+}
+
+/**
+ * 直近 windowMs に BLE で見えたフレンドの DID。すれ違いモードが動いている間だけ埋まる。
+ * 顔ぶれが変わったときだけ新しい Set を返す (rssi の揺れで配置をやり直さない)。
+ */
+export function useBleNearbyFriends(windowMs = PARTY_EDGE_ALIVE_MS): ReadonlySet<string> {
+  const [members, setMembers] = useState<ReadonlySet<string>>(() => new Set());
+
+  useEffect(() => {
+    const publish = () => {
+      const cutoff = Date.now() - windowMs;
+      const next = new Set<string>();
+      for (const [did, seenAt] of bleFriendSeenAt) {
+        if (seenAt >= cutoff) {
+          next.add(did);
+        }
+      }
+      setMembers((prev) => (sameMembers(prev, next) ? prev : next));
+    };
+    publish();
+    bleFriendListeners.add(publish);
+    const timer = setInterval(publish, 5_000);
+    return () => {
+      bleFriendListeners.delete(publish);
+      clearInterval(timer);
+    };
+  }, [windowMs]);
+
+  return members;
+}
+
 export function usePartyPresenceReporter(options: {
   enabled: boolean;
   clockOffsetMs: number;
@@ -217,10 +265,22 @@ export function usePartyPresenceReporter(options: {
       return;
     }
     reporter.start();
-    return () => reporter.stop();
+    return () => {
+      reporter.stop();
+      bleFriendSeenAt.clear();
+      notifyBleFriends();
+    };
   }, [options.enabled]);
 
   return useCallback((event: SightingEvent) => {
-    reporterRef.current?.recordSighting(event);
+    const reporter = reporterRef.current;
+    if (!reporter?.recordSighting(event)) {
+      return;
+    }
+    const did = reporter.beaconTable.get(event.token);
+    if (did !== undefined) {
+      bleFriendSeenAt.set(did, Date.now());
+      notifyBleFriends();
+    }
   }, []);
 }

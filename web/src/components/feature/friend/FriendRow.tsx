@@ -98,6 +98,7 @@ export function FriendRow({
       <ListItem
         leading={<Avatar user={friend} size={40} />}
         title={friend.name}
+        href={`/users/?did=${encodeURIComponent(friend.did)}&relation=friend`}
         subtitle={
           <>
             <span className={styles.handle}>@{friend.handle}</span>
@@ -120,7 +121,7 @@ export function FriendRow({
             )}
           </>
         }
-        trailing={
+        actions={
           <span className={styles.trailing}>
             {canShare && (
               <IconButton

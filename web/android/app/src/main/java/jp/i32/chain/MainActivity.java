@@ -4,6 +4,7 @@ import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 import jp.i32.chain.haptics.ChainHapticsPlugin;
 import jp.i32.chain.proximity.ChainProximityPlugin;
+import jp.i32.chain.photos.ChainPhotosPlugin;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -11,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         // アプリ内のプラグインは super.onCreate より前に登録する
         registerPlugin(ChainHapticsPlugin.class);
         registerPlugin(ChainProximityPlugin.class);
+        registerPlugin(ChainPhotosPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -18,7 +18,6 @@ import {
 import { AppShell } from "@/components/layout/AppShell";
 import { ImageCropDialog, type ImageCropKind } from "@/components/feature/imageCrop";
 import { MemoryThumbCard } from "@/components/feature/memory";
-import { PublicPostsSection } from "@/components/feature/post";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -669,8 +668,6 @@ function ProfileBody({
           )}
         </div>
       </section>
-
-      <PublicPostsSection did={me.did} />
 
       <Card padding="md">
         <List>

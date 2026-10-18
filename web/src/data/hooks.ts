@@ -26,7 +26,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth";
 import { ApiError } from "@/auth/errors";
 import type { Settings } from "@/domain/types";
-import { fetchPage, patchJson, putJson, toResult, type ResourceResult } from "./api";
+import { fetchPage, patchJson, putJson, toResult, type Page, type PageOptions, type ResourceResult } from "./api";
 import { fromSettings } from "./mappers";
 
 /** UI が出し分ける 5 状態。empty は ok から派生する (ok かつ空の特別形)。 */
@@ -182,6 +182,8 @@ export interface PagedResourceOptions<T> {
   limit?: number;
   /** 蓄積後の items を「空」とみなす条件。既定は「1 件も無い」。 */
   isEmpty?: (items: T[]) => boolean;
+  /** 一覧形式が {items,cursor} でない API をページ化するときの取得関数。 */
+  fetchPage?: (path: string, opts?: PageOptions) => Promise<Page<T>>;
 }
 
 export interface PagedResource<T> extends Resource<T[]> {
@@ -229,7 +231,7 @@ export function usePagedResource<T>(
   const signedIn = authState.status === "signedIn";
   const [nonce, setNonce] = useState(0);
   // path / deps / reload を 1 本の key に畳む。key が変わると描画側で loading に倒す。
-  const requestKey = signedIn ? `${path}\u0000${depsKey(deps)}\u0000${nonce}` : "";
+  const requestKey = signedIn && path !== "" ? `${path}\u0000${depsKey(deps)}\u0000${nonce}` : "";
   const cacheKey =
     authState.status === "signedIn" && path !== ""
       ? `${authState.did}\u0000${path}\u0000${depsKey(deps)}`
@@ -244,9 +246,9 @@ export function usePagedResource<T>(
   const moreRef = useRef<AbortController | null>(null);
 
   // 最新の limit / isEmpty を effect から読む。
-  const latest = useRef({ limit: opts.limit, isEmpty: opts.isEmpty });
+  const latest = useRef({ limit: opts.limit, isEmpty: opts.isEmpty, fetchPage: opts.fetchPage ?? fetchPage<T> });
   useEffect(() => {
-    latest.current = { limit: opts.limit, isEmpty: opts.isEmpty };
+    latest.current = { limit: opts.limit, isEmpty: opts.isEmpty, fetchPage: opts.fetchPage ?? fetchPage<T> };
   });
 
   useEffect(() => {
@@ -259,7 +261,7 @@ export function usePagedResource<T>(
     const controller = new AbortController();
     let active = true;
     void toResult(() =>
-      fetchPage<T>(path, { limit: latest.current.limit, signal: controller.signal }),
+      latest.current.fetchPage(path, { limit: latest.current.limit, signal: controller.signal }),
     ).then((result) => {
       if (!active) {
         return;
@@ -310,7 +312,7 @@ export function usePagedResource<T>(
     const controller = new AbortController();
     moreRef.current = controller;
     void toResult(() =>
-      fetchPage<T>(path, { limit: latest.current.limit, cursor, signal: controller.signal }),
+      latest.current.fetchPage(path, { limit: latest.current.limit, cursor, signal: controller.signal }),
     ).then((result) => {
       if (controller.signal.aborted) {
         return;

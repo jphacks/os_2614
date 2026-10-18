@@ -50,7 +50,7 @@ Bluesky のプロフィール（`app.bsky.actor.profile` の `self`）を、ユ�
 
 draft「archive された party / グループはここで見られる。archive された chat は一覧に残すが、開くと memory ページに飛ぶ」。
 
-- `GET /api/v1/instances`: 自分の Space の一覧（チャット一覧に当たる）。active と archived の両方を返し、`state` で区別する。各要素の `canWrite` は、いま投稿できるか（10 §5 の write 判定。位置が古くて判定できないときは `true`）。クライアントの投稿先は `state = active` かつ `canWrite` のものだけにする。並びは最終投稿の新しい順。クライアントは archived を開くと memory の画面に遷移する
+- `GET /api/v1/instances`: 自分の Space の一覧（チャット一覧に当たる）。active と archived の両方を返し、`state` で区別する。各要素の `canWrite` は、いま投稿できるか（10 §5 の write 判定。位置が古くて判定できないときは `true`。archived は、終了後 24 時間の写真共有の例外があっても `false`）。クライアントの投稿先は `state = active` かつ `canWrite` のものだけにする。並びは最終投稿の新しい順。クライアントは archived を開くと memory の画面に遷移する
 - `GET /api/v1/memories?cursor=`（P0 は Party、P1 でグループも）: archived の Space のうち、自分が `hidden_from_memory = 0` のもの
 
 ```json
@@ -59,12 +59,14 @@ draft「archive された party / グループはここで見られる。archive
     {
       "spaceId": "...", "type": "party", "name": "10/17 13:05 の party",
       "from": "2026-10-17T04:05:00Z", "until": "2026-10-17T09:40:00Z",
+      "confirmedAt": "2026-10-17T04:10:00Z", "endedAt": "2026-10-17T09:40:00Z",
       "memberCount": 4, "mediaCount": 37, "cover": { "thumbUrl": "..." }
     }
   ]
 }
 ```
 
+- `confirmedAt` / `endedAt` は Party の本 party になった時刻と終了時刻（グループなど、無いものは省く）。クライアントが、終了後 24 時間以内の写真共有（10 §5）で撮影時刻がどの party の期間に入るかを決めるのに使う。`from` / `until` は表示用で、判定には使わない
 - `cover` は、その Space の最初の `jp.i32.chain.instance.media`
 - 中身は instance の API（10 §4.2）で読む。archived は読み取り専用
 - `DELETE /api/v1/memories/{spaceId}`: 自分の memory から隠すだけ（`hidden_from_memory = 1`）。他のメンバーの memory には残る。自分の投稿や写真を消したい場合は、個別に削除する

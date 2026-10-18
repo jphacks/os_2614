@@ -18,6 +18,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"github.com/applemango/chain/internal/httpx"
+	"github.com/applemango/chain/internal/model"
 	spacemodel "github.com/applemango/chain/internal/model/space"
 	"github.com/applemango/chain/internal/realtime"
 	"github.com/applemango/chain/internal/service/access"
@@ -53,6 +54,7 @@ type SharedMedia struct {
 	URI     string
 	SpaceID string
 	MediaID string
+	Created bool
 }
 
 func (s *MediaService) Upload(ctx context.Context, did string, r io.Reader, size int64, takenAt *time.Time) (*MediaUpload, error) {
@@ -110,7 +112,10 @@ func (s *MediaService) Upload(ctx context.Context, did string, r io.Reader, size
 func (s *MediaService) ShareToSpace(ctx context.Context, did, spaceID, mediaID string, takenAt *time.Time) (*SharedMedia, error) {
 	ok, err := s.Access.Check(ctx, spaceID, syntax.DID(did), access.ModeWrite)
 	if err != nil {
-		return nil, err
+		if !errors.Is(err, httpx.ErrGone) || !s.archivedPartyPhotoAllowed(ctx, did, spaceID, mediaID, takenAt) {
+			return nil, err
+		}
+		ok = true
 	}
 	if !ok {
 		return nil, httpx.ErrForbidden
@@ -129,14 +134,26 @@ func (s *MediaService) ShareToSpace(ctx context.Context, did, spaceID, mediaID s
 	if err != nil {
 		return nil, err
 	}
-	if m.OwnerDID != did || m.SpaceID != nil || m.DeletedAt != nil {
+	if m.OwnerDID != did || m.DeletedAt != nil {
+		return nil, core.InvalidMedia("使用できないメディアです")
+	}
+	effectiveTakenAt := takenAt
+	if effectiveTakenAt == nil {
+		effectiveTakenAt = m.TakenAt
+	}
+	if existing, findErr := spacemodel.FindSharedMedia(ctx, s.DB, sp.ID, did, m.SHA256); findErr == nil {
+		return &SharedMedia{URI: existing.URI, SpaceID: sp.ID, MediaID: m.ID, Created: false}, nil
+	} else if !errors.Is(findErr, sql.ErrNoRows) {
+		return nil, findErr
+	}
+	if m.SpaceID != nil {
 		return nil, core.InvalidMedia("使用できないメディアです")
 	}
 
 	now := s.Clock.Now()
 	value := mediaValue{Media: postMediaRef{ID: m.ID, Alt: ""}, CreatedAt: core.FormatDateTime(now)}
-	if takenAt != nil {
-		value.TakenAt = takenAt.UTC().Format(time.RFC3339)
+	if effectiveTakenAt != nil {
+		value.TakenAt = effectiveTakenAt.UTC().Format(time.RFC3339)
 	}
 	rec, err := s.Store.CreateRecord(ctx, sp.SpaceRef(), syntax.DID(did), syntax.NSID(core.CollectionMedia), value)
 	if err != nil {
@@ -161,7 +178,39 @@ func (s *MediaService) ShareToSpace(ctx context.Context, did, spaceID, mediaID s
 		item.Media = []MediaItem{*mi}
 	}
 	s.Broker.Publish(ctx, realtime.Event{Name: "media.created", Space: sp.ID, Data: item})
-	return &SharedMedia{URI: rec.URI, SpaceID: sp.ID, MediaID: m.ID}, nil
+	return &SharedMedia{URI: rec.URI, SpaceID: sp.ID, MediaID: m.ID, Created: true}, nil
+}
+
+// archivedPartyPhotoAllowed は archived Party の写真共有だけに許す終了後 24 時間の例外（10 §5）を判定する。
+// 通常の write access にはこの条件を混ぜず、写真共有の経路からだけ呼び出す。
+func (s *MediaService) archivedPartyPhotoAllowed(ctx context.Context, did, spaceID, mediaID string, takenAt *time.Time) bool {
+	sp, err := spacemodel.GetSpace(ctx, s.DB, spaceID)
+	if err != nil || sp.State != "archived" || sp.Type != model.SpaceTypeParty {
+		return false
+	}
+	party, err := model.GetParty(ctx, s.DB, spaceID)
+	if err != nil || party.ConfirmedAt == nil || party.EndedAt == nil {
+		return false
+	}
+	media, err := spacemodel.GetMedia(ctx, s.DB, mediaID)
+	if err != nil || media.OwnerDID != did || media.DeletedAt != nil {
+		return false
+	}
+	if takenAt == nil {
+		takenAt = media.TakenAt
+	}
+	if takenAt == nil {
+		return false
+	}
+	now := s.Clock.Now()
+	if now.Before(*party.EndedAt) || now.Sub(*party.EndedAt) > 24*time.Hour {
+		return false
+	}
+	if takenAt.Before(*party.ConfirmedAt) || takenAt.After(*party.EndedAt) {
+		return false
+	}
+	member, err := spacemodel.GetSpaceMember(ctx, s.DB, spaceID, did)
+	return err == nil && member != nil && member.LeftAt == nil
 }
 
 // Deliver は署名付き URL の配信（10 §4.4）。署名と期限だけを確認し、ファイルの場所を返す。

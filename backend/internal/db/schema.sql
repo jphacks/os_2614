@@ -195,7 +195,7 @@ CREATE TABLE groups (
   persistent       INTEGER NOT NULL DEFAULT 0,
   center_lat       REAL NOT NULL,
   center_lon       REAL NOT NULL,
-  radius_m         INTEGER NOT NULL CHECK (radius_m BETWEEN 20 AND 2000),
+  radius_m         INTEGER NOT NULL CHECK (radius_m BETWEEN 5 AND 2000),
   schedule_json    TEXT,                      -- 09 §3。NULL なら常時有効
   invite_quorum    INTEGER NOT NULL DEFAULT 1,
   parent_space_id  TEXT REFERENCES spaces(id) ON DELETE SET NULL,
@@ -254,6 +254,7 @@ CREATE TABLE records (
   collection   TEXT NOT NULL,
   rkey         TEXT NOT NULL,                 -- TID
   value_json   TEXT NOT NULL,
+  reply_root   TEXT GENERATED ALWAYS AS (json_extract(value_json, '$.reply.root')) STORED,
   created_at   INTEGER NOT NULL,
   deleted_at   INTEGER,
   deleted_by   TEXT,
@@ -261,6 +262,7 @@ CREATE TABLE records (
   mod_state    TEXT NOT NULL DEFAULT 'done' CHECK (mod_state IN ('pending','done'))
 );
 CREATE INDEX records_space ON records(space_id, collection, created_at);
+CREATE INDEX records_reply_root ON records(space_id, reply_root, created_at);
 CREATE INDEX records_author ON records(author_did, created_at);
 
 CREATE TABLE media (

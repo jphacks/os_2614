@@ -1,11 +1,12 @@
 // 「ちかく」の泡の配置。自分を原点にしたワールド座標 (px、y は下向き) を返す。
 //
 // - 自分の右隣はグループ作成の「+」、パーティーとそのメンバーは自分に接するように置く。
-//   この内側の輪は方角を持たないので、端末の向きでは回さない。
-// - それ以外 (フレンド / すれ違い / グループ) は距離の近い順に、方角へ向けて外側へ置く。
+//   この内側の輪も、自分以外は端末の向きに合わせて周りと一緒に回す。
+// - それ以外 (フレンド / すれ違い / グループ) は、その方角へ向けて自分の近くから詰めて置く。
+//   距離は「どれから置くか」(近い順) にだけ使い、遠いからといって外へは離さない。
+//   方角は実際にその向きへ行けば相手がいるよう守り、重なるときはずらすより外へ積む。
 //   重なりは北を上にした座標で解いておき、描画時に端末の向き (heading) だけ回す。
-//   向きが変わっても並び順が崩れず、自分の周りを回るだけになる。
-// - 位置がまったく分からないものは、いちばん外側にまとめる。
+// - 方角の分からないもの (距離帯だけ / 位置不明) は、方角のあるものを置いた後に空きへ詰める。
 
 /** 地球上の点 (度)。 */
 export type LatLon = { lat: number; lon: number };
@@ -33,7 +34,7 @@ export type PlacedNode = {
 export type InnerNodeInput = { id: string; size: number };
 
 export type NearbyLayout = {
-  /** 自分・+・パーティー。画面に固定 (回さない)。 */
+  /** 自分・+・パーティー。自分に接する輪 (向きでは自分以外を輪ごと回す)。 */
   inner: PlacedNode[];
   /** 方角に合わせて回す泡。 */
   outer: PlacedNode[];
@@ -45,16 +46,16 @@ export const NODE_GAP = 12;
 const INNER_GAP = 18;
 /** 内側の輪とそれ以外の間にあけるすき間 (px)。 */
 const RING_GAP = 32;
-/** 距離 (m) を半径 (px) に足すときの係数。log2(1 + d / DISTANCE_UNIT_M) 倍する。 */
-const DISTANCE_PX = 30;
-const DISTANCE_UNIT_M = 50;
 /** 外側へ探すときの刻み (px)。 */
-const RADIUS_STEP = 6;
-/** 方角からずらしてよい最大の角度 (度)。これを超えるならさらに外へ出す。 */
-const MAX_ANGLE_SHIFT = 50;
-const ANGLE_STEP = 5;
-/** 位置が分からないものを置き始める、配置済みの最外周からの距離 (px)。 */
-const UNKNOWN_MARGIN = 48;
+const RADIUS_STEP = 4;
+/**
+ * 方角のある泡を、実際の方角からずらしてよい最大の角度 (度)。これを超えるならさらに外へ積む。
+ * 小さいほど方角は正確になるが、同じ方向に人が集まると外へ伸びる。
+ */
+const MAX_ANGLE_SHIFT = 12;
+/** 方角の分からない泡は、どこに置いても嘘にならないので空いている所へ広く探す。 */
+const FREE_ANGLE_SHIFT = 180;
+const ANGLE_STEP = 3;
 
 const EARTH_RADIUS_M = 6_371_000;
 const toRad = (deg: number) => (deg * Math.PI) / 180;
@@ -163,16 +164,17 @@ function polar(angleDeg: number, radius: number) {
   return { x: radius * Math.sin(rad), y: -radius * Math.cos(rad) };
 }
 
-/** 半径 rStart から外へ、角度 angle の左右を交互に探して最初に空いた場所に置く。 */
+/** 半径 rStart から外へ、角度 angle の左右 maxShift 度までを交互に探して最初に空いた場所に置く。 */
 function placeOutward(
   id: string,
   size: number,
   angle: number,
   rStart: number,
+  maxShift: number,
   placed: readonly PlacedNode[],
 ): PlacedNode {
   for (let radius = rStart; ; radius += RADIUS_STEP) {
-    for (let shift = 0; shift <= MAX_ANGLE_SHIFT; shift += ANGLE_STEP) {
+    for (let shift = 0; shift <= maxShift; shift += ANGLE_STEP) {
       for (const sign of shift === 0 ? [1] : [1, -1]) {
         const { x, y } = polar(angle + sign * shift, radius);
         if (!overlaps(x, y, size, placed)) return { id, size, x, y };
@@ -231,33 +233,36 @@ export function layoutNearby(input: {
   // 回したときに内側の輪とぶつからないよう、輪の外接円の外から置き始める
   const innerRadius = extent(inner) + RING_GAP;
 
-  const known = input.nodes
-    .filter((node) => node.placement.kind === "known")
-    .sort((a, b) => distanceOf(a) - distanceOf(b) || a.id.localeCompare(b.id));
-  const unknown = input.nodes
-    .filter((node) => node.placement.kind === "unknown")
-    .sort((a, b) => a.id.localeCompare(b.id));
+  // 方角のあるもの → 方角は無いが距離の分かるもの → 位置不明、の順に、それぞれ近い順で置く。
+  // 方角のあるものを先に置くことで、本当の方角の場所を方角の無いものに取られない
+  const rank = (node: NearbyNodeInput) =>
+    node.placement.kind === "unknown" ? 2 : node.placement.bearingDeg === undefined ? 1 : 0;
+  const ordered = [...input.nodes].sort(
+    (a, b) => rank(a) - rank(b) || distanceOf(a) - distanceOf(b) || a.id.localeCompare(b.id),
+  );
 
   const outer: PlacedNode[] = [];
-  // 近い順を保つため、前に置いたものより内側からは探し始めない
-  let floor = 0;
-  for (const node of known) {
-    const placement = node.placement as Extract<Placement, { kind: "known" }>;
-    const angle = placement.bearingDeg ?? stableAngle(node.id);
-    const rStart = Math.max(
-      innerRadius + node.size / 2,
-      innerRadius + node.size / 2 + DISTANCE_PX * Math.log2(1 + placement.distanceM / DISTANCE_UNIT_M),
-      floor,
-    );
-    const placed = placeOutward(node.id, node.size, angle, rStart, outer);
-    outer.push(placed);
-    floor = Math.max(floor, Math.hypot(placed.x, placed.y) - node.size);
-  }
-
-  const farRadius = Math.max(innerRadius, extent(outer)) + UNKNOWN_MARGIN;
-  for (const node of unknown) {
+  for (const node of ordered) {
+    const bearing = node.placement.kind === "known" ? node.placement.bearingDeg : undefined;
+    let rStart = innerRadius + node.size / 2;
+    if (bearing !== undefined) {
+      // 同じ方角の中では近い順を崩さない: 先に置いた (= 近い) 泡より内側からは探さない
+      for (const placed of outer) {
+        const placedAngle = toDeg(Math.atan2(placed.x, -placed.y));
+        if (Math.abs(((placedAngle - bearing + 540) % 360) - 180) <= MAX_ANGLE_SHIFT * 2) {
+          rStart = Math.max(rStart, Math.hypot(placed.x, placed.y) + RADIUS_STEP);
+        }
+      }
+    }
     outer.push(
-      placeOutward(node.id, node.size, stableAngle(node.id), farRadius + node.size / 2, outer),
+      placeOutward(
+        node.id,
+        node.size,
+        bearing ?? stableAngle(node.id),
+        rStart,
+        bearing === undefined ? FREE_ANGLE_SHIFT : MAX_ANGLE_SHIFT,
+        outer,
+      ),
     );
   }
 

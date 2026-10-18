@@ -189,7 +189,7 @@ test.describe("layoutNearby", () => {
     expect(outer.y).toBeLessThan(0);
   });
 
-  test("orders known bubbles from near to far", () => {
+  test("uses distance only for order, keeping far bubbles as close as near ones", () => {
     const layout = layoutNearby({
       me,
       plus,
@@ -200,25 +200,57 @@ test.describe("layoutNearby", () => {
         { id: "b", size: 56, placement: { kind: "known", distanceM: 5_000, bearingDeg: 90 } },
       ],
     });
+    // 近い順に置く
     expect(layout.outer.map((node) => node.id)).toEqual(["a", "b", "c"]);
-    const [a, b, c] = layout.outer;
-    expect(distanceToOrigin(a)).toBeLessThan(distanceToOrigin(b));
-    expect(distanceToOrigin(b)).toBeLessThan(distanceToOrigin(c));
+    // 方角が違えば、20km 先でも 100m 先と同じだけ自分に近い
+    const [a, b, c] = layout.outer.map(distanceToOrigin);
+    expect(b).toBeCloseTo(a, 5);
+    expect(c).toBeCloseTo(a, 5);
   });
 
-  test("places unknown bubbles beyond every known bubble", () => {
+  test("stacks bubbles in the same direction outward from near to far, keeping the bearing", () => {
     const layout = layoutNearby({
       me,
       plus,
       ring: [],
       nodes: [
-        { id: "a", size: 56, placement: { kind: "known", distanceM: 100, bearingDeg: 0 } },
-        { id: "u", size: 56, placement: { kind: "unknown" } },
+        { id: "far", size: 56, placement: { kind: "known", distanceM: 9_000, bearingDeg: 90 } },
+        { id: "near", size: 56, placement: { kind: "known", distanceM: 100, bearingDeg: 90 } },
+        { id: "mid", size: 56, placement: { kind: "known", distanceM: 800, bearingDeg: 90 } },
       ],
     });
+    const near = findNode(layout.outer, "near");
+    const mid = findNode(layout.outer, "mid");
+    const far = findNode(layout.outer, "far");
+    expect(distanceToOrigin(near)).toBeLessThan(distanceToOrigin(mid));
+    expect(distanceToOrigin(mid)).toBeLessThan(distanceToOrigin(far));
+    // その方角へ行けば相手がいるよう、東 (90°) から 12° 以上ずらさない
+    for (const node of [near, mid, far]) {
+      const angle = (Math.atan2(node.x, -node.y) * 180) / Math.PI;
+      expect(Math.abs(angle - 90)).toBeLessThanOrEqual(12);
+    }
+  });
+
+  test("lets bubbles without a direction fill in without taking a true bearing", () => {
+    const layout = layoutNearby({
+      me,
+      plus,
+      ring: [],
+      nodes: [
+        { id: "u", size: 56, placement: { kind: "unknown" } },
+        { id: "n", size: 56, placement: { kind: "known", distanceM: 300 } },
+        { id: "a", size: 56, placement: { kind: "known", distanceM: 5_000, bearingDeg: 0 } },
+      ],
+    });
+    // 方角のあるものが先に置かれ、ちょうど北の最も内側を取る
+    expect(layout.outer[0].id).toBe("a");
     const a = findNode(layout.outer, "a");
-    const u = findNode(layout.outer, "u");
-    expect(distanceToOrigin(u)).toBeGreaterThan(distanceToOrigin(a));
+    expect(a.x).toBeCloseTo(0, 5);
+    // 方角の無いものも遠くへは行かない
+    const innermost = distanceToOrigin(a);
+    for (const id of ["u", "n"]) {
+      expect(distanceToOrigin(findNode(layout.outer, id))).toBeLessThan(innermost + 56 * 2);
+    }
   });
 
   test("is deterministic for the same input", () => {
@@ -393,5 +425,55 @@ test.describe("buildNearbyModel", () => {
     const node = model.nodes.find((entry) => entry.bubble.id === "group:g1");
     expect(node?.bubble.kind).toBe("group");
     expect(node?.bubble.kind === "group" && node.bubble.inside).toBe(true);
+  });
+
+  function buildWithBle(bleNearby: ReadonlySet<string>) {
+    return buildNearbyModel({
+      me: ME,
+      myLocation,
+      friends,
+      friendLocations,
+      encounters,
+      party,
+      groups: {
+        inside: [
+          {
+            id: "g1",
+            name: "情報工学科 3年",
+            memberCount: 12,
+            isMember: false,
+            persistent: true,
+            radiusM: 120,
+          },
+        ],
+        near: [],
+      },
+      groupAreas: new Map([["g1", { lat: 35.001, lon: 135.001, radiusM: 120 }]]),
+      bleNearby,
+    });
+  }
+
+  test("puts a BLE-visible friend in the ring despite a far location", () => {
+    const model = buildWithBle(new Set(["did:exact"]));
+    const bubble = model.ring.find((entry) => entry.id === "user:did:exact");
+    expect(bubble?.kind).toBe("person");
+    expect(bubble?.kind === "person" && bubble.detail).toBe("すぐそば");
+    expect(model.nodes.map((node) => node.bubble.id)).not.toContain("user:did:exact");
+  });
+
+  test("puts a BLE-visible present party member in the ring marked as nearby", () => {
+    const model = buildWithBle(new Set(["did:pm"]));
+    const bubble = model.ring.find((entry) => entry.id === "user:did:pm");
+    expect(bubble?.kind).toBe("person");
+    expect(bubble?.kind === "person" && bubble.detail).toBe("パーティー・すぐそば");
+    expect(model.nodes.map((node) => node.bubble.id)).not.toContain("user:did:pm");
+  });
+
+  test("keeps the previous placement when bleNearby is not passed", () => {
+    const model = build();
+    expect(model.ring.map((bubble) => bubble.id)).not.toContain("user:did:exact");
+    expect(model.nodes.map((node) => node.bubble.id)).toContain("user:did:exact");
+    const member = model.ring.find((entry) => entry.id === "user:did:pm");
+    expect(member?.kind === "person" && member.detail).toBe("パーティー");
   });
 });

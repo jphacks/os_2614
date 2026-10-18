@@ -68,7 +68,11 @@ func (h *MediaController) share(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+	status := fiber.StatusCreated
+	if !shared.Created {
+		status = fiber.StatusOK
+	}
+	return c.Status(status).JSON(fiber.Map{
 		"uri": shared.URI, "spaceId": shared.SpaceID, "mediaId": shared.MediaID,
 	})
 }

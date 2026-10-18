@@ -2,7 +2,7 @@
 
 `specification/backend/08-party.md`（以下 08）を、いまのコードに合わせて実装できる粒度まで具体化する。
 08・10・13・`docs/spec/ui-v2.md` §4.5・`specification/android` §8 と矛盾しないことを前提にし、足りない決めごとだけをここで足す。
-既存仕様書の変更が要るところは §8 にまとめる。
+既存仕様書の変更が要るところは §8 にまとめる。返信の見せ方と写真の自動共有は §11 を正とする（§6.2 の返信・写真の記述より優先する）。
 
 ## 1. 前提（いまの構成）
 
@@ -186,9 +186,9 @@ group のタイムライン（`ui-v2.md` §4.3）と同じ部品を使う。
 | --- | --- | --- | --- |
 | Space とメンバー（`model/space`） | 共通 | — | — |
 | 投稿・返信・削除（`POST /posts`、`/instances/:id/posts`） | 共通 | 使う | 写真だけを 1 ページ読む |
-| 写真の共有（`POST /instances/:id/media`） | 共通 | `SpacePhotoShareScreen`（`/group/photo/?id=`） | 入口が無い |
+| 写真の共有（`POST /instances/:id/media`） | 共通 | `SpacePhotoShareScreen`（`/group/photo/?id=`） | 自動共有（§11.2）。手動の入口は無い |
 | Pin | 共通 | `PinList`、`PinnedPostCard` | 無い |
-| 返信 | 共通 | `GroupReplyScreen` / `ReplySheet` | 無い |
+| 返信 | 共通 | `GroupReplyScreen` / `ReplySheet` | `/party/replies/`（§11.1） |
 | リアルタイム（Space チャンネル） | 共通 | 購読する | 購読しない |
 | 投稿画面（compose） | — | 使う | 使う（唯一の共有） |
 | アクセス判定 | 入口が共通、type で分岐 | 位置の条件 | phase |
@@ -201,16 +201,16 @@ group の部品は名前と型が group 前提（`GroupReplyScreen` の props �
 | 返信シート | `GroupReplyScreen` を Space 共通にし、ヘッダーを差し替えられるようにする。`ReplySheet` はいま `onSubmit` を渡さないと入力欄を押せない状態で残し、「返信は準備中です」と出す。これとは別に、入力欄ごと隠す `readOnly` を足す |
 | 写真の共有 | `SpacePhotoShareScreen` は space ID しか使っていないので、そのまま party からも開く（本 party の間だけ）。ルートは Space 共通の名前に移す |
 
-- 取得は `usePagedResource<InstancePost>("/instances/{id}/posts")` の 1 本にする。写真グリッドは、読み込んだ投稿の `media` から作る（いまは別に 1 ページだけ取っている。V8）
+- 取得は `usePagedResource<InstancePost>("/instances/{id}/posts?roots=1")` の 1 本にする（返信はタイムラインに出さない。§11.1）。写真グリッドは、読み込んだ投稿の `media` から作る（いまは別に 1 ページだけ取っている。V8）
 - 並びは「写真グリッド（最大 6 枚、`+n`）」→「タイムライン（`PostCard`、新しい順、続きを読む）」
 - lock / unlock の system 投稿（authority 名義、08 §4.4）は `PostCard` ではなく、中央寄せの 1 行（caption muted）で出す
-- 返信は instance の P1。上の表で Space 共通にした返信シートを使い、ルートは `/party/replies/?id=&post=` を足す。ヘッダーは `GET /party/current` から取る
+- 返信は instance の P1。返信シートの作りは §11.1 のとおり（背景は party 画面、中身はスレッド API）。ルートは `/party/replies/?id=&post=`
 - Pin は party では出さない（Jev の自動 Pin は group 向け。backend は使えるが、画面には載せない）
 
 ### 6.3 リアルタイム
 
 - `useRealtimeSubscription(party.id)` で Space を購読する（本 party・仮 party の両方）
-- `post.created` / `post.deleted` / `media.created` をタイムラインに反映する。再接続後は `useRealtimeResync` で取り直す（10 §7.3）
+- `post.created` / `post.deleted` / `media.created` をタイムラインに反映する（返信の `post.created` は足さず、root のコメント数を +1 する。§11.1）。再接続後は `useRealtimeResync` で取り直す（10 §7.3）
 
 ### 6.4 `party.updated` の受け方
 
@@ -247,7 +247,7 @@ on party.updated(d):
 | P17 | `RebuildIndex` | 離脱済みのメンバーには `party:of` を作らない |
 | P18 | A が B のフレンドを解除する（またはブロックする） | B の token のうち今の窓以降が作り直され、A の `GET /party/friend-beacons` に B が出ない。B のユーザーチャンネルに `beacon.rotated` が届く |
 | P19 | A が `friend_beacon_share = 0` | A の `GET /party/friend-beacons` は空。A が送った presence でエッジができない |
-| P20 | archived の party | 閲覧はできる。投稿・返信・写真・Pin は `410`。自分の投稿の削除はできる |
+| P20 | archived の party | 閲覧はできる。投稿・返信・Pin は `410`。写真の共有も `410` だが、終了から 24 時間以内・終了時に未離脱・期間内の `takenAt` なら許す（10 §5、§11.2）。自分の投稿の削除はできる |
 | — | `GET /instances` | 仮 party と離脱済みの party は `canWrite: false` |
 
 ### 7.2 web
@@ -278,6 +278,9 @@ on party.updated(d):
 | 10 | §7.3 | `beacon.rotated`（ユーザー）を足す |
 | 13 | §2 `GET /instances` | `canWrite` を足す |
 | `ui-v2.md` | §4.5 | §6.1 の出し分け、タイムライン、`/party/replies/` |
+| 10 | §4.2・§4.2.1・§4.4・§5・§7.3 | `roots=1`、`replyCount`、スレッド API、写真の重複、終了後 24 時間の例外、返信の `post.created` |
+| 08 | §5 | 写真の自動共有（設定、60 秒待ち、自動保存） |
+| android | §3.1・§4・§12 | `ChainPhotos`、写真の権限、未検証点 V7〜V10 |
 | android | §1・§8 | presence の送信はいまは JS が前面だけで行う。native への移動は P1 |
 | 15 | Party の表 | P11〜P20 |
 
@@ -298,3 +301,27 @@ on party.updated(d):
 3. §6.2 の部品の Space 共通化、§6.1〜§6.3（画面の出し分け・タイムライン・購読）、§6.5（memory への受け渡し。memory の詳細画面と一緒に）、§6.6（compose）
 4. §5（presence の送信）。実機での確認（§7.3）を含む
 5. §8 の仕様書への反映
+
+## 11. 返信のスレッドと写真の自動共有（追加）
+
+本書の §6.2・§6.5 のうち、返信と写真に関わる部分はここで置き換える。仕様の本体は backend の 10・08・13 と android README にある。
+
+### 11.1 返信の見せ方
+
+| 項目 | 内容 | 仕様 |
+| --- | --- | --- |
+| タイムライン | `GET /instances/{id}/posts?roots=1` で返信ではない投稿だけを出す。party のタイムラインと写真グリッド、group のタイムラインで使う | 10 §4.2 |
+| コメント数 | 各投稿の `replyCount` を使う。返信の `post.created` を受けたら、タイムラインに足さず（取り直しもせず）、`reply.root` の投稿のコメント数を +1 する | 10 §4.2、§7.3 |
+| 返信シート | 背景は開いた画面（party なら `PartyScreen`、group なら `GroupScreen`）。シートはデータ取得から切り離した部品で、中身は `GET /instances/{id}/thread` から取る。party を group に詰め替える処理は持たない | 10 §4.2.1 |
+| ルート | `/party/replies/?id=&post=`、`/group/replies/?id=&post=`。閉じると `/party/`、`/group/?id=` に戻る | ui-v2 §4.4 |
+| 指定された投稿 | タイムラインに無くてもスレッド API で直接取って開く。404 なら「この投稿は見つかりません」 | 10 §4.2.1 |
+| 入力欄 | `GET /instances` の `canWrite` が false（仮 party、archived、離脱済み）なら出さない。返信のいいねは出さない（API なし） | 13 §2 |
+| 送信 | `POST /posts` の `reply: { root, parent }`。送信中は末尾に仮の行を出し、失敗したら消して本文を入力欄に戻す。成功したら背景の元の投稿のコメント数を +1 | 10 §4.1 |
+| リアルタイム | シートを開いている間、`reply.root` が開いているスレッドの root の `post.created` を末尾に足す | 10 §7.3 |
+
+### 11.2 写真の自動共有
+
+- 設定（端末ごと、既定オフ）でオンにしたときだけ、本 party 中にカメラで撮った写真を 60 秒の取り消し待ちの後に自動でアップロードし、他のメンバーの写真を `Pictures/CHAIN/{party 名}` に自動保存する。仕様は backend 08 §5、native は android README §3.1
+- 実装は `web/src/device/photos/`（`settings.ts`、`autoshare.ts`、`download.ts`）と `ChainPhotos` プラグイン。前面にいる間だけ送る・保存する。§5.4 の presence と同じく、背面では動かない
+- §6.5 の「archived は書けない」は、写真の共有だけ例外がある。終了から 24 時間以内、終了時に未離脱、`takenAt` が party の期間内の写真は archived でも追加できる（10 §5）。memory 一覧の `confirmedAt` / `endedAt`（13 §2）が、どの party に送るかの判定に使われる
+- 同じ写真の再送は `200` で既存の record が返る（10 §4.4）

@@ -91,7 +91,8 @@ function GroupTimeline() {
     loadingMore,
     loadMore,
     reload: reloadPosts,
-  } = usePagedResource<InstancePost>(id ? `/instances/${id}/posts` : "", [id]);
+  } = usePagedResource<InstancePost>(id ? `/instances/${id}/posts?roots=1` : "", [id]);
+  const [replyDelta, setReplyDelta] = useState<Record<string, number>>({});
   const { state: pinsState, reload: reloadPins } = useResource<{
     items: PinDTO[];
   }>(
@@ -128,8 +129,11 @@ function GroupTimeline() {
     [pins],
   );
   const posts = useMemo(
-    () => toTimelinePosts(items, pinnedSubjects),
-    [items, pinnedSubjects],
+    () => toTimelinePosts(items, pinnedSubjects).map((post) => {
+      const delta = replyDelta[post.id] ?? 0;
+      return delta === 0 ? post : { ...post, replyCount: post.replyCount + delta };
+    }),
+    [items, pinnedSubjects, replyDelta],
   );
 
   const [pinBusy, setPinBusy] = useState(false);
@@ -213,22 +217,33 @@ function GroupTimeline() {
 
   // 表示中のグループ (Space) を購読し、リアルタイム更新を反映する (10 §7.2)。
   useRealtimeSubscription(id);
+  const reloadTimeline = useCallback(() => {
+    setReplyDelta({});
+    reloadPosts();
+  }, [reloadPosts]);
   // 再接続後は at-most-once の取りこぼしを補うため、グループ本体・メンバー・
   // タイムライン・Pin を取り直す (10 §7.3)。
   useRealtimeResync(() => {
     reloadGroup();
     reloadMembers();
-    reloadPosts();
+    reloadTimeline();
     reloadPins();
   });
   useRealtimeEvent("post.created", (post) => {
     if (post.spaceId === id) {
-      reloadPosts();
+      if (post.reply?.root) {
+        setReplyDelta((current) => ({
+          ...current,
+          [post.reply!.root]: (current[post.reply!.root] ?? 0) + 1,
+        }));
+      } else {
+        reloadTimeline();
+      }
     }
   });
   useRealtimeEvent("post.deleted", (_data, frame) => {
     if (frame.space === id) {
-      reloadPosts();
+      reloadTimeline();
     }
   });
   useRealtimeEvent("pin.created", (_pin, frame) => {
@@ -302,7 +317,7 @@ function GroupTimeline() {
       loadingMore={loadingMore}
       onLoadMore={loadMore}
       groupRetry={reloadGroup}
-      postsRetry={reloadPosts}
+      postsRetry={reloadTimeline}
       pins={pins}
       pinsState={pinResource}
       pinsRetry={reloadPins}

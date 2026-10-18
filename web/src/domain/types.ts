@@ -59,6 +59,7 @@ export type FriendRequest = {
   /** "pending" | "accepted" | "declined" | "canceled" など。 */
   status: string;
   createdAt: Timestamp;
+  takenAt?: Timestamp;
 };
 
 /**
@@ -160,12 +161,13 @@ export type PostModeration = {
 };
 
 export type Post = {
-	id: ID;
-	system?: boolean;
+  id: ID;
+  system?: boolean;
   author: User;
   body: string;
   format: PostFormat;
   createdAt: Timestamp;
+  takenAt?: Timestamp;
   attachments: Media[];
   replyCount: number;
   likeCount: number;
@@ -183,6 +185,9 @@ export type Reply = {
   createdAt: Timestamp;
   likeCount: number;
   likedByMe: boolean;
+  root?: string;
+  parent?: string;
+  parentAuthorName?: string;
 };
 
 /** 公開投稿 (service.FeedItem の表示用、17 §3.2)。 */
@@ -237,6 +242,8 @@ export type Memory = {
   name: string;
   from: Timestamp;
   until: Timestamp;
+  confirmedAt?: Timestamp;
+  endedAt?: Timestamp;
   memberCount: number;
   mediaCount: number;
   cover?: MemoryCover;

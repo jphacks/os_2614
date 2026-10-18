@@ -444,10 +444,15 @@ test.describe("profile status edit", () => {
     expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(4);
   });
 
-  test("lists the user's public posts from GET /feed?source=user:{did}", async ({
+  test("does not show the public posts section on the profile tab", async ({
     page,
   }) => {
     await useStoredSession(page, makeStoredSession());
+    const feedRequests: string[] = [];
+    await page.route("**/api/v1/feed*", (route) => {
+      feedRequests.push(route.request().url());
+      return route.fallback();
+    });
     await mockProfileApi(page, {
       feed: {
         items: [
@@ -463,8 +468,11 @@ test.describe("profile status edit", () => {
     });
     await page.goto("/profile/");
 
-    const section = page.locator("section", { hasText: "公開投稿" });
-    await expect(section.getByText("今日はいい天気")).toBeVisible();
+    // 自分のプロフィールタブでは公開投稿を出さない (ui-v2 §4.7)。
+    await expect(page.getByRole("heading", { name: ME.displayName })).toBeVisible();
+    await expect(page.locator("section", { hasText: "公開投稿" })).toHaveCount(0);
+    await expect(page.getByText("今日はいい天気")).toHaveCount(0);
+    expect(feedRequests).toEqual([]);
   });
 });
 

@@ -153,6 +153,8 @@ async function mockReplies(
     afterPost?: unknown[];
     replyStatus?: number;
     replyBody?: unknown;
+    instanceState?: string;
+    canWrite?: boolean;
     captured: ReplyCapture[];
   },
 ): Promise<void> {
@@ -166,6 +168,30 @@ async function mockReplies(
     }
     if (method === "GET" && pathname === "/api/v1/me") {
       await fulfillJson(route, 200, ME);
+      return;
+    }
+    if (method === "GET" && pathname === "/api/v1/instances") {
+      await fulfillJson(route, 200, {
+        items: [{
+          spaceId: "g1",
+          type: "group",
+          name: GROUP.name,
+          state: opts.instanceState ?? "active",
+          memberCount: 8,
+          canWrite: opts.canWrite ?? true,
+        }],
+      });
+      return;
+    }
+    if (method === "GET" && pathname === "/api/v1/instances/g1/thread") {
+      const source = posted && opts.afterPost ? opts.afterPost : opts.items;
+      const requested = new URL(request.url()).searchParams.get("root");
+      const opened = source.find((item) => (item as { uri?: string }).uri === requested);
+      const root = (opened as { reply?: ReplyRef } | undefined)?.reply?.root ?? requested;
+      await fulfillJson(route, 200, {
+        root: source.find((item) => (item as { uri?: string }).uri === root) ?? ORIGINAL,
+        replies: source.filter((item) => (item as { reply?: ReplyRef }).reply?.root === root),
+      });
       return;
     }
     if (method === "GET" && pathname === "/api/v1/instances/g1/posts") {
@@ -300,6 +326,27 @@ test.describe("group reply thread", () => {
 
     await expect(page.getByText("投稿を読み込めませんでした")).toBeVisible();
     await expect(page.getByRole("button", { name: "再読み込み" })).toBeVisible();
-    await expect(page.getByRole("dialog", { name: "返信" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "返信" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "返信" }).getByText("返信を読み込めませんでした")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "返信" }).getByRole("button", { name: "再試行" })).toBeVisible();
   });
+
+  for (const state of ["tentative", "archived", "left"]) {
+    test(`hides the composer for a ${state} space`, async ({ page }) => {
+      await useStoredSession(page, makeStoredSession());
+      const captured: ReplyCapture[] = [];
+      await mockReplies(page, {
+        items: [ORIGINAL],
+        captured,
+        instanceState: state,
+        canWrite: false,
+      });
+
+      await page.goto("/group/replies/?id=g1&post=p1");
+
+      const dialog = page.getByRole("dialog", { name: "返信" });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByLabel("返信を書く")).toHaveCount(0);
+    });
+  }
 });

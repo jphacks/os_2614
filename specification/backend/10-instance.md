@@ -73,12 +73,32 @@ at://{authority}/space/{spaceType}/{skey}/{authorDid}/{collection}/{rkey}
 
 ### 4.2 取得（P0）
 
-`GET /api/v1/instances/{spaceId}/posts?cursor=&limit=`
+`GET /api/v1/instances/{spaceId}/posts?cursor=&limit=&roots=1`
 
 - `read` のアクセス判定。新しい順。`jp.i32.chain.instance.post` と `jp.i32.chain.instance.media` を時系列で混ぜて返す
 - 各要素に投稿者のプロフィール要約、メディアの署名付き URL（§4.4）、moderation の表示指示（11 §4）を付ける
 - `mod_label = block` と論理削除済みのものは返さない（投稿者本人には `"hidden": "moderation"` として返す）
 - ブロック関係（どちらの向きでも）にある相手の投稿は返さない
+- `roots=1` を付けると、`reply` を持つ投稿を一覧から外す（返信ではない投稿と `jp.i32.chain.instance.media` だけを返す）。付けないときは返信を含めてすべて返す。party と group のタイムライン、party の写真グリッドは `roots=1` で取る
+- 各要素（`instance_post`）に `replyCount` を付ける。数えるのは、その投稿を `reply.root` に持つ投稿のうち、削除されていない・`mod_label = block` でない・閲覧者とブロック関係（どちらの向きでも）にない投稿者のもの。ページ内の投稿をまとめて 1 回の集計で数える（`records.reply_root` に index）。`roots` の有無にかかわらず付く。メディア record と、`GET /feed`（17）の要素では 0 のまま
+
+### 4.2.1 スレッド
+
+`GET /api/v1/instances/{spaceId}/thread?root=<at-uri>&cursor=&limit=`
+
+```json
+{ "root": { /* §4.2 と同じ形の投稿 1 件。replyCount 付き */ },
+  "replies": [ { /* §4.2 と同じ形。reply.root = root */ } ],
+  "cursor": "..." }
+```
+
+- `read` のアクセス判定（§5）。仮 party のメンバー、離脱済みのメンバー、archived の Space も読める。メンバー外は `403`
+- `replies` は古い順（作成時刻、同時刻は URI 順）。`limit` は既定 50、最大 200（それ以上は 200 にする）。続きがあるときだけ `cursor` を返し、次の呼び出しに渡す。cursor が不正なら `400`
+- 返信の返信も、同じ root のスレッドに平たく並べる（`reply.parent` で誰への返信かは分かる）
+- 除くもの: 削除済み、`mod_label = block`（投稿者本人には §4.2 と同じ `"hidden": "moderation"` で返す）、ブロック関係にある相手の投稿。除いた分だけ 1 ページの件数は `limit` より少なくなることがある
+- `root` に返信の URI を渡したときは、その返信の `reply.root` を root として扱う
+- `404 not_found`: `root` が空・存在しない・削除済み・別の Space の投稿・投稿ではない（media record）とき。root が `block` で閲覧者が投稿者でないときも同じ
+- 書き込みの可否は返さない。入力欄を出すかは `GET /instances` の `canWrite`（13 §2）で決める
 
 ### 4.3 削除
 
@@ -100,7 +120,10 @@ at://{authority}/space/{spaceType}/{skey}/{authorDid}/{collection}/{rkey}
 | 応答 | `201 { "id": "...", "width": 2048, "height": 1536 }` |
 
 - アップロード直後は未添付（`space_id = NULL`）。24 時間添付されなければ消す
-- `POST /api/v1/instances/{spaceId}/media {"mediaId": "...", "takenAt": "..."}`: Party の写真共有用。`jp.i32.chain.instance.media` record を作る（`write` の判定あり）
+- `POST /api/v1/instances/{spaceId}/media {"mediaId": "...", "takenAt": "..."}`: Party の写真共有用。`jp.i32.chain.instance.media` record を作る（`write` の判定あり）。応答は `{ "uri", "spaceId", "mediaId" }`
+  - 同じ（Space、投稿者、変換後ファイルの `sha256`）の record が削除されずに既にあれば、新しい record も `media.created` も作らず、既存の record の `uri` を `200` で返す（再送・再アップロードで同じ写真が二重に載らない）。新規は `201`。このとき `mediaId` は今回アップロードしたメディアの ID で、既存 record のものとは限らない。使われなかったメディアは未添付のまま 24 時間後に消える
+  - `takenAt` を省略したときは、`POST /media` で渡した `takenAt` を使う
+  - archived な Party への追加は §5 の例外だけで許す。それ以外の archived は `410 gone`
 - 配信は `GET /media/{id}?v=full|thumb&exp={unix}&sig={hmac}`。Capacitor の `<img>` はヘッダを付けられないため、署名付き URL にする
   - `sig = base64url(HMAC-SHA256(CHAIN_JWT_KEY, id|v|exp))`、有効期限 1 時間
   - アクセス判定は URL を発行する時点（投稿一覧を返す時）に行う。配信時は署名と期限だけを確認する
@@ -127,9 +150,15 @@ type AccessChecker interface {
 | グループ（active） | 09 §4 | 09 §4 |
 | Party tentative | メンバー | 不可 |
 | Party confirmed | メンバー（離脱済みを含む） | 未離脱のメンバー |
-| archived（グループ / Party） | メンバー（離脱済みを含む） | 不可（`410 gone`） |
+| archived（グループ / Party） | メンバー（離脱済みを含む） | 不可（`410 gone`）。ただし Party の写真共有だけは例外あり（下の注） |
 | deleted | 不可（`404`） | 不可（`404`） |
 
+- archived な Party の写真共有（`POST /instances/{spaceId}/media`）だけは、次の**すべて**を満たすとき `write` 不可でも許す。投稿・返信・Pin など他の `write` には適用しない（`Check` の結果は変えず、写真共有の経路だけで判定する）
+  - Space が Party で archived、`confirmed_at` と `ended_at` がある
+  - 現在時刻が `ended_at` から 24 時間以内（ちょうど 24 時間までは許可、超えたら `410 gone`）
+  - 呼び出し元が終了時に未離脱だったメンバー（`left_at` が無い）
+  - メディアの持ち主が呼び出し元で、`takenAt`（省略時は `POST /media` で渡した値）が `confirmed_at` 以上 `ended_at` 以下。`takenAt` がどちらにも無ければ許可しない
+  - 条件を満たさなければ元の `410 gone` を返す
 - 判定結果は `acc:{space}:{did}:{mode}` に、許可なら 60 秒、拒否なら 10 秒キャッシュする。メンバー変更・状態変更の時は該当キーを消す
 - 位置条件が関わる判定で、位置が古いために拒否する場合は `403 location_stale`、エリア外なら `403 not_in_geofence` を返す
 
@@ -178,7 +207,7 @@ draft「大事な情報は自動で Pin」。
 
 | event | 宛先 | data |
 | --- | --- | --- |
-| `post.created` | Space | 投稿 1 件（§4.2 と同じ形） |
+| `post.created` | Space | 投稿 1 件（§4.2 と同じ形）。返信は `reply` を持つ。クライアントは、返信をタイムラインに足さず（取り直しもせず）、`reply.root` の投稿の `replyCount` を +1 する。返信シートを開いている間は、`reply.root` が開いているスレッドの root のものをスレッドの末尾に足す |
 | `post.deleted` | Space | `uri` |
 | `media.created` | Space | メディア record 1 件 |
 | `pin.created` / `pin.deleted` | Space | Pin 1 件 / `uri` |
