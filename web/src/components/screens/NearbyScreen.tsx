@@ -155,7 +155,8 @@ export function NearbyScreen({
   const items = useMemo(() => {
     const list: Item[] = [];
     const nodes = [
-      ...layout.inner.map((node) => ({ node, fixed: true })),
+      // 回さないのは中心の自分だけ。+ やパーティーも周りと一緒に自分の周りを回る
+      ...layout.inner.map((node) => ({ node, fixed: node.id === model.me.id })),
       ...layout.outer.map((node) => ({ node, fixed: false })),
     ];
     nodes.forEach(({ node, fixed }, index) => {
@@ -165,7 +166,7 @@ export function NearbyScreen({
       list.push({ ...node, fixed, delay, bubble });
     });
     return list;
-  }, [layout, bubbles]);
+  }, [layout, bubbles, model.me.id]);
 
   const run = useCallback(
     async (id: string, kind: "join" | "leave") => {

@@ -43,6 +43,18 @@ function readSimilar(error: ApiError): SimilarGroup[] {
   return similar;
 }
 
+/** 400 の details.fields (項目 → 理由) を添えて、どの入力が弾かれたか分かるようにする。 */
+function describeError(error: ApiError): string {
+  const fields = error.details?.fields;
+  if (fields && typeof fields === "object") {
+    const reasons = Object.entries(fields).map(([key, value]) => `${key}: ${String(value)}`);
+    if (reasons.length > 0) {
+      return `${error.message} (${reasons.join(", ")})`;
+    }
+  }
+  return error.message;
+}
+
 export default function CreateGroupPage() {
   const { fix, error: locationError } = useLocation({
     intervalMs: LOCATION_INTERVAL_MS,
@@ -79,7 +91,7 @@ export default function CreateGroupPage() {
         if (result.error.status === 403 && result.error.code === "location_stale") {
           return { status: "location_stale" };
         }
-        return { status: "error", message: result.error.message };
+        return { status: "error", message: describeError(result.error) };
     }
   };
 
