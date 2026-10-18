@@ -15,7 +15,7 @@ Bluesky 賞の観点（ATProto の特長を活かしているか / つながり�
 | moderation が運営の一律判定だけで、利用者もコミュニティも選べない | F1 Space ごとの moderation 方針、外部ラベラーの購読 | 選べる・安心 |
 | すれ違い・フレンド・Space の中身がサーバーにしかなく、持ち出せない | F2 データのエクスポート、F3 の個人用 Space | 持ち運べる |
 | グループ / Party が CHAIN の中で閉じている | F3 Spaces 統合（他のアプリからも同じコミュニティを使える） | 持ち運べる・つながり |
-| CHAIN で生まれた関係が Bluesky に持ち出せない | F4 Bluesky へのつながりの持ち出し（フォロー、リスト、すれ違いフィード） | つながり・開放性 |
+| CHAIN で生まれた関係が Bluesky に持ち出せない | F4 Bluesky のつながりとの統合（フレンド＝相互フォロー、リスト、すれ違いフィード） | つながり・開放性 |
 | lexicon がリポジトリにも外部にも無く、他の開発者が使えない | F5 lexicon の公開 | 開放性 |
 | どのデータがどこにあるか利用者から見えない | F6 データの置き場所の表示、PDS の選択 | 選べる・安心 |
 
@@ -25,6 +25,7 @@ Bluesky 賞の観点（ATProto の特長を活かしているか / つながり�
 - Space 内の内容と moderation の結果は、Space の外（公開ラベラーなど）に出さない（03 §7.1）
 - Bluesky 側に何かを書くときは、**操作ごとに本人が選ぶ**。自動では書かない（17 §1 の `alsoBluesky` と同じ考え方）
 - 他人の関係（誰と誰がいっしょにいたか）を公開する操作は、**関係するすべての人の同意**を取る
+- 関係（フレンド）は Bluesky のフォローをそのまま使い、CHAIN 独自の関係の表を作らない。位置・beacon・Party の権限だけは CHAIN で会った裏付けのある相手に限る（§5.1、07 §1）
 
 ## 1. 一覧と実現可能性
 
@@ -37,7 +38,7 @@ Bluesky 賞の観点（ATProto の特長を活かしているか / つながり�
 | F3a | Spaces alpha でのデモ統合 | P2 | L（1.5〜3 週間） | 中〜低 | alpha は破壊的変更あり・バックアップ無し・終了時に PDS ごと消える。Go の SDK が無い |
 | F3b | Spaces 正式版での本統合 | P2（正式版後） | M（indigo が対応した場合） | 正式版次第 | bsky.social の対応状況（README Q4） |
 | F3c | 個人用 Space（フレンドなどの持ち出し） | P3 | M | 正式版次第 | 単一メンバーの Space の仕様が固まるか |
-| F4a | フレンド → Bluesky フォロー | P1 | S（1 日） | 高 | scope の追加で既存ユーザーの再ログインが要る |
+| F4a | フレンド＝Bluesky の相互フォロー（権限は会ったフレンドだけ） | P1 | M（backend 3〜4 日。web はほぼ変えない） | 高 | scope の追加で既存ユーザーの再ログインが要る。Jetstream の `app.bsky.graph.follow` の量（Q15） |
 | F4b | Party / グループ → Bluesky リスト・スターターパック | P2 | M（3 日） | 高 | 同意の取り方の UX |
 | F4c | すれ違いフィード（Bluesky のカスタムフィード） | P1 | M（3〜4 日） | 高 | Jetstream で `app.bsky.feed.post` を DID で絞る方法（§5.3.4） |
 | F5 | lexicon の公開 | P1 | S | 高 | CHAIN 用の did:plc アカウントと DNS の設定 |
@@ -86,6 +87,7 @@ CHAIN では、Space 内の投稿にラベルを付けるのは CHAIN（Jev）�
 
 - 確率を保存しておき、扱いは**読むたびに計算する**。方針を変えたとき、Jev を呼び直さずに過去の投稿にも効く
 - 投稿を拒否する（`reject`）かどうかは、書く時点の下限と Space の方針で決める。閲覧者の好みは表示だけに効く
+- 投稿者・閲覧者・Space のそれぞれが、危険性の確認について何を選べて何を選べないかは §2.15 にまとめる
 
 ### 2.2 カテゴリ
 
@@ -267,6 +269,8 @@ ATProto の「モデレーションを選んで重ねる」に対応する。**�
 | `public_posts` | `mod_scores_json TEXT`、`mod_version INTEGER` | 公開投稿も同じ形 |
 | `user_settings` | `mod_prefs_json TEXT NOT NULL DEFAULT '{}'`、`party_mod_prefs_json TEXT`、`labelers_json TEXT NOT NULL DEFAULT '[]'` | §2.6、§2.4、§2.11。`warn_display` は削除 |
 | `group_votes` | `kind` の CHECK に `'mod_policy'` を追加、`payload_json TEXT` | §2.4（P2） |
+| `records` | `self_labels_json TEXT NOT NULL DEFAULT '[]'` | §2.15.3。投稿者が自分で付けた注意 |
+| `public_posts` | `self_labels_json TEXT NOT NULL DEFAULT '[]'` | 同上。PDS の record の `labels` の写し |
 
 04 §5 のとおり migration は使わないので、schema.sql と 04 を直して作り直す。
 
@@ -277,6 +281,54 @@ ATProto の「モデレーションを選んで重ねる」に対応する。**�
 - 方針の変更が過去の投稿にも効く（Jev を呼ばない。`moderation.Fake` の呼び出し回数で確かめる）
 - `reject` の Space には投稿できず、別の Space には同じ本文で投稿できる（`spaceIds` が複数のときは、1 つでも reject なら全体を拒否する。10 §4.1 の write 判定と同じ扱い）
 - 非メンバーが open グループの方針を読める / closed グループの方針は読めない
+- 自分で付けた注意（§2.15.3）は、Space の方針と閲覧者の好みが `allow` でも `warn` になる。`hide` の方針・好みのときは `hide` のまま（緩める方向には効かない）
+- 同意を撤回した人は Space に投稿できず（`403 consent_required`）、閲覧と公開投稿はできる
+- 投稿の作成の応答に、その Space での表示の扱い（§2.15.2）が入る
+
+### 2.15 危険性の確認で利用者が選べること
+
+「検閲を切れるようにすべき」（11 §1）と「安心して使える」を両立させるため、**判定そのもの（Jev に聞くこと）は止められないが、判定の結果をどう扱うかは選べる**、という線を引く。
+ATProto の「ラベルを付けることと、扱いを決めることを分ける」（§2.1）を、投稿者・閲覧者・コミュニティのそれぞれに当てはめたもの。
+
+#### 2.15.1 一覧
+
+| 何を | 投稿者 | 閲覧者 | Space（owner / Party の合成） | 根拠 |
+| --- | --- | --- | --- | --- |
+| Space 内の投稿を判定にかけるか | **選べない**。判定への同意が無ければ Space に投稿できない | — | 選べない | 02 §8。下限（block）の保証が崩れるため |
+| 判定への同意 | 同意する / 撤回する（設定 →「投稿内容のチェック」）。撤回しても閲覧と公開投稿はできる | — | — | 02 §8 |
+| 公開投稿を判定にかけるか | 選べない。同意の有無にかかわらず判定する | — | — | 公開されたデータで、Jetstream 経由の取り込み（11 §2）でも判定するため |
+| 下限のカテゴリ（§2.2） | 選べない | 選べない（常に返さない） | 選べない（緩められない） | 02 §8 |
+| 選べるカテゴリの扱い | 自分で注意を付けられる（§2.15.3）。判定を緩めることはできない | `allow` / `warn` / `hide`（§2.6） | `allow` / `warn` / `hide` / `reject`（§2.3〜§2.5） | §2.1 |
+| 判定の結果を投稿前に知る | 投稿の応答で、各 Space での扱いを受け取る（§2.15.2） | — | — | — |
+| 判定への異議 | 通報（11 §6）と同じ一覧に「判定の見直し」として出す（P2） | — | owner が見直しを確認できる（P2） | — |
+
+- 閲覧者が選べるカテゴリをすべて `allow` にすれば、下限以外は全部そのまま見られる。これが「検閲を切る」に当たる。既定は「標準」（§2.5）
+- 判定を止める設定（投稿者ごと・Space ごとに Jev を呼ばない設定）は作らない。理由は 02 §8 と同じで、下限の保証が崩れるため
+
+#### 2.15.2 投稿者に扱いを返す
+
+投稿者が「自分の投稿が見る人にどう出るか」を知らないまま `warn` / `hide` になるのを避ける。
+
+- `POST /api/v1/posts`（10 §4.1）の応答の各 record に、その Space の方針で決まった扱いを入れる。閲覧者の好みは人ごとに違うので含めない
+
+```json
+{ "records": [ { "uri": "at://...", "spaceId": "0192...", "moderation": { "display": "blur", "labels": ["violence"], "source": "space" } } ] }
+```
+
+- クライアントは `display` が `blur` / `hide` のとき、投稿の直後に「このグループの設定でぼかして表示されます」と出し、その場で削除・書き直しができるようにする
+- 判定が `pending`（11 §3）のときは `moderation` を `null` にし、判定が出た後に変わったことは通知しない（下限に当たって非表示になったときの `moderation.hidden` だけは今までどおり送る）
+- 投稿前の「試しに判定する」API は作らない。Jev の呼び出しが 2 回になり、下限の語を探る使い方もできてしまうため
+
+#### 2.15.3 投稿者が自分で付ける注意（self-label）
+
+ATProto の self-label（`com.atproto.label.defs#selfLabels`）に合わせ、投稿者が自分で「この投稿は○○を含む」と付けられるようにする。判定が見落としたものを投稿者が補う向きにだけ効き、判定を緩めることはできない。
+
+- 付けられる値: 選べるカテゴリ（§2.2）のうち `sexual`、`violence`、`self_harm`、`spoiler`。複数可
+- 投稿の作成の要求（`POST /api/v1/posts`、`POST /api/v1/feed/posts`）に `selfLabels: ["spoiler"]` を足す
+- 表示の決め方（§2.6）の 3 の前に、「自分で付けた値は、そのカテゴリの判定が当たったとみなし、扱いが `allow` なら `warn` に上げる」を足す。`hide` の方針・好みならそのまま `hide`
+- 公開投稿では、PDS に書く `jp.i32.chain.feed.post` の `labels` と、`alsoBluesky` のときの `app.bsky.feed.post` の `labels` に `com.atproto.label.defs#selfLabels` として書く。Bluesky のアプリでも同じ注意が出る
+- Space 内の投稿では `records.self_labels_json` に持ち、§2.8 の形で返すときは `src` を投稿者の DID にする
+- `jp.i32.chain.feed.post` の lexicon（§6.1）に `labels`（`union`、`com.atproto.label.defs#selfLabels`）を足してから公開する
 
 ## 3. F2 データのエクスポート
 
@@ -294,8 +346,8 @@ ATProto の「モデレーションを選んで重ねる」に対応する。**�
 | 設定・同意 | `user_settings` の全列（同意の版と時刻を含む） | `chain/settings.json` |
 | プロフィール | `profiles` の写し | `chain/profile.json` |
 | すれ違い | `visibility = revealed` のものだけ。相手の DID と handle、成立日時、回数。**pending・hidden は出さない**（相手がまだ公開していない、または非公開にしたすれ違いを漏らさないため）。ブロック関係の相手は出さない | `chain/encounters.json` |
-| フレンド | 相手の DID と handle、成立日時、経路（`via`） | `chain/friends.json` |
-| フレンド申請・招待 | 自分が出した / 受けた申請の状態。招待コードそのものは出さない | `chain/friend_requests.json` |
+| フレンド | 相互フォローの相手の DID と handle、相互フォローになった日時、会ったフレンドか、会った裏付けの経路（`via`）。フォローの record そのものは PDS のエクスポートが正 | `chain/friends.json` |
+| 申請の拒否・招待 | 受信箱で拒否した相手（`follow_dismissals`）、使った招待の相手と日時。招待コードそのものは出さない | `chain/friend_requests.json` |
 | 位置共有 | 相手ごとの精度の設定、エリア（自分が作ったもの） | `chain/location_shares.json`、`chain/areas.json` |
 | 位置の履歴 | **保存していない**（Redis の TTL で消える）。その旨を README に書く | — |
 | Space への参加 | Space の ID・種類・名前・役割・参加 / 離脱日時・状態 | `chain/spaces.json` |
@@ -477,16 +529,16 @@ Spaces では、メンバーは CHAIN 以外のアプリからも Space に書�
 
 ### 4.7 個人用 Space（F3c、P3）
 
-いまサーバーにしか無いフレンドなどを、利用者の手元に移すための Space。alpha の告知でも、単一メンバーの Space（設定や下書き）が用途に挙がっている。
+いまサーバーにしか無い関係の記録を、利用者の手元に移すための Space。フレンド（フォロー）はもともと利用者の PDS にあるので対象外。alpha の告知でも、単一メンバーの Space（設定や下書き）が用途に挙がっている。
 
 | 項目 | 内容 |
 | --- | --- |
 | type | `jp.i32.chain.space.personal`。メンバーは本人だけ |
-| record | `jp.i32.chain.graph.friend`（`subject`: 相手の DID、`createdAt`、`via`）、`jp.i32.chain.graph.encounterSummary`（相手の DID、成立日、回数。revealed のみ） |
+| record | `jp.i32.chain.graph.met`（`subject`: 相手の DID、`via`、`createdAt`。会った裏付け、07 §2.4）、`jp.i32.chain.graph.encounterSummary`（相手の DID、成立日、回数。revealed のみ） |
 | 正 | CHAIN の SQLite を正とし、個人用 Space には写しを書く。利用者が CHAIN を離れても、自分の関係の記録を持っていける |
 | 書かないもの | 位置、pending・hidden のすれ違い、beacon token |
 
-フレンドは双方の合意で成り立つが、写しはそれぞれの個人用 Space に自分の側だけを書く。公開の repo には書かない（「検索はなし」（draft）とフレンド一覧を他人に見せないことを守るため）。
+会った裏付けは双方のものだが、写しはそれぞれの個人用 Space に自分の側だけを書く。公開の repo には書かない（「誰と実際に会ったか」はフォローと違って公開しないため）。
 
 ### 4.8 データモデルの変更
 
@@ -512,20 +564,26 @@ Spaces では、メンバーは CHAIN 以外のアプリからも Space に書�
 - エリアを出た後、資格の期限を過ぎると読めなくなる
 - `local` と `pds` が混ざった Space の一覧が時系列で正しく並ぶ
 
-## 5. F4 Bluesky へつながりを持ち出す
+## 5. F4 Bluesky のつながりと統合する
 
-### 5.1 フレンド → Bluesky フォロー（F4a、P1）
+### 5.1 フレンド＝Bluesky の相互フォロー（F4a、P1）
 
-- フレンドが成立した画面と、フレンドのプロフィール画面に「Bluesky でもフォローする」ボタンを出す。**押した人の側だけ**フォローする（相手のフォローは相手が決める）
-- 書く record: `app.bsky.graph.follow`（`subject`: 相手の DID、`createdAt`）。rkey は TID
-- 既にフォローしているかは、公開の AppView の `app.bsky.graph.getRelationships`（`actor` = 自分、`others` = 相手）で確かめ、ボタンを「フォロー中」にする。結果は Redis に 5 分キャッシュする
-- フォローを外す操作は CHAIN では提供しない（Bluesky のアプリで行う）。CHAIN が書いたフォローの URI は `friendships` に残さない（Bluesky 側で消されても困らないように、毎回 `getRelationships` を正とする）
-- scope に `repo:app.bsky.graph.follow?action=create` を足す（03 §2.1）
+CHAIN 独自のフレンドの表をやめ、Bluesky のフォロー（`app.bsky.graph.follow`）をそのまま関係として使う。詳細は 07 §1〜§3・§5。
 
-| メソッド | パス | 内容 |
-| --- | --- | --- |
-| GET | `/api/v1/friends/{did}/bsky` | `{"following": true, "followedBy": false}` |
-| POST | `/api/v1/friends/{did}/bsky-follow` | フォローを書く。フレンドでなければ `404`。既にフォロー済みなら `200` で何もしない |
+| 項目 | 決めごと |
+| --- | --- |
+| フレンド | CHAIN の利用者どうしの相互フォロー。フレンド一覧に出る |
+| 会ったフレンド | フレンドのうち、CHAIN で会った裏付け（revealed な encounter、同じ Space、招待コード）がある組。位置共有・beacon・Party の自動作成はこの組だけ（`friendships`） |
+| 申請・承認 | 申請はフォローを書くこと、承認はフォローを返すこと。拒否は CHAIN の中で受信箱から消すだけ |
+| フレンドの削除 | 自分のフォローを消す |
+| 取り込み | Jetstream に `app.bsky.graph.follow` と `app.bsky.graph.block` を足す。ログイン時に `listRecords` で読み直す |
+| Bluesky のブロック | CHAIN のブロックと同じ効果を持たせる。CHAIN のブロックは Bluesky に書かない |
+| scope | `repo:app.bsky.graph.follow?action=create&action=delete`（03 §2.1） |
+
+- **フロントエンドの API の形は変えない**。`/api/v1/friends`、`/friends/requests`、`/friends/invites` の要求と応答はいまのまま。`GET /friends` に `met` と `via` を足すだけ
+- 画面で変えるのは文言だけ: 申請・承認・招待コードの作成の近くに「Bluesky でもフォローします（公開されます）」を出す
+- Bluesky のアプリで相互フォローになった相手もフレンドとして一覧に出る。会った裏付けが無い間は位置を共有できない（`PUT .../location-share` は `403`）
+- 「Bluesky でもフォローする」ボタンと `/friends/{did}/bsky`・`/friends/{did}/bsky-follow` は作らない（申請そのものがフォローになったため）
 
 ### 5.2 Party / グループ → Bluesky リスト・スターターパック（F4b、P2）
 
@@ -604,7 +662,7 @@ CHAIN の外（Bluesky のアプリ）で、CHAIN の現実のつながりが役
 
 | 対象 | 条件 |
 | --- | --- |
-| フレンド | `friendships` |
+| 会ったフレンド | `friendships`（07 §2.4） |
 | すれ違った人 | 直近 30 日に `revealed` になった encounter の相手 |
 | いまの Party | V が未離脱で、confirmed の Party のメンバー |
 
@@ -613,7 +671,7 @@ CHAIN の外（Bluesky のアプリ）で、CHAIN の現実のつながりが役
 | 値 | 意味 |
 | --- | --- |
 | `off` | どのすれ違いフィードにも出ない |
-| `friends`（既定） | フレンドのフィードにだけ出る |
+| `friends`（既定） | 会ったフレンドのフィードにだけ出る |
 | `all` | すれ違った人・Party のメンバーのフィードにも出る |
 
 - 既定を `friends` にするのは、すれ違っただけの相手の Bluesky での投稿が、相手の知らないうちに届き続けるのを避けるため。CHAIN の中で既に分かっている関係しか使わないので、V が新しく知ることは無いが、相手の期待に合わせて控えめにする
@@ -675,7 +733,7 @@ CREATE INDEX bsky_posts_author ON bsky_posts(author_did, created_at);
 | `jp.i32.chain.instance.media.json` | record | 同上 |
 | `jp.i32.chain.instance.pin.json` | record | 同上 |
 | `jp.i32.chain.instance.modPolicy.json` | record | 同上 |
-| `jp.i32.chain.graph.friend.json`、`jp.i32.chain.graph.encounterSummary.json` | record | F3c と合わせる |
+| `jp.i32.chain.graph.met.json`、`jp.i32.chain.graph.encounterSummary.json` | record | F3c と合わせる |
 | `jp.i32.chain.space.group.json`、`jp.i32.chain.space.party.json`、`jp.i32.chain.space.personal.json` | space type | Spaces の正式版で space type の書き方が決まってから |
 
 - 書き込みと Jetstream の取り込みの検証は、この JSON を indigo の lexicon 検証に読ませて行う（03 §6）。Go の構造体と JSON がずれないように、テストで JSON から作った検証器に既存のテスト用の値を通す
@@ -698,7 +756,8 @@ CREATE INDEX bsky_posts_author ON bsky_posts(author_did, created_at);
 | --- | --- | --- | --- | --- |
 | 公開投稿・プロフィール | あなたの PDS（`{pds_url}`） | 誰でも | 消すまで | PDS のエクスポート |
 | グループ / Party の投稿・写真 | CHAIN のサーバー（Spaces 統合後は、対応する PDS ならあなたの PDS） | その Space のメンバーと、CHAIN の運営者 | archive 後も残る（13 §2） | F2 |
-| すれ違い・フレンド | CHAIN のサーバー | 本人と相手（公開設定による）、運営者 | 13 §5 | F2 |
+| フレンド（フォロー） | あなたの PDS（`app.bsky.graph.follow`） | 誰でも | 消すまで | PDS のエクスポート |
+| すれ違い・会った裏付け | CHAIN のサーバー | 本人と相手（公開設定による）、運営者 | 13 §5 | F2 |
 | 位置 | CHAIN のサーバー（一時的なもの。Redis） | 位置共有の相手、運営者 | 数分〜数時間で自動で消える（04） | 持ち出せない（保存していない） |
 | 投稿の本文（判定のため） | 外部（NanoGPT） | — | 外部の保存の扱い（L4） | — |
 | 予定のタイトル | CHAIN のサーバー | 運営者 | 今日と明日の分だけ | F2 |
@@ -719,7 +778,7 @@ CREATE INDEX bsky_posts_author ON bsky_posts(author_did, created_at);
 | --- | --- | --- |
 | 1 | 好きな PDS でログインし、自分のデータの置き場所を確かめる | F6 |
 | 2 | 教室のグループを作り、「厳しい」の方針を選ぶ。Party ではいちばん厳しい人に自動で合わせる | F1a |
-| 3 | すれ違った人とフレンドになり、Bluesky でもフォローする。Bluesky のアプリで「CHAIN: 近くの人」フィードを開く | F4a、F4c |
+| 3 | すれ違った人にフレンド申請すると、Bluesky のフォローになる。Bluesky で相互フォローだけの相手には位置が出ないことを見せる。Bluesky のアプリで「CHAIN: 近くの人」フィードを開く | F4a、F4c |
 | 4 | 全部をエクスポートして持ち出せる | F2 |
 | 5 | Spaces alpha の PDS のアカウントで投稿し、自分の PDS の Space の repo に入っていること、エリアを出ると他のアプリからも読めなくなることを見せる。正式版での移行の道筋を説明する | F3a |
 
@@ -727,18 +786,20 @@ CREATE INDEX bsky_posts_author ON bsky_posts(author_did, created_at);
 
 | 仕様書 | 変更 |
 | --- | --- |
-| README | 文書一覧に 19 を足す（済）。優先度の表に F1〜F6 を足す。未決事項に Q11〜Q14（§10）を足す |
-| 02 | エラーコード `429 export_rate_limited` を足す。§8 の同意の文言に、カテゴリ別判定（§2.7）を反映する |
-| 03 | §2.1 の scope に `repo:app.bsky.graph.follow?action=create`（F4a）、`repo:app.bsky.graph.list` / `listitem` / `starterpack`（F4b）、`space:`（F3a、設定で切り替え）を足す。§5 に 2 本目の Jetstream（§5.3.4）を足す。§6 の lexicon の表に `instance.modPolicy`、`graph.*`、`space.personal` を足す。§7.2 を §4 の段階に合わせる |
-| 04 | §2.13・§3.4・§4.8・§5.2.2・§5.3.3 の表と列。Redis のキー `lbl:*`、`bskyfeed:aud:*` |
-| 09 | §2 の作成の要求に `moderation`（プリセット）を足す。§5 の nearby の詳細に方針の要約を足す |
-| 10 | §4.1 の投稿の作成で Space の `reject` を判定する。§4.2 の一覧の `moderation` の形（§2.10） |
-| 11 | §1 の 3 段階（ok / warn / block）を、下限＋カテゴリ＋扱いに置き換える。§4 の表示の指示、§5.2・§5.3 の質問としきい値を §2.7 に合わせる |
-| 12 | 通知の種別 `space.policy`、`space.bsky_list`、`export.ready` |
-| 13 | §5 のアカウント削除で、エクスポートのファイルと `bsky_posts` を消す。削除の確認画面にエクスポートの導線 |
-| 14 | §2.10・§3.4・§5.1・§5.2.2・§5.3.5・§7.1 のエンドポイント。`/xrpc/app.bsky.feed.*`、`/xrpc/com.atproto.label.*`、`/internal/spaces/*` |
-| 17 | §3 のフィードの `moderation` の形を §2.10 に合わせる。外部ラベラーの適用（§2.11）を `FeedService` に足す |
-| 01 | §2 のワーカーに `export.Builder`、2 本目の `jetstream.Consumer`（`app.bsky.feed.post`）、spaces-bridge（任意の別プロセス）を足す |
+| README | 文書一覧に 19 を足す（済）。優先度の表に F1〜F6 を足す。未決事項に Q11〜Q15（§10）を足す |
+| 02 | エラーコード `429 export_rate_limited` を足す。§8 の同意の文言に、カテゴリ別判定（§2.7）を反映する。§8 の表に「公開投稿は同意の有無にかかわらず判定する」（§2.15.1）を足す |
+| 03 | §2.1 の scope に `repo:app.bsky.graph.follow?action=create&action=delete`（F4a）、`repo:app.bsky.graph.list` / `listitem` / `starterpack`（F4b）、`space:`（F3a、設定で切り替え）を足す。§5 の購読に `app.bsky.graph.follow`・`app.bsky.graph.block` を足す（07 §2.5）。§5 に 2 本目の Jetstream（§5.3.4）を足す。§6 の lexicon の表に `instance.modPolicy`、`graph.*`、`space.personal` を足す。§7.2 を §4 の段階に合わせる |
+| 04 | §2.13・§3.4・§4.8・§5.2.2・§5.3.3 の表と列。07 §5（`follows`、`follow_dismissals`、`friend_requests` の削除、`friend_invites`・`blocks` の列）。Redis のキー `lbl:*`、`bskyfeed:aud:*` |
+| 06 | encounter が revealed / hidden になった時に `friend.Reconciler`（07 §2.4）を呼ぶ |
+| 08 | 「フレンド」を「会ったフレンド」（07 §1）と読み替える旨を §1 に書く。判定に使う表（`friendships`）は変わらない |
+| 09 | Space に入った時に `friend.Reconciler` を呼ぶ。§2 の作成の要求に `moderation`（プリセット）を足す。§5 の nearby の詳細に方針の要約を足す |
+| 10 | §4.1 の投稿の作成で Space の `reject` を判定する。§4.1 の要求に `selfLabels`、応答に Space ごとの `moderation`（§2.15.2・§2.15.3）を足す。§4.2 の一覧の `moderation` の形（§2.10） |
+| 11 | §1 の 3 段階（ok / warn / block）を、下限＋カテゴリ＋扱いに置き換える。§4 の表示の指示、§5.2・§5.3 の質問としきい値を §2.7 に合わせる。§1 の「ユーザーが変えられるか」を §2.15.1 の一覧に置き換える |
+| 12 | 通知の種別 `space.policy`、`space.bsky_list`、`export.ready`。`friend.request` は受信箱に出るフォローを受けた時に送る（07 §2.2） |
+| 13 | §1.2 の関係に「相互フォロー」を足し、「申請中・申請を受けている相手」を 07 §2.2 の受信箱・送信箱の相手に置き換える。§4 のブロックに Bluesky のブロックの取り込みを足す（07 §2.5）。§5 のアカウント削除で、エクスポートのファイルと `bsky_posts` を消す。削除の確認画面にエクスポートの導線 |
+| 14 | §2.10・§3.4・§5.2.2・§5.3.5・§7.1 のエンドポイント。`/xrpc/app.bsky.feed.*`、`/xrpc/com.atproto.label.*`、`/internal/spaces/*` |
+| 17 | §3 のフィードの `moderation` の形を §2.10 に合わせる。外部ラベラーの適用（§2.11）を `FeedService` に足す。§2.1 の要求に `selfLabels`、PDS に書く record に `labels`（§2.15.3） |
+| 01 | §2 のワーカーに `friend.Reconciler`、`export.Builder`、2 本目の `jetstream.Consumer`（`app.bsky.feed.post`）、spaces-bridge（任意の別プロセス）を足す |
 
 ## 10. 未決事項
 
@@ -748,3 +809,4 @@ CREATE INDEX bsky_posts_author ON bsky_posts(author_did, created_at);
 | Q12 | Jetstream の `wantedDids` の上限と、接続中の絞り込みの変更 | DID で絞った 2 本目の接続 | 実装の着手時に Jetstream のドキュメントとソースで確かめる。上限を超えたら、`app.bsky.feed.post` 全体を受けて `users` で捨てる方式に切り替える |
 | Q13 | Spaces alpha の XRPC 名、scope の書き方、DID ドキュメントの鍵の ID、PDS が Spaces に対応しているかの判定方法 | proposal 0016 に合わせる | F3a の着手時に proposal と SDK で確かめ、§4.3・§4.5 を直す |
 | Q14 | すれ違いフィードの既定（`friends`）が厳しすぎないか | `friends` | 試用者に聞いて判断する |
+| Q15 | Jetstream で `app.bsky.graph.follow` を受ける量と、フォローの多い人の `listRecords` の時間 | 全体を受けて `users` で捨てる。`listRecords` はログイン後に裏で読む | 実装の着手時に Jetstream の流量を測る。多すぎれば Q12 と同じく DID で絞る |
