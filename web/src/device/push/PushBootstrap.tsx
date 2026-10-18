@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { destinationOf } from "@/components/feature/notification/destination";
 import { isAndroid } from "./index";
 
 /**
@@ -16,25 +17,10 @@ export function PushBootstrap() {
     }
     void import("./native").then(({ installNativePush }) => {
       installNativePush((data) => {
-        router.push(destinationOf(data));
+        router.push(destinationOf(data.type ?? "", data));
       });
     });
   }, [router]);
   return null;
 }
 
-/** 通知 data から開く画面を決める（12 §4）。 */
-export function destinationOf(data: Record<string, string>): string {
-  switch (data.type) {
-    case "friend.request":
-      return "/friends/requests";
-    case "party.confirmed":
-      return "/party";
-    case "post.new":
-    case "group.nearby":
-    case "group.invited":
-      return data.spaceId ? `/group?id=${encodeURIComponent(data.spaceId)}` : "/notifications";
-    default:
-      return "/notifications";
-  }
-}

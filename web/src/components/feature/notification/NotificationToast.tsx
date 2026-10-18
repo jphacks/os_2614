@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { destinationOf } from "@/device/push/PushBootstrap";
+import { destinationOf } from "./destination";
 import { useRealtimeEvent } from "@/realtime/provider";
 import { Icon } from "@/components/ui/Icon";
 import styles from "./NotificationToast.module.css";
@@ -16,6 +16,9 @@ const TITLES: Record<string, string> = {
   "group.nearby": "近くのグループ",
   "group.invited": "グループへの招待",
   "group.suggested": "グループの提案",
+  "group.auto_joined": "グループに参加しました",
+  "group.vote_passed": "投票が可決されました",
+  "group.invite_approval": "招待の承認",
   "post.new": "新しい投稿",
   "moderation.hidden": "投稿のお知らせ",
 };
@@ -47,13 +50,12 @@ export function NotificationToast() {
       return;
     }
     const data = (n.data ?? {}) as Record<string, unknown>;
-    const spaceId = typeof data.spaceId === "string" ? data.spaceId : "";
     dismiss();
     setToast({
       id: n.id,
       title: TITLES[n.type] ?? "CHAIN",
       body: typeof data.text === "string" ? data.text : "",
-      href: destinationOf({ type: n.type, spaceId }),
+      href: destinationOf(n.type, data),
     });
     timer.current = setTimeout(dismiss, VISIBLE_MS);
   });

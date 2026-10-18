@@ -148,6 +148,8 @@ export function buildNearbyModel(input: {
   party: Party | null;
   groups: GroupNearby | null;
   groupAreas: ReadonlyMap<string, GroupArea>;
+  /** 自分が入っているグループの id。near には isMember が無いのでこれで補う。 */
+  joinedGroupIds?: ReadonlySet<string>;
   /**
    * 直近に BLE で見えたフレンドの DID。GPS の位置より優先して自分に接して並べる
    * (屋内や近距離では GPS の誤差の方が実際の距離より大きい)。
@@ -307,7 +309,7 @@ export function buildNearbyModel(input: {
           name: group.name,
           tone: groupTone(group.id),
           memberCount: group.memberCount,
-          isMember: group.isMember,
+          isMember: group.isMember || (input.joinedGroupIds?.has(group.id) ?? false),
           inside: true,
           detail: "いまいるエリア",
         },
@@ -332,7 +334,7 @@ export function buildNearbyModel(input: {
           name: group.name,
           tone: groupTone(group.id),
           memberCount: group.memberCount,
-          isMember: false,
+          isMember: input.joinedGroupIds?.has(group.id) ?? false,
           inside: false,
           detail: group.distanceBucket || "近く",
         },

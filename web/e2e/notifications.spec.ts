@@ -149,6 +149,8 @@ test.describe("notifications", () => {
     await page.getByText("フレンド申請が届きました").click();
 
     await expect.poll(() => readBody).toEqual({ ids: ["n1"] });
+    // 通知の内容に応じた画面へ遷移する。
+    await expect(page).toHaveURL(/\/friends\/requests\/$/);
     // ブラウザは Android ではないので端末登録をしてはいけない。
     expect(deviceCalls).toBe(0);
   });
