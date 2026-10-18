@@ -457,15 +457,16 @@ function toModeration(dto: Maybe<ModerationInfoDTO>): PostModeration | undefined
 /** InstancePost → Post。moderation の表示指示 (11 §4) はそのまま保持する。 */
 export function toPost(dto: Maybe<PostDTO>): Post {
   const moderation = toModeration(dto?.moderation);
-	return {
-		id: dto?.uri ?? "",
-		system: dto?.system === true,
+  return {
+    id: dto?.uri ?? "",
+    system: dto?.system === true,
     author: dto?.author ? toUser(dto.author) : emptyUser(),
     body: dto?.text ?? "",
     format: oneOf(dto?.format, POST_FORMATS, "plain"),
     createdAt: dto?.createdAt ?? "",
+    ...(dto?.takenAt ? { takenAt: dto.takenAt } : {}),
     attachments: (dto?.media ?? []).map(toMedia),
-    replyCount: 0,
+    replyCount: num(dto?.replyCount),
     likeCount: 0,
     likedByMe: false,
     // Pin は Space の Pin 一覧 (GET /instances/{spaceId}/pins, 10 §6) が正。
@@ -484,6 +485,7 @@ export function toReply(dto: Maybe<PostDTO>): Reply {
     createdAt: dto?.createdAt ?? "",
     likeCount: 0,
     likedByMe: false,
+    ...(dto?.reply ? { root: dto.reply.root, parent: dto.reply.parent } : {}),
   };
 }
 
@@ -544,6 +546,8 @@ export function toMemory(dto: Maybe<MemoryDTO>): Memory {
     name: dto?.name ?? "",
     from: dto?.from ?? "",
     until: dto?.until ?? "",
+    ...(dto?.confirmedAt ? { confirmedAt: dto.confirmedAt } : {}),
+    ...(dto?.endedAt ? { endedAt: dto.endedAt } : {}),
     memberCount: num(dto?.memberCount),
     mediaCount: num(dto?.mediaCount),
     cover: dto?.cover

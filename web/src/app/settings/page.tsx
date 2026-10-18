@@ -23,6 +23,9 @@ import { useLocation } from "@/device/proximity/hooks";
 import type { Area, Settings } from "@/domain/types";
 import type { AreaDraft, AreaMutationResult } from "@/components/feature/settings";
 import { SettingsScreen, type AccountDeleteResult } from "@/components/screens";
+import { ChainPhotos } from "@/device/photos";
+import { consumePhotoPermissionNotice, usePhotoSettings } from "@/device/photos/settings";
+import { useState } from "react";
 
 const LOCATION_INTERVAL_MS = 5_000;
 
@@ -39,6 +42,12 @@ function toMutation(result: ResourceResult<unknown>): AreaMutationResult {
 }
 
 export default function SettingsPage() {
+  const [photoSettings, setPhotoSettings] = usePhotoSettings();
+  const [photoPermissionNotice, setPhotoPermissionNotice] = useState<string | null>(() =>
+    consumePhotoPermissionNotice()
+      ? "写真の権限が無くなったため自動共有をオフにしました"
+      : null,
+  );
   const { state, reload } = useResource<Me>(
     (signal) => getJson<Me>("/me", { signal }),
     [],
@@ -103,6 +112,22 @@ export default function SettingsPage() {
     }
   };
 
+  const toggleAutoShare = async (enabled: boolean) => {
+    setPhotoPermissionNotice(null);
+    if (!enabled) {
+      setPhotoSettings({ ...photoSettings, autoShare: false });
+      return;
+    }
+    // 説明と同意は SettingsScreen の「許可してオン」で済んでいるため、ここでは権限要求だけ行う。
+    const permission = await ChainPhotos.requestPermissions();
+    if (permission.photos !== "granted") {
+      setPhotoSettings({ ...photoSettings, autoShare: false });
+      setPhotoPermissionNotice("写真へのアクセスが許可されなかったため、自動共有をオフにしました。");
+      return;
+    }
+    setPhotoSettings({ ...photoSettings, autoShare: true });
+  };
+
   return (
     <SettingsScreen
       state={save.state}
@@ -124,6 +149,12 @@ export default function SettingsPage() {
         onDelete: deleteArea,
       }}
       onDeleteAccount={deleteAccount}
+      photoSettings={photoSettings}
+      photoPermissionNotice={photoPermissionNotice}
+      onToggleAutoShare={(enabled) => void toggleAutoShare(enabled)}
+      onToggleSaveToDevice={(saveToDevice) =>
+        setPhotoSettings({ ...photoSettings, saveToDevice })
+      }
     />
   );
 }

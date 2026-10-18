@@ -155,6 +155,14 @@ export type InstancePost = {
   hidden?: string;
   takenAt?: RFC3339;
   createdAt: RFC3339;
+  replyCount?: number;
+};
+
+/** GET /instances/{spaceId}/thread (10 §4.2.1)。 */
+export type ThreadResponse = {
+  root: InstancePost;
+  replies: InstancePost[];
+  cursor?: string;
 };
 
 /** GET /instances の 1 件（controller.instanceItem、13 §2）。 */
@@ -409,6 +417,8 @@ export type Memory = {
   name: string;
   from: RFC3339;
   until: RFC3339;
+  confirmedAt?: RFC3339;
+  endedAt?: RFC3339;
   memberCount: number;
   mediaCount: number;
   cover?: MemoryCover;

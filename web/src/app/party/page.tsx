@@ -5,7 +5,7 @@
 // `party.updated` (10 §7.3) はキャッシュに溜まり、ここで取得結果へ重ねて反映する。
 
 import { useAuth } from "@/auth";
-import { useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   getJson,
@@ -26,6 +26,9 @@ import {
 } from "@/realtime/provider";
 import { useRealtimeCache } from "@/realtime/store";
 import { PartyScreen, type PartyActionResult } from "@/components/screens/PartyScreen";
+import { usePhotoSettings } from "@/device/photos/settings";
+import { usePartyPhotoDownload, type DownloadableMedia } from "@/device/photos/download";
+import { usePhotoShare } from "@/components/layout/PhotoShareDriver";
 
 function classify(result: ResourceResult<unknown>): PartyActionResult {
   return result.status === "ok" ? { status: "ok" } : { status: result.status };
@@ -36,7 +39,7 @@ function withRealtimeUpdate(party: Party, update: PartyUpdatedData): Party {
   const present = new Set(update.present);
   return {
     ...party,
-    name: update.name || party.name,
+    name: update.name,
     phase: update.phase,
     locked: update.locked,
     members: party.members.map((member) => ({
@@ -49,7 +52,9 @@ function withRealtimeUpdate(party: Party, update: PartyUpdatedData): Party {
 export default function PartyPage() {
   const { state: authState } = useAuth();
   const router = useRouter();
+  const [photoSettings] = usePhotoSettings();
   const [endedNotice, setEndedNotice] = useState(false);
+  const [endedPartyId, setEndedPartyId] = useState("");
   const handledUpdate = useRef<string | null>(null);
   const { state, reload } = useResource<PartyDTO | null>(
     (signal) => getJson<PartyDTO | null>("/party/current", { signal }),
@@ -60,6 +65,10 @@ export default function PartyPage() {
   const realtime = cache.party;
 
   const partyId = state.status === "ok" && state.data ? state.data.id : "";
+  const endedPosts = usePagedResource<InstancePost>(
+    endedPartyId ? `/instances/${endedPartyId}/posts?roots=1` : "",
+    [endedPartyId],
+  );
   const {
     state: postsState,
     items,
@@ -67,31 +76,74 @@ export default function PartyPage() {
     loadingMore,
     loadMore,
     reload: reloadPosts,
-  } = usePagedResource<InstancePost>(partyId ? `/instances/${partyId}/posts` : "", [partyId]);
+  } = usePagedResource<InstancePost>(partyId ? `/instances/${partyId}/posts?roots=1` : "", [partyId]);
+  const [replyDelta, setReplyDelta] = useState<Record<string, number>>({});
 
-  const posts = items
-    .filter((item) => !item.hidden && item.moderation?.display !== "hide")
-    .map(toPost);
+  const posts = useMemo(
+    () => items
+      .filter((item) => !item.hidden && item.moderation?.display !== "hide")
+      .map((item) => {
+        const post = toPost(item);
+        const delta = replyDelta[post.id] ?? 0;
+        return delta === 0 ? post : { ...post, replyCount: post.replyCount + delta };
+      }),
+    [items, replyDelta],
+  );
   const photos: Media[] = posts.flatMap((post) => post.attachments);
-
+  const endedPhotos = endedPosts.items.flatMap((item) => toPost(item).attachments);
+  const visiblePhotos = partyId ? photos : endedPhotos;
+  const downloadablePhotos: DownloadableMedia[] = useMemo(
+    () => posts.flatMap((post) =>
+      post.attachments.map((media) => ({
+        ...media,
+        ownerDid: post.author.did,
+        hidden: post.moderation?.display === "hide",
+        takenAt: post.takenAt,
+      })),
+    ),
+    [posts],
+  );
+  const endedDownloadablePhotos: DownloadableMedia[] = useMemo(
+    () => endedPosts.items.flatMap((item) => {
+      const post = toPost(item);
+      return post.attachments.map((media) => ({
+        ...media,
+        ownerDid: post.author.did,
+        hidden: post.moderation?.display === "hide",
+        takenAt: post.takenAt,
+      }));
+    }),
+    [endedPosts.items],
+  );
   useRealtimeSubscription(partyId || null);
+  const reloadTimeline = useCallback(() => {
+    setReplyDelta({});
+    reloadPosts();
+  }, [reloadPosts]);
   useRealtimeResync(() => {
     reload();
-    reloadPosts();
+    reloadTimeline();
   });
   useRealtimeEvent("post.created", (post) => {
     if (post.spaceId === partyId) {
-      reloadPosts();
+      if (post.reply?.root) {
+        setReplyDelta((current) => ({
+          ...current,
+          [post.reply!.root]: (current[post.reply!.root] ?? 0) + 1,
+        }));
+      } else {
+        reloadTimeline();
+      }
     }
   });
   useRealtimeEvent("post.deleted", (_data, frame) => {
     if (frame.space === partyId) {
-      reloadPosts();
+      reloadTimeline();
     }
   });
   useRealtimeEvent("media.created", (_media, frame) => {
     if (frame.space === partyId) {
-      reloadPosts();
+      reloadTimeline();
     }
   });
   useRealtimeEvent("party.updated", (update) => {
@@ -103,6 +155,7 @@ export default function PartyPage() {
     const currentId = state.status === "ok" && state.data ? state.data.id : "";
     if (update.phase === "ended") {
       setEndedNotice(true);
+      setEndedPartyId(update.id);
     }
     if (!currentId || update.id !== currentId || update.phase === "ended" || update.phase === "dissolved") {
       reload();
@@ -128,6 +181,13 @@ export default function PartyPage() {
       : state;
 
   const party = partyState.status === "ok" ? partyState.data : null;
+  const autoShare = usePhotoShare();
+  const photoDownload = usePartyPhotoDownload(
+    partyId ? downloadablePhotos : endedDownloadablePhotos,
+    photoSettings.saveToDevice && (party !== null || endedNotice),
+    authState.status === "signedIn" ? authState.did : "",
+    party?.name || "Party",
+  );
 
   const handleLeave = async (target: Party): Promise<PartyActionResult> => {
     const result = await toResult(() =>
@@ -167,7 +227,7 @@ export default function PartyPage() {
   return (
     <PartyScreen
       state={partyState}
-      photos={photos}
+      photos={visiblePhotos}
       posts={posts}
       postsState={postsState.status === "ok" ? { status: "ok", data: posts } : postsState}
       hasMore={hasMore}
@@ -184,6 +244,11 @@ export default function PartyPage() {
         }
       }}
       endedNotice={endedNotice}
+      autoShareEnabled={autoShare.autoShareEnabled}
+      pendingPhotoCount={autoShare.pendingCount}
+      onCancelPhotoShare={() => void autoShare.cancel()}
+      onSavePhotos={() => void photoDownload.save()}
+      savingPhotos={photoDownload.saving}
     />
   );
 }

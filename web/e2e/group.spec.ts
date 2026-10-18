@@ -6,6 +6,7 @@ import {
   type Page,
   type Request,
   type Route,
+  type WebSocketRoute,
 } from "@playwright/test";
 
 const API_BASE = "https://chain.i32.jp";
@@ -140,6 +141,7 @@ test.describe("group timeline", () => {
         return;
       }
       if (url.pathname === "/api/v1/instances/g1/posts") {
+        expect(url.searchParams.get("roots")).toBe("1");
         const cursor = url.searchParams.get("cursor");
         await fulfillJson(route, 200, cursor === "c2" ? PAGE2 : PAGE1);
         return;
@@ -191,5 +193,50 @@ test.describe("group timeline", () => {
 
     await expect(page.getByText("投稿を読み込めませんでした")).toBeVisible();
     await expect(page.getByRole("button", { name: "再読み込み" })).toBeVisible();
+  });
+
+  test("adds a realtime reply to the existing replyCount", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    let socket: WebSocketRoute | undefined;
+    await page.routeWebSocket(/\/api\/v1\/ws$/, (ws) => {
+      socket = ws;
+      ws.onMessage((message) => {
+        const frame = JSON.parse(String(message)) as { type: string };
+        if (frame.type === "auth") {
+          ws.send(JSON.stringify({ type: "ready", did: "did:plc:testuser" }));
+        } else if (frame.type === "sub") {
+          ws.send(JSON.stringify({ type: "subscribed", id: "test", space: "g1" }));
+        }
+      });
+    });
+    await mockApi(page, async (route, request) => {
+      const url = new URL(request.url());
+      if (url.pathname === "/api/v1/groups/g1") {
+        await fulfillJson(route, 200, GROUP);
+        return;
+      }
+      if (url.pathname === "/api/v1/instances/g1/posts") {
+        await fulfillJson(route, 200, {
+          items: [{ ...PAGE1.items[0], replyCount: 5 }],
+        });
+        return;
+      }
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+
+    await page.goto("/group/?id=g1");
+    const replyButton = page.getByRole("button", { name: "返信" }).first();
+    await expect(replyButton.getByText("5")).toBeVisible();
+    await expect.poll(() => socket !== undefined).toBeTruthy();
+    socket?.send(JSON.stringify({
+      type: "event",
+      event: "post.created",
+      space: "g1",
+      data: {
+        ...post("reply-1", "みさき", "返信です。", "2026-10-17T03:00:00.000Z"),
+        reply: { root: "p1", parent: "p1" },
+      },
+    }));
+    await expect(replyButton.getByText("6")).toBeVisible();
   });
 });

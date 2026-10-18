@@ -302,6 +302,7 @@ test.describe("toPost", () => {
             height: 1536,
           },
         ],
+        replyCount: 3,
         createdAt: "2026-10-17T02:30:00Z",
       }),
     ).toEqual({
@@ -327,7 +328,7 @@ test.describe("toPost", () => {
           height: 1536,
         },
       ],
-      replyCount: 0,
+      replyCount: 3,
       likeCount: 0,
       likedByMe: false,
       pinned: false,

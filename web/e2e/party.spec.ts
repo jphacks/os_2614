@@ -151,6 +151,7 @@ test.describe("party", () => {
         return;
       }
       if (pathname === "/api/v1/instances/party-1/posts") {
+        expect(new URL(request.url()).searchParams.get("roots")).toBe("1");
         await fulfillJson(route, 200, PARTY_POSTS);
         return;
       }
@@ -315,6 +316,17 @@ test.describe("party", () => {
       }
       if (pathname === "/api/v1/me") {
         await fulfillJson(route, 200, { did: "did:plc:testuser", handle: "test.bsky.social", displayName: "てすと" });
+        return;
+      }
+      if (pathname === "/api/v1/instances") {
+        await fulfillJson(route, 200, { items: [{ spaceId: "party-1", canWrite: true }] });
+        return;
+      }
+      if (pathname === "/api/v1/instances/party-1/thread") {
+        await fulfillJson(route, 200, {
+          root: { ...PARTY_POSTS.items[0], uri: "post-1", author: { did: "did:plc:yui", handle: "yui", displayName: "ゆい" } },
+          replies: [],
+        });
         return;
       }
       if (pathname === "/api/v1/instances/party-1/posts") {

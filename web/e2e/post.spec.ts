@@ -138,6 +138,14 @@ async function mockTimeline(page: Page): Promise<void> {
       await fulfillJson(route, 200, ME);
       return;
     }
+    if (method === "GET" && pathname === "/api/v1/instances") {
+      await fulfillJson(route, 200, { items: [{ spaceId: "g1", canWrite: true }] });
+      return;
+    }
+    if (method === "GET" && pathname === "/api/v1/instances/g1/thread") {
+      await fulfillJson(route, 200, { root: POST, replies: [] });
+      return;
+    }
     if (/\/likes?$|\/reactions?$/.test(pathname)) {
       await fulfillJson(route, 500, {
         error: { code: "unexpected", message: "reaction API must not be called" },

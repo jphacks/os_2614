@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import type { Group, Post, Reply, User } from "@/domain/types";
 import type { ResourceState } from "@/data/hooks";
 import { ReplySheet } from "@/components/feature/post";
@@ -9,7 +9,7 @@ import { GroupScreen } from "./GroupScreen";
 export type GroupReplyScreenProps = {
   /** GET /groups/{id} の取得状態。 */
   state: ResourceState<Group>;
-  /** タイムライン (ドメイン変換済み)。返信画面が開いている投稿もここから探す。 */
+  /** タイムライン (ドメイン変換済み)。 */
   posts: Post[];
   /** GET /instances/{spaceId}/posts の取得状態。 */
   postsState?: ResourceState<Post[]>;
@@ -18,6 +18,8 @@ export type GroupReplyScreenProps = {
    * 呼び出し側が同じスレッドの返信だけを選んで渡す。
    */
   replies: Reply[];
+  post: Post | null;
+  replyTarget?: Pick<Post, "id"> | null;
   me: User;
   /** グループ取得の再実行 (useResource.reload)。 */
   groupRetry?: () => void;
@@ -27,7 +29,15 @@ export type GroupReplyScreenProps = {
    * 返信の送信。POST /posts の reply:{root,parent} を呼ぶ。
    * 未指定なら ReplySheet が「準備中」を出す。
    */
-  onReply?: (post: Post, text: string) => Promise<void>;
+  onReply?: (post: Pick<Post, "id">, text: string) => Promise<void>;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  threadLoading?: boolean;
+  threadNotFound?: boolean;
+  threadError?: string;
+  threadRetry?: () => void;
+  canReply?: boolean;
   closePath?: string;
 };
 
@@ -41,13 +51,20 @@ export function GroupReplyScreen({
   postsRetry,
   onReply,
   closePath,
+  post,
+  replyTarget,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  threadLoading,
+  threadNotFound,
+  threadError,
+  threadRetry,
+  canReply = true,
 }: GroupReplyScreenProps) {
   const router = useRouter();
-  const params = useSearchParams();
-  const postId = params.get("post");
-  const post = posts.find((item) => item.id === postId) ?? posts[0];
   const close = () =>
-    router.push(closePath ?? `/group/?id=${params.get("id") ?? ""}`);
+    router.push(closePath ?? "/group/");
 
   return (
     <GroupScreen
@@ -58,13 +75,23 @@ export function GroupReplyScreen({
       groupRetry={groupRetry}
       postsRetry={postsRetry}
       overlay={
-        post ? (
+        post || threadLoading || threadNotFound || threadError ? (
           <ReplySheet
             post={post}
             replies={replies}
             me={me}
             onClose={close}
-            onSubmit={onReply ? (text) => onReply(post, text) : undefined}
+            onSubmit={onReply && (replyTarget ?? post) && canReply
+              ? (text) => onReply(replyTarget ?? post!, text)
+              : undefined}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={onLoadMore}
+            loading={threadLoading}
+            notFound={threadNotFound}
+            threadError={threadError}
+            onRetry={threadRetry}
+            canReply={canReply}
           />
         ) : undefined
       }

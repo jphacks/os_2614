@@ -214,6 +214,34 @@ test.describe("user profile", () => {
       .toContain(`user:${TARGET_DID}`);
   });
 
+  test("still shows public posts when the profile is my own DID", async ({
+    page,
+  }) => {
+    await mockApi(page, async (route, request) => {
+      const path = apiPath(request.url());
+      if (path === "/api/v1/me") {
+        await fulfillJson(route, 200, ME);
+        return;
+      }
+      if (path === `/api/v1/users/${ME.did}`) {
+        await fulfillJson(route, 200, { ...PROFILE, did: ME.did });
+        return;
+      }
+      if (path === "/api/v1/feed") {
+        await fulfillJson(route, 200, FEED);
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto(`/users/?did=${ME.did}`);
+
+    const section = page.locator("section", { hasText: "公開投稿" });
+    await expect(section.getByText("公園でひと休み")).toBeVisible();
+  });
+
   test("shows the unavailable state when GET /users/{did} is 404", async ({
     page,
   }) => {
