@@ -228,8 +228,6 @@ export function toProfile(dto: Maybe<ProfileDTO>): Profile {
     bio: dto?.description ?? "",
     status: dto?.status,
     bannerUrl: dto?.bannerUrl,
-    // カウントは GET /me/stats (13 §3) が持つ。プロフィール単体では 0 から始める。
-    counts: { encounters: 0, friends: 0, parties: 0 },
   };
 }
 

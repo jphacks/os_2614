@@ -473,9 +473,7 @@ export type FeedItem = {
   createdAt: RFC3339;
 };
 
-// --- ここから下は backend 未実装（spec-only）の形。実装されたら json タグに合わせて直す。 ---
-
-/** GET /me/stats（13 §3）。未実装（spec-only）。 */
+/** GET /me/stats（13 §3）。 */
 export type Stats = {
   encounters: EncounterSummary;
   friends: number;

@@ -81,6 +81,19 @@ function depsKey(deps: readonly unknown[]): string {
     .join("\u0000");
 }
 
+/** 現在ユーザーのリソースキャッシュを、保存済みの値で差し替える。 */
+export function overwriteResourceCache<T>(
+  did: string,
+  key: string,
+  deps: readonly unknown[],
+  data: T,
+): void {
+  resourceCache.set(`${did}\u0000${key}\u0000${depsKey(deps)}`, {
+    status: "ok",
+    data,
+  } satisfies ResourceState<T>);
+}
+
 export interface ResourceOptions<T> {
   /** ok の data を「空」とみなす条件。未指定なら常に ok のまま。 */
   isEmpty?: (data: T) => boolean;
@@ -106,6 +119,8 @@ export function useResource<T>(
   deps: readonly unknown[],
   opts: ResourceOptions<T> = {},
 ): Resource<T> {
+  "use no memo";
+  // module-level mutable cache は render 中に読むため、React Compiler に純粋値として memoize させない。
   const { state: authState } = useAuth();
   const signedIn = authState.status === "signedIn";
   const [nonce, setNonce] = useState(0);
@@ -208,6 +223,8 @@ export function usePagedResource<T>(
   deps: readonly unknown[],
   opts: PagedResourceOptions<T> = {},
 ): PagedResource<T> {
+  "use no memo";
+  // module-level mutable cache は render 中に読むため、React Compiler に純粋値として memoize させない。
   const { state: authState } = useAuth();
   const signedIn = authState.status === "signedIn";
   const [nonce, setNonce] = useState(0);

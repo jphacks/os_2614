@@ -25,8 +25,7 @@ export default function MemoryPage() {
       : state;
   const memories = items.map(toMemory);
 
-  // DELETE /memories/{spaceId} は backend 未実装。404/405/501 は "unavailable" に
-  // 畳んで画面に「準備中」を出させる (握り潰して no-op にしない)。
+  // DELETE /memories/{spaceId} は 404/405/501 だけを unavailable に畳む。
   const hideMemory = async (spaceId: string): Promise<MemoryHideResult> => {
     const result = await toResult(() =>
       deleteJson<unknown>(`/memories/${spaceId}`),

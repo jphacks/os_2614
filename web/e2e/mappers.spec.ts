@@ -97,14 +97,12 @@ test.describe("toProfile", () => {
       bio: "京都と写真が好き。",
       status: "図書館でもくもく中",
       bannerUrl: "https://cdn.example/banner.jpg",
-      counts: { encounters: 0, friends: 0, parties: 0 },
     });
   });
 
   test("never throws on {} and fills defaults", () => {
     const profile = toProfile({});
     expect(profile.bio).toBe("");
-    expect(profile.counts).toEqual({ encounters: 0, friends: 0, parties: 0 });
   });
 });
 

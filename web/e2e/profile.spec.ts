@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { deflateSync } from "node:zlib";
 import {
   expect,
   test,
@@ -43,6 +44,27 @@ const ME = {
     warnDisplay: "blur",
     notify: {},
   },
+};
+
+const ME_EMPTY_STATUS = { ...ME, status: "" };
+
+const STATS = {
+  encounters: { today: 1, week: 8, month: 12, total: 1024, uniquePeople: 9 },
+  friends: 8,
+  parties: { total: 14 },
+  groups: { member: 2 },
+  posts: { month: 3 },
+};
+
+const MEMORY = {
+  spaceId: "party-1",
+  type: "party",
+  name: "秋の集まり",
+  from: "2026-10-01T00:00:00Z",
+  until: "2026-10-01T02:00:00Z",
+  memberCount: 4,
+  mediaCount: 2,
+  cover: { thumbUrl: "https://cdn.example/memory.jpg" },
 };
 
 const EVIDENCE_PATH = path.resolve(
@@ -130,6 +152,9 @@ test.describe("profile", () => {
     await expect(page.getByText(ME.description)).toBeVisible();
     await expect(page.getByText(ME.status)).toBeVisible();
     await expect(page.getByText("まだメモリーはありません")).toBeVisible();
+    await expect(page.getByRole("button", { name: "バナーを変更" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "アイコンを変更" })).toHaveCount(0);
+    await expect(page.getByTestId("profile-image-overlay")).toHaveCount(0);
 
     if (testInfo.project.name === "desktop-chrome") {
       mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
@@ -169,6 +194,46 @@ test.describe("profile", () => {
   });
 });
 
+test.describe("profile overview resources", () => {
+  test("renders stats and a memory card from their APIs", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route, request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === "/api/v1/me") return fulfillJson(route, 200, ME);
+      if (path === "/api/v1/me/stats") return fulfillJson(route, 200, STATS);
+      if (path === "/api/v1/memories") return fulfillJson(route, 200, { items: [MEMORY] });
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+    await page.goto("/profile/");
+    await expect(page.getByText("1,024")).toBeVisible();
+    await expect(page.getByText("8", { exact: true })).toBeVisible();
+    await expect(page.getByText("14", { exact: true })).toBeVisible();
+    await expect(page.getByText("秋の集まり")).toBeVisible();
+  });
+
+  test("renders dashes when stats is unavailable", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route, request) => {
+      if (new URL(request.url()).pathname === "/api/v1/me") return fulfillJson(route, 200, ME);
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+    await page.goto("/profile/");
+    await expect(page.getByText("—", { exact: true })).toHaveCount(3);
+  });
+
+  test("shows the empty status placeholder and opens its editor", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockApi(page, async (route, request) => {
+      if (new URL(request.url()).pathname === "/api/v1/me") return fulfillJson(route, 200, ME_EMPTY_STATUS);
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+    await page.goto("/profile/");
+    await expect(page.getByText("ステータスを設定")).toBeVisible();
+    await page.getByRole("button", { name: "ステータスを編集" }).click();
+    await expect(page.getByLabel("ステータス", { exact: true })).toBeVisible();
+  });
+});
+
 test.describe("profile auth", () => {
   test("signed-out visitor is sent from /profile/ to /welcome/", async ({ page }) => {
     await page.goto("/profile/");
@@ -183,7 +248,12 @@ test.describe("profile auth", () => {
 /** /me, PUT /me/status, GET /feed をモックする。statuses には送った body を積む。 */
 async function mockProfileApi(
   page: Page,
-  opts: { statusStatus?: number; statusMessage?: string; feed?: unknown } = {},
+  opts: {
+    me?: unknown | (() => unknown);
+    statusStatus?: number;
+    statusMessage?: string;
+    feed?: unknown;
+  } = {},
 ): Promise<{ statuses: { status: string }[] }> {
   const statuses: { status: string }[] = [];
   await mockApi(page, async (route, request) => {
@@ -192,7 +262,8 @@ async function mockProfileApi(
     const method = request.method();
 
     if (path === "/api/v1/me" && method === "GET") {
-      await fulfillJson(route, 200, ME);
+      const me = typeof opts.me === "function" ? opts.me() : opts.me;
+      await fulfillJson(route, 200, me ?? ME);
       return;
     }
     if (path === "/api/v1/me/status" && method === "PUT") {
@@ -231,8 +302,8 @@ test.describe("profile status edit", () => {
 
     await expect(page.getByText(ME.status)).toBeVisible();
 
-    await page.getByRole("button", { name: "編集", exact: true }).click();
-    await page.getByLabel("ステータス").fill("旅の途中");
+    await page.getByRole("button", { name: "ステータスを編集" }).click();
+    await page.getByLabel("ステータス", { exact: true }).fill("旅の途中");
     await page.getByRole("button", { name: "保存" }).click();
 
     await expect(page.getByText("旅の途中")).toBeVisible();
@@ -255,13 +326,122 @@ test.describe("profile status edit", () => {
     });
     await page.goto("/profile/");
 
-    await page.getByRole("button", { name: "編集", exact: true }).click();
-    await page.getByLabel("ステータス").fill("不適切な文言");
+    await page.getByRole("button", { name: "ステータスを編集" }).click();
+    await page.getByLabel("ステータス", { exact: true }).fill("不適切な文言");
     await page.getByRole("button", { name: "保存" }).click();
 
     await expect(page.getByText("投稿内容が不適切です")).toBeVisible();
     // 失敗時は編集を開いたままにして、入力を残す。
-    await expect(page.getByLabel("ステータス")).toBeVisible();
+    await expect(page.getByLabel("ステータス", { exact: true })).toBeVisible();
+  });
+
+  test("saves with Enter and cancels with Escape", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const { statuses } = await mockProfileApi(page);
+    await page.goto("/profile/");
+
+    const input = page.getByLabel("ステータス", { exact: true });
+    await page.getByRole("button", { name: "ステータスを編集" }).click();
+    await input.fill("Enterで保存");
+    await input.press("Enter");
+    await expect(page.getByText("Enterで保存")).toBeVisible();
+    expect(statuses).toEqual([{ status: "Enterで保存" }]);
+
+    await page.getByRole("button", { name: "ステータスを編集" }).click();
+    await page.getByLabel("ステータス", { exact: true }).fill("保存しない");
+    await page.getByLabel("ステータス", { exact: true }).press("Escape");
+    await expect(page.getByText("Enterで保存")).toBeVisible();
+    await expect(page.getByLabel("ステータス", { exact: true })).toHaveCount(0);
+    expect(statuses).toEqual([{ status: "Enterで保存" }]);
+  });
+
+  test("does not save when Enter confirms an IME composition", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const { statuses } = await mockProfileApi(page);
+    await page.goto("/profile/");
+
+    await page.getByRole("button", { name: "ステータスを編集" }).click();
+    const input = page.getByLabel("ステータス", { exact: true });
+    await input.evaluate((element) => {
+      element.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          isComposing: true,
+        }),
+      );
+    });
+
+    await expect(input).toBeVisible();
+    expect(statuses).toEqual([]);
+  });
+
+  test("keeps the status row on one line and marks overflow for a long status", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await useStoredSession(page, makeStoredSession());
+    let responseMe: typeof ME | (typeof ME & { displayName: string }) = ME;
+    await mockProfileApi(page, { me: () => responseMe });
+    await page.goto("/profile/");
+
+    const row = page.getByRole("heading", { name: ME.displayName }).locator("..");
+    const shortHeight = (await row.boundingBox())?.height;
+    await expect(row.locator('[data-marquee="off"]')).toBeVisible();
+
+    responseMe = {
+      ...ME,
+      displayName: "とても長い名前のユーザーです",
+      status: "あ".repeat(40),
+    };
+    // ルートのモックは responseMe を参照するため、同じページで再取得する。
+    await page.reload();
+    const longRow = page
+      .getByRole("heading", { name: responseMe.displayName })
+      .locator("..");
+    await expect(longRow.locator('[data-marquee="on"]')).toBeVisible();
+    const viewportWidth = page.viewportSize()?.width ?? 375;
+    const pencilBox = await longRow
+      .getByRole("button", { name: "ステータスを編集" })
+      .boundingBox();
+    expect(pencilBox).not.toBeNull();
+    expect(pencilBox!.x).toBeGreaterThanOrEqual(0);
+    expect(pencilBox!.x + pencilBox!.width).toBeLessThanOrEqual(viewportWidth);
+    const longHeight = (await longRow.boundingBox())?.height;
+    expect(longHeight).toBeDefined();
+    expect(shortHeight).toBeDefined();
+    expect(Math.abs(longHeight! - shortHeight!)).toBeLessThanOrEqual(4);
+
+    await longRow.getByRole("button", { name: "ステータスを編集" }).click();
+    const statusInput = page.getByLabel("ステータス", { exact: true });
+    const cancelButton = page.getByRole("button", { name: "キャンセル" });
+    const saveButton = page.getByRole("button", { name: "保存" });
+    const inputBox = await statusInput.boundingBox();
+    expect(inputBox).not.toBeNull();
+    expect(inputBox!.width).toBeGreaterThanOrEqual(120);
+    for (const button of [cancelButton, saveButton]) {
+      const buttonBox = await button.boundingBox();
+      expect(buttonBox).not.toBeNull();
+      expect(buttonBox!.x).toBeGreaterThanOrEqual(0);
+      expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(viewportWidth);
+    }
+  });
+
+  test("aligns the inline status editor controls", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockProfileApi(page);
+    await page.goto("/profile/");
+    await page.getByRole("button", { name: "ステータスを編集" }).click();
+
+    const input = page.getByLabel("ステータス", { exact: true });
+    const counter = page.getByText(`${Array.from(ME.status).length}/40`, { exact: true });
+    const cancel = page.getByRole("button", { name: "キャンセル" });
+    const save = page.getByRole("button", { name: "保存" });
+    const boxes = await Promise.all(
+      [input, counter, cancel, save].map((locator) => locator.boundingBox()),
+    );
+    const centers = boxes.map((box) => (box?.y ?? 0) + (box?.height ?? 0) / 2);
+    expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(4);
   });
 
   test("lists the user's public posts from GET /feed?source=user:{did}", async ({
@@ -295,11 +475,60 @@ const ME_WITH_IMAGES = {
   bannerUrl: "https://cdn.example/banner.jpg",
 };
 
-/** 1x1 の PNG。multipart の file として送れる最小の有効な画像。 */
-const PNG_1X1 = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+/** 4x4 RGB PNG。Chromium の createImageBitmap でも読める画像。 */
+const PNG_4X4 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEElEQVR4nGM4UWEDRwzEcQBykhfBWhDcSAAAAABJRU5ErkJggg==",
   "base64",
 );
+
+function crc32(data: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const typeBuffer = Buffer.from(type, "ascii");
+  const body = Buffer.concat([typeBuffer, data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body), 0);
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  return Buffer.concat([length, body, crc]);
+}
+
+function makeRgbaPng(width: number, height: number): Buffer {
+  const rows: Buffer[] = [];
+  for (let y = 0; y < height; y += 1) {
+    const row = Buffer.alloc(1 + width * 4);
+    for (let x = 0; x < width; x += 1) {
+      const offset = 1 + x * 4;
+      row[offset] = 80 + (x % 120);
+      row[offset + 1] = 120 + (y % 100);
+      row[offset + 2] = 180;
+      row[offset + 3] = 255;
+    }
+    rows.push(row);
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from("89504e470d0a1a0a", "hex"),
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", deflateSync(Buffer.concat(rows))),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+const PNG_60X40 = makeRgbaPng(60, 40);
 
 type EditMockOptions = {
   me?: unknown;
@@ -320,20 +549,25 @@ async function mockEditApi(
   patches: { displayName?: string; description?: string }[];
   avatarContentType: string | null;
   deletedBanner: boolean;
+  requests: string[];
 }> {
   const patches: { displayName?: string; description?: string }[] = [];
   const state = { avatarContentType: null as string | null, deletedBanner: false };
+  const requests: string[] = [];
   await mockApi(page, async (route, request) => {
     const url = new URL(request.url());
     const path = url.pathname;
     const method = request.method();
+    if (path !== "/api/v1/feed") {
+      requests.push(`${method} ${path}`);
+    }
 
     if (path === "/api/v1/me" && method === "GET") {
       await fulfillJson(route, 200, opts.me ?? ME);
       return;
     }
     if (path === "/api/v1/me/profile" && method === "PATCH") {
-      const body = request.postDataJSON() as { displayName: string; description: string };
+      const body = request.postDataJSON() as { displayName?: string; description?: string };
       patches.push(body);
       if (opts.profileStatus && opts.profileStatus >= 400) {
         await fulfillJson(route, opts.profileStatus, {
@@ -346,8 +580,7 @@ async function mockEditApi(
       }
       await fulfillJson(route, 200, {
         ...ME,
-        displayName: body.displayName,
-        description: body.description,
+        ...body,
       });
       return;
     }
@@ -385,6 +618,9 @@ async function mockEditApi(
     get deletedBanner() {
       return state.deletedBanner;
     },
+    get requests() {
+      return requests;
+    },
   };
 }
 
@@ -396,7 +632,7 @@ test.describe("profile edit", () => {
     const api = await mockEditApi(page);
     await page.goto("/profile/");
 
-    await page.getByRole("button", { name: "プロフィールを編集" }).click();
+    await page.getByRole("button", { name: "編集", exact: true }).click();
     await page.getByLabel("名前").fill("あたらしい名前");
     await page.getByLabel("自己紹介").fill("よろしくおねがいします");
     await page.getByRole("button", { name: "保存" }).click();
@@ -416,14 +652,75 @@ test.describe("profile edit", () => {
     const api = await mockEditApi(page);
     await page.goto("/profile/");
 
-    await page.setInputFiles('[data-testid="profile-avatar-input"]', {
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "アイコンを変更" }).click();
+    await (await chooser).setFiles({
       name: "avatar.png",
       mimeType: "image/png",
-      buffer: PNG_1X1,
+      buffer: PNG_4X4,
     });
 
-    await expect(page.getByText("アイコンを更新しました")).toBeVisible();
+    const cropDialog = page.getByRole("dialog", { name: "アイコンを切り抜く" });
+    const cropImage = cropDialog.locator("img");
+    await expect(cropDialog.getByRole("alert").filter({ hasText: "画像を読み込めませんでした" })).toHaveCount(0);
+    await expect.poll(() => cropImage.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
+    await cropDialog.getByRole("button", { name: "決定" }).click();
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("プロフィールを更新しました")).toBeVisible();
     expect(api.avatarContentType).toContain("multipart/form-data");
+  });
+
+  test("keeps the banner crop preview covering the frame while dragging", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    await mockEditApi(page);
+    await page.goto("/profile/");
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "バナーを変更" }).click();
+    await (await chooser).setFiles({
+      name: "banner.png",
+      mimeType: "image/png",
+      buffer: PNG_60X40,
+    });
+
+    const cropDialog = page.getByRole("dialog", { name: "バナーを切り抜く" });
+    const frame = cropDialog.locator("[data-crop-frame]");
+    const image = cropDialog.locator("img");
+    await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
+    const frameBox = await frame.boundingBox();
+    expect(frameBox).not.toBeNull();
+    const startX = frameBox!.x + frameBox!.width / 2;
+    const startY = frameBox!.y + frameBox!.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX, startY + Math.min(200, frameBox!.height), { steps: 5 });
+    await page.mouse.up();
+
+    const imageBox = await image.boundingBox();
+    expect(imageBox).not.toBeNull();
+    expect(imageBox!.y).toBeLessThanOrEqual(frameBox!.y + 1);
+    expect(imageBox!.y + imageBox!.height).toBeGreaterThanOrEqual(
+      frameBox!.y + frameBox!.height - 1,
+    );
+    expect(imageBox!.x).toBeLessThanOrEqual(frameBox!.x + 1);
+    expect(imageBox!.x + imageBox!.width).toBeGreaterThanOrEqual(
+      frameBox!.x + frameBox!.width - 1,
+    );
+  });
+
+  test("cancelling profile edit after cropping does not upload the avatar", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const api = await mockEditApi(page);
+    await page.goto("/profile/");
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "アイコンを変更" }).click();
+    await (await chooser).setFiles({ name: "avatar.png", mimeType: "image/png", buffer: PNG_4X4 });
+    await page.getByRole("dialog", { name: "アイコンを切り抜く" }).getByRole("button", { name: "決定" }).click();
+    await page.getByRole("button", { name: "キャンセル" }).last().click();
+    await expect(page.getByLabel("名前")).toHaveCount(0);
+    expect(api.requests.filter((request) => request === "PUT /api/v1/me/avatar")).toHaveLength(0);
   });
 
   test("removes the banner via DELETE /me/banner", async ({ page }) => {
@@ -431,10 +728,12 @@ test.describe("profile edit", () => {
     const api = await mockEditApi(page, { me: ME_WITH_IMAGES });
     await page.goto("/profile/");
 
-    await page.getByRole("button", { name: "プロフィールを編集" }).click();
-    await page.getByRole("button", { name: "バナーを削除" }).click();
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    await page.getByRole("button", { name: "バナーを変更" }).click();
+    await page.getByRole("button", { name: "削除" }).click();
+    await page.getByRole("button", { name: "保存" }).click();
 
-    await expect(page.getByText("バナーを削除しました")).toBeVisible();
+    await expect(page.getByText("プロフィールを更新しました")).toBeVisible();
     expect(api.deletedBanner).toBe(true);
   });
 
@@ -448,7 +747,7 @@ test.describe("profile edit", () => {
     });
     await page.goto("/profile/");
 
-    await page.getByRole("button", { name: "プロフィールを編集" }).click();
+    await page.getByRole("button", { name: "編集", exact: true }).click();
     await page.getByLabel("名前").fill("x");
     await page.getByRole("button", { name: "保存" }).click();
 
@@ -460,17 +759,98 @@ test.describe("profile edit", () => {
 
   test("shows an error when PUT /me/avatar fails with 500", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
-    await mockEditApi(page, { avatarStatus: 500, avatarMessage: "保存できません" });
+    const api = await mockEditApi(page, {
+      avatarStatus: 500,
+      avatarMessage: "保存できません",
+    });
     await page.goto("/profile/");
 
-    await page.setInputFiles('[data-testid="profile-avatar-input"]', {
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    await page.getByLabel("名前").fill("更新済み名前");
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "アイコンを変更" }).click();
+    await (await chooser).setFiles({
       name: "avatar.png",
       mimeType: "image/png",
-      buffer: PNG_1X1,
+      buffer: PNG_4X4,
     });
 
+    await page.getByRole("dialog", { name: "アイコンを切り抜く" }).getByRole("button", { name: "決定" }).click();
+    await page.getByRole("button", { name: "保存" }).click();
     await expect(
       page.getByRole("alert").filter({ hasText: "保存できません" }),
     ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "更新済み名前" })).toBeVisible();
+    await expect(page.getByLabel("名前")).toHaveValue("更新済み名前");
+    expect(api.requests.filter((request) => request === "PATCH /api/v1/me/profile")).toHaveLength(1);
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect.poll(() => api.requests.filter((request) => request === "PUT /api/v1/me/avatar").length).toBe(2);
+    expect(api.requests.filter((request) => request === "PATCH /api/v1/me/profile")).toHaveLength(1);
+  });
+
+  test("image-only change does not PATCH", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const api = await mockEditApi(page);
+    await page.goto("/profile/");
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "アイコンを変更" }).click();
+    await (await chooser).setFiles({ name: "avatar.png", mimeType: "image/png", buffer: PNG_4X4 });
+    await page.getByRole("dialog", { name: "アイコンを切り抜く" }).getByRole("button", { name: "決定" }).click();
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("プロフィールを更新しました")).toBeVisible();
+    expect(api.requests.indexOf("PATCH /api/v1/me/profile")).toBe(-1);
+    expect(api.requests.indexOf("PUT /api/v1/me/avatar")).toBeGreaterThan(-1);
+  });
+
+  test("saves profile text before the avatar", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const api = await mockEditApi(page);
+    await page.goto("/profile/");
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    await page.getByLabel("名前").fill("順序確認の名前");
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "アイコンを変更" }).click();
+    await (await chooser).setFiles({ name: "avatar.png", mimeType: "image/png", buffer: PNG_4X4 });
+    await page.getByRole("dialog", { name: "アイコンを切り抜く" }).getByRole("button", { name: "決定" }).click();
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("プロフィールを更新しました")).toBeVisible();
+    expect(api.requests.indexOf("PATCH /api/v1/me/profile")).toBeLessThan(api.requests.indexOf("PUT /api/v1/me/avatar"));
+  });
+
+  test("bio-only edit sends only the description field", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const api = await mockEditApi(page);
+    await page.goto("/profile/");
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    await page.getByLabel("自己紹介").fill("自己紹介だけ更新");
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("プロフィールを更新しました")).toBeVisible();
+    expect(api.patches).toEqual([{ description: "自己紹介だけ更新" }]);
+  });
+
+  test("refetches /me on a profile conflict and keeps the draft", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    let meGets = 0;
+    await mockApi(page, async (route, request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === "/api/v1/me" && request.method() === "GET") {
+        meGets += 1;
+        return fulfillJson(route, 200, ME);
+      }
+      if (path === "/api/v1/me/profile") {
+        return fulfillJson(route, 409, { error: { code: "conflict", message: "conflict" } });
+      }
+      await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
+    });
+    await page.goto("/profile/");
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    await page.getByLabel("名前").fill("競合前の名前");
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(
+      page.getByRole("alert").filter({ hasText: "他の場所で更新されたため" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("名前")).toHaveValue("競合前の名前");
+    expect(meGets).toBeGreaterThanOrEqual(2);
   });
 });
