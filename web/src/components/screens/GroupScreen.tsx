@@ -263,6 +263,10 @@ export function GroupScreen({
       />
 
       <div className={styles.tags}>
+        {group.iconUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className={styles.groupIcon} src={group.iconUrl} alt="" />
+        )}
         <Tag label={group.visibility === "open" ? "オープン" : "招待制"} />
         <Tag label={`${group.memberCount}人`} />
         <Tag label={group.areaLabel} />

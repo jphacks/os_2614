@@ -59,6 +59,27 @@ function BubbleBody({ bubble, focused }: NearbyBubbleProps) {
         </span>
       );
     case "group":
+      if (bubble.iconUrl) {
+        // アイコンがあれば画像で埋め、グループの色で縁取って名前は下に出す
+        return (
+          <span className={styles.wrap}>
+            <span
+              className={`${styles.shape} ${styles.group} ${styles.groupIcon}`}
+              data-focused={focus}
+              data-member={bubble.isMember || undefined}
+              style={{ "--bubble-tone": tone(bubble.tone) } as CSSProperties}
+              role="img"
+              aria-label={bubble.name}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className={styles.image} src={bubble.iconUrl} alt="" draggable={false} />
+            </span>
+            <span className={styles.label} aria-hidden>
+              {bubble.name}
+            </span>
+          </span>
+        );
+      }
       return (
         <span
           className={`${styles.shape} ${styles.group}`}

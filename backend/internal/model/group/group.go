@@ -3,6 +3,7 @@ package group
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/applemango/chain/internal/db"
 	"github.com/applemango/chain/internal/model"
@@ -87,6 +88,25 @@ func UpdateGroupParent(ctx context.Context, q db.Querier, spaceID string, parent
 	_, err := db.Execute(ctx, q, "UPDATE groups SET parent_space_id = ? WHERE space_id = ?",
 		model.NullableString(parent), spaceID)
 	return err
+}
+
+// SetGroupIcon はグループのアイコン画像（media の id）を設定する（09 §2）。
+func SetGroupIcon(ctx context.Context, q db.Querier, spaceID, mediaID string) error {
+	_, err := db.Execute(ctx, q, "UPDATE groups SET icon_media_id = ? WHERE space_id = ?", mediaID, spaceID)
+	return err
+}
+
+// GetGroupIconMediaID はグループのアイコン画像の media id を返す。無ければ空文字。
+func GetGroupIconMediaID(ctx context.Context, q db.Querier, spaceID string) (string, error) {
+	row, err := db.GetItem(ctx, q, "SELECT icon_media_id FROM groups WHERE space_id = ?",
+		[]any{spaceID}, func(scan db.Scan, id *sql.NullString) error { return scan(id) })
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return row.String, nil
 }
 
 // ListActiveGroups は state='active' のグループを、中心・半径・schedule ごと返す。

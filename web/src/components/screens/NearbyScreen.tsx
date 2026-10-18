@@ -404,7 +404,12 @@ function JoinConfirm({ group, joining, error, onCancel, onJoin }: JoinConfirmPro
           style={{ "--bubble-tone": `var(--tone-${group.tone})` } as CSSProperties}
           aria-hidden
         >
-          <Icon name="groups" size={28} />
+          {group.iconUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className={styles.sheetIconImage} src={group.iconUrl} alt="" />
+          ) : (
+            <Icon name="groups" size={28} />
+          )}
         </span>
         <p id="join-confirm-title" className={styles.sheetTitle}>
           「{group.name}」に参加しますか？

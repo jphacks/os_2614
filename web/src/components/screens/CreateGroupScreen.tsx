@@ -59,6 +59,8 @@ export type CreateGroupDraft = {
   radiusM: number;
   inviteQuorum: number;
   force: boolean;
+  /** アイコンにする画像 (POST /media の id)。選んでいなければ undefined。 */
+  iconMediaId?: string;
 };
 
 /** 409 conflict の details.similar (09 §2)。 */
@@ -112,6 +114,7 @@ export function CreateGroupScreen({
   const [iconError, setIconError] = useState<string | null>(null);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
+  const [iconMediaId, setIconMediaId] = useState<string | null>(null);
   const iconInput = useRef<HTMLInputElement>(null);
 
   // プレビューの object URL は差し替え・離脱のときに解放する
@@ -125,7 +128,9 @@ export function CreateGroupScreen({
   const quorum = Math.max(1, Math.ceil((inviteeCount * quorumPercent) / 100));
   const invitees = candidates.filter((candidate) => inviteeIds.includes(candidate.did));
   const others = candidates.filter((candidate) => !inviteeIds.includes(candidate.did));
-  const canSubmit = name.trim().length > 0 && location !== null && !submitting;
+  // アイコンを上げている間に作ると、アイコン無しのグループになってしまうので待つ
+  const canSubmit =
+    name.trim().length > 0 && location !== null && !submitting && iconState !== "uploading";
 
   const toggleInvitee = (id: string) => {
     setInviteeIds((prev) =>
@@ -150,6 +155,7 @@ export function CreateGroupScreen({
       // inviteQuorum は「承認が必要な人数」。open では 1 で作る (09 §6)。
       inviteQuorum: visibility === "closed" ? quorum : 1,
       force,
+      iconMediaId: iconMediaId ?? undefined,
     });
     setSubmitting(false);
     switch (result.status) {
@@ -209,14 +215,12 @@ export function CreateGroupScreen({
     setCropFile(null);
     if (mediaId) {
       setIconPreview(URL.createObjectURL(file));
+      setIconMediaId(mediaId);
       setIconState("ready");
     } else {
       setIconState("error");
     }
   };
-
-  // アイコンの mediaId は POST /groups の body に項目が無いため、今は保持だけして送らない。
-  // グループのアバター項目が backend にできたら、この値を body に足す。
 
   return (
     <div className={styles.screen}>

@@ -27,6 +27,15 @@
 
 ATProto 上のプロフィール自体は公開されている。ここで制限しているのは「CHAIN を使っていて、自分と接点がある」という関係の方である。
 
+応答には、自分から相手へのフォロー（`following`）と相手から自分へのフォロー（`followedBy`）を `follows` の索引から添える。自分自身なら両方 `false`。
+
+プロフィール画面からは Bluesky のフォロー・解除ができる。
+
+| API | 内容 |
+| --- | --- |
+| `POST /api/v1/users/{did}/follow` | 自分のセッションで `app.bsky.graph.follow` を書く。上の関係がない相手は `404`、ブロック関係があれば `ErrBlocked`。既にフォローしていれば何も書かず `204`。書いたフォローは申請と同じ扱いで、相手からのフォローがあればフレンドになる（07 §2.2） |
+| `DELETE /api/v1/users/{did}/follow` | `DELETE /friends/{did}`（07 §2.3）と同じ。相互フォローならフレンドも外れる |
+
 ### 1.3 CHAIN からの編集（P1）
 
 Bluesky のプロフィール（`app.bsky.actor.profile` の `self`）を、ユーザーの PDS に直接書き換える。Bluesky のアプリから見ても同じプロフィールになる。
