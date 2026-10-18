@@ -315,7 +315,7 @@ test.describe("nearby", () => {
     await expect(page).toHaveURL(/\/group\/\?id=g1/);
   });
 
-  test("explains that a group outside the area cannot be joined yet", async ({ page }) => {
+  test("tries to join a group outside the area and explains the refusal", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
 
     let joinCalls = 0;
@@ -329,8 +329,12 @@ test.describe("nearby", () => {
         });
         return;
       }
-      if (method === "POST" && pathname.endsWith("/join")) {
+      if (method === "POST" && pathname === "/api/v1/groups/g2/join") {
         joinCalls += 1;
+        await fulfillJson(route, 403, {
+          error: { code: "not_in_geofence", message: "エリアの外です" },
+        });
+        return;
       }
       await fulfillJson(route, 404, {
         error: { code: "not_found", message: "not found" },
@@ -343,10 +347,57 @@ test.describe("nearby", () => {
     await bubble.click();
 
     const dialog = page.getByRole("alertdialog");
-    await expect(dialog).toContainText("このグループのエリアに入ると参加できます");
-    await expect(dialog.getByRole("button", { name: "参加する" })).toHaveCount(0);
-    await dialog.getByRole("button", { name: "閉じる" }).click();
-    await expect(dialog).toHaveCount(0);
-    expect(joinCalls).toBe(0);
+    await expect(dialog).toContainText("「朝のランニング部」に参加しますか？");
+    await dialog.getByRole("button", { name: "参加する" }).click();
+    await expect(dialog).toContainText("エリアの外にいるため参加できませんでした");
+    expect(joinCalls).toBe(1);
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("does not ask again for a near group the viewer already belongs to", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    await mockDefaults(page, async (route, request) => {
+      const method = request.method();
+      const pathname = apiPath(request.url());
+      if (method === "GET" && pathname === "/api/v1/groups/nearby") {
+        // near には isMember が無い。詳細 (GET /groups/{id}) の isMember で判定する
+        await fulfillJson(route, 200, {
+          inside: [],
+          near: [{ id: "g3", name: "写真部", memberCount: 8, distanceBucket: "<2km" }],
+        });
+        return;
+      }
+      if (method === "GET" && pathname === "/api/v1/groups/g3") {
+        await fulfillJson(route, 200, {
+          id: "g3",
+          name: "写真部",
+          description: "",
+          visibility: "open",
+          memberCount: 8,
+          isMember: true,
+          radiusM: 200,
+          centerLat: 35.01,
+          centerLon: 135,
+        });
+        return;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    // 詳細が届いてメンバーと分かるまで待ってからタップする
+    const detail = page.waitForResponse(
+      (response) => apiPath(response.url()) === "/api/v1/groups/g3",
+    );
+    await page.goto("/");
+    const bubble = page.getByText("写真部", { exact: true });
+    await expect(bubble).toBeVisible();
+    await detail;
+    await page.waitForTimeout(300);
+    await bubble.click();
+    await page.waitForTimeout(800);
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
   });
 });

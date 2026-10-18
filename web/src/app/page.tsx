@@ -126,6 +126,8 @@ export default function NearbyPage() {
   }, [nearbyState]);
 
   const [groupAreas, setGroupAreas] = useState<ReadonlyMap<string, GroupArea>>(new Map());
+  // GET /groups/nearby の near には isMember が無いので、詳細の isMember で補う
+  const [joinedGroupIds, setJoinedGroupIds] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
     if (groupIds === "") return;
     const controller = new AbortController();
@@ -138,8 +140,10 @@ export default function NearbyPage() {
     ).then((results) => {
       if (controller.signal.aborted) return;
       const map = new Map<string, GroupArea>();
+      const joined = new Set<string>();
       for (const result of results) {
         const group = result?.group;
+        if (result && group?.isMember) joined.add(result.id);
         if (
           result &&
           typeof group?.centerLat === "number" &&
@@ -150,6 +154,7 @@ export default function NearbyPage() {
         }
       }
       setGroupAreas(map);
+      setJoinedGroupIds(joined);
     });
     return () => controller.abort();
   }, [groupIds]);
@@ -192,6 +197,7 @@ export default function NearbyPage() {
       party={party}
       groups={nearbyState}
       groupAreas={groupAreas}
+      joinedGroupIds={joinedGroupIds}
       bleNearby={bleNearby}
       onJoin={join}
       onLeave={leave}
