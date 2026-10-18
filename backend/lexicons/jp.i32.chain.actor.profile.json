@@ -1,0 +1,27 @@
+{
+  "lexicon": 1,
+  "id": "jp.i32.chain.actor.profile",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "CHAIN-specific profile fields. Display name, description and avatar live in app.bsky.actor.profile.",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": ["createdAt"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "maxLength": 400,
+            "maxGraphemes": 40,
+            "description": "Short status message."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

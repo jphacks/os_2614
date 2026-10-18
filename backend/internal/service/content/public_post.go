@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -34,6 +35,24 @@ const (
 	MaxFeedPostLangs = 3
 )
 
+// AllowedSelfLabels は投稿者が付けられる self-label の値（19 §2.15.3）。
+var AllowedSelfLabels = []string{"sexual", "violence", "self_harm", "spoiler"}
+
+// NormalizeSelfLabels は selfLabels を検証して重複を除く。許可しない値があれば ok=false。
+func NormalizeSelfLabels(vals []string) (out []string, ok bool) {
+	seen := map[string]bool{}
+	for _, v := range vals {
+		if !slices.Contains(AllowedSelfLabels, v) {
+			return nil, false
+		}
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out, true
+}
+
 // PublicPostService は公開投稿の作成・削除（17 §2.1・§2.2）。
 type PublicPostService struct {
 	core.Deps
@@ -46,6 +65,7 @@ type PublicPostService struct {
 type CreatePublicPostInput struct {
 	Text        string
 	Langs       []string
+	SelfLabels  []string // sexual / violence / self_harm / spoiler（19 §2.15.3）
 	AlsoBluesky bool
 }
 
@@ -61,6 +81,7 @@ func (s *PublicPostService) Create(ctx context.Context, did, sid string, in Crea
 	if err := validatePublicPost(in); err != nil {
 		return nil, err
 	}
+	in.SelfLabels, _ = NormalizeSelfLabels(in.SelfLabels)
 	if s.Writer == nil {
 		return nil, httpx.ErrUpstream.With("reason", "PDS への書き込みができません")
 	}
@@ -87,6 +108,16 @@ func (s *PublicPostService) Create(ctx context.Context, did, sid string, in Crea
 	if len(in.Langs) > 0 {
 		feedRecord["langs"] = in.Langs
 	}
+	labels := atproto.SelfLabelsRecord(in.SelfLabels)
+	if labels != nil {
+		feedRecord["labels"] = labels
+	}
+
+	// 書く前に lexicon で検証する（19 §6.1）。bsky は書いた後に付くので、その分は本文だけで確かめる。
+	if err := atproto.ValidateRecord(CollectionFeedPost, feedRecord); err != nil {
+		slog.WarnContext(ctx, "feed.post record rejected by lexicon", "err", err)
+		return nil, httpx.ErrInvalidRequest.With("reason", "record が lexicon に合いません")
+	}
 
 	var bskyURI, bskyCID string
 	if in.AlsoBluesky {
@@ -97,6 +128,9 @@ func (s *PublicPostService) Create(ctx context.Context, did, sid string, in Crea
 		}
 		if len(in.Langs) > 0 {
 			bskyRecord["langs"] = in.Langs
+		}
+		if labels != nil {
+			bskyRecord["labels"] = labels
 		}
 		uri, cid, err := s.Writer.CreateRecord(ctx, did, sess.ATProtoSessionID, CollectionBskyPost, bskyRecord)
 		if err != nil {
@@ -117,17 +151,18 @@ func (s *PublicPostService) Create(ctx context.Context, did, sid string, in Crea
 	}
 
 	if _, err := model.UpsertPublicPost(ctx, s.DB, model.PublicPost{
-		URI:       uri,
-		CID:       cid,
-		AuthorDID: did,
-		Text:      in.Text,
-		Langs:     in.Langs,
-		BskyURI:   bskyURI,
-		BskyCID:   bskyCID,
-		CreatedAt: now,
-		IndexedAt: now,
-		ModLabel:  label,
-		ModState:  modState,
+		URI:        uri,
+		CID:        cid,
+		AuthorDID:  did,
+		Text:       in.Text,
+		Langs:      in.Langs,
+		SelfLabels: in.SelfLabels,
+		BskyURI:    bskyURI,
+		BskyCID:    bskyCID,
+		CreatedAt:  now,
+		IndexedAt:  now,
+		ModLabel:   label,
+		ModState:   modState,
 	}); err != nil {
 		return nil, err
 	}
@@ -211,6 +246,9 @@ func validatePublicPost(in CreatePublicPostInput) error {
 		if !utils.ValidLanguageTag(l) {
 			fields["langs."+strconv.Itoa(i)] = "言語タグが不正です"
 		}
+	}
+	if _, ok := NormalizeSelfLabels(in.SelfLabels); !ok {
+		fields["selfLabels"] = "sexual / violence / self_harm / spoiler のどれかを指定してください"
 	}
 	if len(fields) > 0 {
 		return httpx.ErrInvalidRequest.With("fields", fields)

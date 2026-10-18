@@ -14,32 +14,39 @@ import (
 // PublicPost は public_posts の行（17 §2）。ユーザーの PDS にある jp.i32.chain.feed.post の索引。
 // 公開投稿の作成（read-after-write）、Jetstream の取り込み、フィードの 3 か所から使う。
 type PublicPost struct {
-	URI       string
-	CID       string
-	AuthorDID string
-	Text      string
-	Langs     []string
-	BskyURI   string // Bluesky にも投稿したときの app.bsky.feed.post（17 §2.3）
-	BskyCID   string
-	CreatedAt time.Time
-	IndexedAt time.Time
-	DeletedAt *time.Time
-	ModLabel  string     // ok / warn / block
-	ModState  string     // pending / done
-	Audience  string     // public / nearby（17 §2）。nearby は今近くにいる人だけに配信する
-	ExpiresAt *time.Time // nearby の失効時刻（17 §2）。nil なら失効しない
+	URI        string
+	CID        string
+	AuthorDID  string
+	Text       string
+	Langs      []string
+	SelfLabels []string // labels（selfLabels）の val（19 §2.15.3）
+	BskyURI    string   // Bluesky にも投稿したときの app.bsky.feed.post（17 §2.3）
+	BskyCID    string
+	CreatedAt  time.Time
+	IndexedAt  time.Time
+	DeletedAt  *time.Time
+	ModLabel   string     // ok / warn / block
+	ModState   string     // pending / done
+	Audience   string     // public / nearby（17 §2）。nearby は今近くにいる人だけに配信する
+	ExpiresAt  *time.Time // nearby の失効時刻（17 §2）。nil なら失効しない
 }
 
 const publicPostColumns = `uri, cid, author_did, text, langs, bsky_uri, bsky_cid,
-	created_at, indexed_at, deleted_at, mod_label, mod_state, audience, expires_at`
+	created_at, indexed_at, deleted_at, mod_label, mod_state, audience, expires_at, self_labels_json`
 
 func scanPublicPost(scan db.Scan, p *PublicPost) error {
 	var langs, bskyURI, bskyCID sql.NullString
+	var selfLabels string
 	var created, indexed int64
 	var deleted, expires sql.NullInt64
 	if err := scan(&p.URI, &p.CID, &p.AuthorDID, &p.Text, &langs, &bskyURI, &bskyCID,
-		&created, &indexed, &deleted, &p.ModLabel, &p.ModState, &p.Audience, &expires); err != nil {
+		&created, &indexed, &deleted, &p.ModLabel, &p.ModState, &p.Audience, &expires, &selfLabels); err != nil {
 		return err
+	}
+	if selfLabels != "" && selfLabels != "[]" {
+		if err := json.Unmarshal([]byte(selfLabels), &p.SelfLabels); err != nil {
+			return err
+		}
 	}
 	if langs.Valid && langs.String != "" {
 		if err := json.Unmarshal([]byte(langs.String), &p.Langs); err != nil {
@@ -77,6 +84,14 @@ func UpsertPublicPost(ctx context.Context, q db.Querier, p PublicPost) (bool, er
 		}
 		langs = string(b)
 	}
+	selfLabels := "[]"
+	if len(p.SelfLabels) > 0 {
+		b, err := json.Marshal(p.SelfLabels)
+		if err != nil {
+			return false, err
+		}
+		selfLabels = string(b)
+	}
 	if p.ModLabel == "" {
 		p.ModLabel = "ok"
 	}
@@ -88,18 +103,19 @@ func UpsertPublicPost(ctx context.Context, q db.Querier, p PublicPost) (bool, er
 	}
 	res, err := db.Execute(ctx, q, `
 		INSERT INTO public_posts (uri, cid, author_did, text, langs, bsky_uri, bsky_cid,
-		                          created_at, indexed_at, mod_label, mod_state, audience, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                          created_at, indexed_at, mod_label, mod_state, audience, expires_at, self_labels_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (uri) DO UPDATE SET
 		  cid = excluded.cid, text = excluded.text, langs = excluded.langs,
 		  bsky_uri = excluded.bsky_uri, bsky_cid = excluded.bsky_cid,
 		  indexed_at = excluded.indexed_at, deleted_at = NULL,
 		  mod_label = excluded.mod_label, mod_state = excluded.mod_state,
-		  audience = excluded.audience, expires_at = excluded.expires_at
+		  audience = excluded.audience, expires_at = excluded.expires_at,
+		  self_labels_json = excluded.self_labels_json
 		WHERE public_posts.cid != excluded.cid OR public_posts.deleted_at IS NOT NULL`,
 		p.URI, p.CID, p.AuthorDID, p.Text, langs, Nullable(p.BskyURI), Nullable(p.BskyCID),
 		clock.UnixMilli(p.CreatedAt), clock.UnixMilli(p.IndexedAt), p.ModLabel, p.ModState,
-		p.Audience, NullableTime(p.ExpiresAt))
+		p.Audience, NullableTime(p.ExpiresAt), selfLabels)
 	if err != nil {
 		return false, err
 	}

@@ -26,6 +26,7 @@ type feedItem struct {
 		Type string `json:"type"`
 		Name string `json:"name"`
 	} `json:"space"`
+	SelfLabels []string `json:"selfLabels"`
 	Moderation *struct {
 		Label   string `json:"label"`
 		Display string `json:"display"`
@@ -413,6 +414,51 @@ func TestFeedWarnDisplayPublic(t *testing.T) {
 	page = feedQuery(t, app, token, "source=home")
 	if textsOf(page.Items)["warn された公開投稿"] {
 		t.Fatalf("warn_display=hide なのに warn の公開投稿が出た: %+v", page.Items)
+	}
+}
+
+// 投稿者が付けた self-label は warn と同じに扱う（19 §2.15.3、D2）。判定が block のものは緩めない。
+func TestFeedPublicPostSelfLabelTreatedAsWarn(t *testing.T) {
+	env := testutil.NewEnv(t)
+	app := testutil.NewApp(env)
+
+	const (
+		me   = "did:plc:sl-me"
+		peer = "did:plc:sl-peer"
+	)
+	env.CreateUser(t, me, "me.test")
+	env.CreateUser(t, peer, "peer.test")
+	token := env.Login(t, me)
+	now := env.Clock.Now()
+	insertFriendship(t, env, me, peer, now)
+
+	at := now.Add(-1 * time.Hour)
+	if _, err := model.UpsertPublicPost(context.Background(), env.DB, model.PublicPost{
+		URI: "at://" + peer + "/jp.i32.chain.feed.post/sl", CID: "cid-sl", AuthorDID: peer, Text: "ネタバレ",
+		SelfLabels: []string{"spoiler"}, CreatedAt: at, IndexedAt: at, ModLabel: "ok", ModState: "done",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	page := feedQuery(t, app, token, "source=home")
+	var got *feedItem
+	for i := range page.Items {
+		if page.Items[i].Text == "ネタバレ" {
+			got = &page.Items[i]
+		}
+	}
+	if got == nil || got.Moderation == nil || got.Moderation.Label != "warn" || got.Moderation.Display != "blur" {
+		t.Fatalf("self-label の投稿 = %+v, want warn/blur", got)
+	}
+	if len(got.SelfLabels) != 1 || got.SelfLabels[0] != "spoiler" {
+		t.Fatalf("selfLabels = %v", got.SelfLabels)
+	}
+
+	testutil.Exec(t, env, "UPDATE user_settings SET warn_display = 'hide' WHERE did = ?", me)
+	for _, it := range feedQuery(t, app, token, "source=home").Items {
+		if it.Text == "ネタバレ" {
+			t.Fatalf("warn_display=hide なのに self-label の投稿が出た")
+		}
 	}
 }
 

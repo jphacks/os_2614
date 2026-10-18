@@ -109,14 +109,14 @@ func (s *JetstreamService) ingestFeedPost(ctx context.Context, did, rkey, cid st
 	if rkey == "" {
 		return false, nil
 	}
-	rec, err := atproto.ParseFeedPost(raw)
+	rec, err := atproto.ParseFeedPost(raw) // lexicon で検証する。通らない record は捨てる（19 §6.1、D1）
 	if err != nil {
 		slog.WarnContext(ctx, "jetstream: dropping invalid feed.post record", "did", did, "err", err)
 		return false, nil
 	}
 	p := model.PublicPost{
 		URI: atproto.FeedPostURI(did, rkey), CID: cid, AuthorDID: did,
-		Text: rec.Text, Langs: rec.Langs, CreatedAt: rec.CreatedAt, IndexedAt: s.Clock.Now(),
+		Text: rec.Text, Langs: rec.Langs, SelfLabels: rec.SelfLabels, CreatedAt: rec.CreatedAt, IndexedAt: s.Clock.Now(),
 	}
 	if rec.Bsky != nil {
 		p.BskyURI, p.BskyCID = rec.Bsky.URI, rec.Bsky.CID

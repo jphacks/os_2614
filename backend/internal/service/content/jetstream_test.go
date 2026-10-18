@@ -123,7 +123,7 @@ func TestJetstreamHandleIngestsEvents(t *testing.T) {
 	feed := map[string]any{"text": "hello", "langs": []string{"ja"}, "createdAt": "2026-10-17T03:00:00.000Z"}
 	update := map[string]any{
 		"text": "hello2", "langs": []string{"ja"},
-		"bsky":      map[string]any{"uri": "at://did:plc:alice/app.bsky.feed.post/x", "cid": "bcid"},
+		"bsky":      map[string]any{"uri": "at://did:plc:alice/app.bsky.feed.post/x", "cid": "bafyreib2rxk3rybk3aobmv5cjuql3bm2twh4jo5uxgf5kpqcsgz7soitae"},
 		"createdAt": "2026-10-17T03:00:01.000Z",
 	}
 	events := []any{
@@ -149,7 +149,7 @@ func TestJetstreamHandleIngestsEvents(t *testing.T) {
 	if p.CID != "c2" || p.Text != "hello2" || p.DeletedAt != nil {
 		t.Fatalf("rkey1 = %+v", p)
 	}
-	if p.BskyURI != "at://did:plc:alice/app.bsky.feed.post/x" || p.BskyCID != "bcid" {
+	if p.BskyURI != "at://did:plc:alice/app.bsky.feed.post/x" || p.BskyCID != "bafyreib2rxk3rybk3aobmv5cjuql3bm2twh4jo5uxgf5kpqcsgz7soitae" {
 		t.Fatalf("bsky = (%q,%q)", p.BskyURI, p.BskyCID)
 	}
 
@@ -392,5 +392,45 @@ func TestCompleteLoginFirstLoadFailureDoesNotBlockLogin(t *testing.T) {
 	}
 	if _, err := model.GetUser(ctx, env.DB, alice); err != nil {
 		t.Fatalf("ログインが失敗した: %v", err)
+	}
+}
+
+// labels は取り込む。lexicon に通らない record は捨てる（19 §6.1、D1）。
+func TestJetstreamIngestsSelfLabelsAndDropsLexiconViolations(t *testing.T) {
+	ctx := context.Background()
+	env := testutil.NewEnv(t)
+	env.CreateUser(t, alice, "alice.test")
+	svc := env.Jetstream(nil)
+
+	labeled := map[string]any{
+		"text": "ネタバレ", "createdAt": "2026-10-17T03:00:00.000Z",
+		"labels": map[string]any{
+			"$type":  "com.atproto.label.defs#selfLabels",
+			"values": []any{map[string]any{"val": "spoiler"}, map[string]any{"val": "violence"}},
+		},
+	}
+	tooLong := map[string]any{"text": strings.Repeat("あ", 1001), "createdAt": "2026-10-17T03:00:00.000Z"}
+	badLabels := map[string]any{"text": "x", "labels": map[string]any{"$type": "com.atproto.label.defs#selfLabels", "values": "spoiler"}, "createdAt": "2026-10-17T03:00:00.000Z"}
+	feedJetstream(t, svc, []any{
+		commitEvent(alice, "create", "jp.i32.chain.feed.post", "lab", "c1", labeled),
+		commitEvent(alice, "create", "jp.i32.chain.feed.post", "long", "c2", tooLong),
+		commitEvent(alice, "create", "jp.i32.chain.feed.post", "badlab", "c3", badLabels),
+		commitEvent(alice, "create", "jp.i32.chain.actor.profile", "self", "p1", map[string]any{"status": strings.Repeat("あ", 41), "createdAt": "2026-10-17T03:00:00.000Z"}),
+	})
+
+	p, err := model.GetPublicPost(ctx, env.DB, atproto.FeedPostURI(alice, "lab"))
+	if err != nil {
+		t.Fatalf("GetPublicPost(lab): %v", err)
+	}
+	if strings.Join(p.SelfLabels, ",") != "spoiler,violence" {
+		t.Fatalf("SelfLabels = %v", p.SelfLabels)
+	}
+	for _, rkey := range []string{"long", "badlab"} {
+		if _, err := model.GetPublicPost(ctx, env.DB, atproto.FeedPostURI(alice, rkey)); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("%s err = %v, want sql.ErrNoRows", rkey, err)
+		}
+	}
+	if prof, err := model.GetProfile(ctx, env.DB, alice); err == nil && prof.Status != "" {
+		t.Fatalf("status = %q, want dropped", prof.Status)
 	}
 }

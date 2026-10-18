@@ -1,0 +1,44 @@
+{
+  "lexicon": 1,
+  "id": "jp.i32.chain.feed.post",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A public post written to the author's PDS by CHAIN.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["text", "createdAt"],
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 10000,
+            "maxGraphemes": 1000,
+            "description": "The post text."
+          },
+          "langs": {
+            "type": "array",
+            "maxLength": 3,
+            "items": { "type": "string", "format": "language" },
+            "description": "Indicates human language of post primary text content."
+          },
+          "bsky": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "The app.bsky.feed.post written together with this post, if any."
+          },
+          "labels": {
+            "type": "union",
+            "refs": ["com.atproto.label.defs#selfLabels"],
+            "description": "Self-label values for this post."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Client-declared timestamp when this post was originally created."
+          }
+        }
+      }
+    }
+  }
+}

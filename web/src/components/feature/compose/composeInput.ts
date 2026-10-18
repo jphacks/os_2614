@@ -9,6 +9,15 @@
 // 140 字は UI の目安でしかない（サーバ上限ではない）。
 
 import type { PostFormat } from "@/data/dto";
+import type { SelfLabel } from "@/domain/types";
+
+/** 公開投稿に付けられる注意と、画面に出す名前（19 §2.15.3）。 */
+export const SELF_LABEL_OPTIONS: { value: SelfLabel; label: string }[] = [
+  { value: "sexual", label: "性的な内容" },
+  { value: "violence", label: "暴力的な内容" },
+  { value: "self_harm", label: "自傷に関する内容" },
+  { value: "spoiler", label: "ネタバレ" },
+];
 
 /**
  * 画面が持つ添付 1 件。`id` は `POST /media`（10 §4.4、todo 15）が返した値だけが入る。
@@ -31,6 +40,8 @@ export type ComposeSubmitInput = {
   format: PostFormat;
   attachments: ComposeAttachment[];
   alsoPublic: boolean;
+  /** 公開投稿に付ける注意（19 §2.15.3）。alsoPublic のときだけ送る。 */
+  selfLabels?: SelfLabel[];
   /** 今近くにいる人だけに届ける（nearby オーディエンス、17 §2.6）。Space 送信先・公開とは排他。 */
   nearby: boolean;
 };
@@ -64,14 +75,20 @@ export function validateMediaFile(file: MediaFileLike): ComposeValidation {
   return { ok: true };
 }
 
-/** `POST /posts` の body（10 §4.1）。キーはこの 5 つだけ。 */
+/** `POST /posts` の body（10 §4.1）。キーはこの 5 つと、公開のときの selfLabels。 */
 export type CreatePostBody = {
   spaceIds: string[];
   text: string;
   format: PostFormat;
   media: { id: string; alt: string }[];
   alsoPublic: boolean;
+  selfLabels?: SelfLabel[];
 };
+
+/** 送信する注意。公開しないとき・未選択のときは空（キーごと省略する）。 */
+export function effectiveSelfLabels(input: ComposeSubmitInput): SelfLabel[] {
+  return input.alsoPublic && !input.nearby ? (input.selfLabels ?? []) : [];
+}
 
 /** Go の `utf8.RuneCountInString` に合わせたルーン数（サロゲートペアを 1 と数える）。 */
 export function runeCount(text: string): number {
@@ -161,6 +178,7 @@ export function validateComposeInput(input: ComposeSubmitInput): ComposeValidati
  * （page.tsx の submit を参照）。nearby は別エンドポイント（POST /nearby/posts）なので含めない。
  */
 export function buildCreatePostBody(input: ComposeSubmitInput): CreatePostBody {
+  const selfLabels = effectiveSelfLabels(input);
   return {
     spaceIds: [...input.spaceIds],
     text: input.text,
@@ -169,6 +187,7 @@ export function buildCreatePostBody(input: ComposeSubmitInput): CreatePostBody {
       .filter((attachment) => attachment.id !== undefined && attachment.id !== "")
       .map((attachment) => ({ id: attachment.id as string, alt: attachment.alt ?? "" })),
     alsoPublic: input.alsoPublic,
+    ...(selfLabels.length > 0 ? { selfLabels } : {}),
   };
 }
 
