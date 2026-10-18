@@ -86,8 +86,6 @@
   border-radius: 50%;
 }
 
-.statusMuted { color: var(--color-text-muted); }
-
 .imageMenu {
   position: absolute;
   z-index: 4;
@@ -138,104 +136,19 @@
   bottom: -34px;
 }
 
-.nameRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: nowrap;
-}
-
 .name {
-  min-width: 7ch;
+  margin: 0;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 0 1 auto;
   font: var(--text-title);
   color: var(--color-text);
-}
-
-.nameRowEditing .name {
-  flex: 0 1 auto;
-  min-width: 4ch;
-  max-width: 25%;
-}
-
-.status {
-  display: inline-flex;
-  align-items: center;
-  flex: 1 1 auto;
-  min-width: 0;
-  gap: var(--space-1);
-  height: 28px;
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface);
-  font: var(--text-caption);
-  color: var(--color-text);
-}
-
-.onlineDot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-online);
-}
-
-.statusViewport {
-  display: block;
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.statusText {
-  display: inline-block;
-  width: max-content;
-  white-space: nowrap;
-}
-
-.statusViewport[data-marquee="on"] {
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 8px,
-    black calc(100% - 12px),
-    transparent 100%
-  );
-}
-
-.statusViewport[data-marquee="on"] .statusText {
-  text-overflow: clip;
-  animation: statusMarquee var(--marquee-duration) ease-in-out infinite;
-}
-
-@keyframes statusMarquee {
-  0%,
-  15% {
-    transform: translateX(0);
-  }
-
-  45% {
-    transform: translateX(calc(-1 * var(--marquee-distance)));
-  }
-
-  60% {
-    transform: translateX(calc(-1 * var(--marquee-distance)));
-  }
-
-  90%,
-  100% {
-    transform: translateX(0);
-  }
 }
 
 .statusEditRow {
   display: flex;
   align-items: center;
-  flex: 1 1 0;
   min-width: 0;
   gap: var(--space-1);
   height: 40px;
@@ -267,17 +180,6 @@
 
 .statusInput:disabled {
   opacity: 0.5;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .statusViewport[data-marquee="on"] .statusText {
-    display: block;
-    width: auto;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    animation: none;
-  }
 }
 
 .statusActions {

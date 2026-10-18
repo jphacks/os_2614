@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { List, ListItem } from "@/components/ui/List";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Tag } from "@/components/ui/Tag";
 import styles from "./UserProfileScreen.module.css";
 
@@ -140,10 +141,8 @@ function ProfileBody({
 
       <div className={styles.identityRow}>
         <div className={styles.identity}>
-          <div className={styles.nameRow}>
-            <h1 className={styles.name}>{user.name}</h1>
-            {user.status && <Tag label={user.status} />}
-          </div>
+          <h1 className={styles.name}>{user.name}</h1>
+          <StatusBadge status={user.status ?? ""} />
           {user.handle && <p className={styles.handle}>@{user.handle}</p>}
         </div>
         {!isSelf && relation === "none" && onRequestFriend && (

@@ -182,7 +182,9 @@ Group のタイムラインの上に被さるボトムシート (背面は `--co
 
 - バナー (高さ 150, radius-lg, `--tone-blue` 系の地 + 白い雲装飾) 右上に `IconButton surface icon=edit`。
 - Avatar 80 (白 4px 縁) をバナー左下に半分重ねる。右側に secondary sm ボタン「編集」(icon edit)。
-- 名前 (`--text-title`) + 右にステータス pill (白地、online 点 + status)。bio (body, secondary)。
+- 名前 (`--text-title`) は単独の行に置く。直下の行にステータス pill (`StatusBadge`: 白地、online 点 + status、左揃え、長文は 2 行まで折り返して省略) を置き、その下に bio (body, secondary)。
+- ステータスが空のときは同じ行に muted の「ステータスを設定」pill を出し、押すとインライン編集 (input + `n/40` + キャンセル/保存) に切り替わる。編集中は pill の代わりに名前の下へ編集欄を出す。
+- 他の人のプロフィール (`/users/`) も名前の直下に同じ `StatusBadge` を読み取り専用で出す。ステータスが空なら行ごと出さない。
 - `StatTriple`: すれ違い / 友達 / パーティ。
 - 「メモリー」+「すべて見る ›」(→ `/memory/`)。横スクロールのカード (幅 150): ImagePlaceholder + タイトル body-strong + 「{期間}・写真 {n}枚」caption muted。
 - 公開投稿セクションはこのタブには出さない。他の人のプロフィール (`/users/`、自分の DID を開いた場合も含む) にだけ出す。

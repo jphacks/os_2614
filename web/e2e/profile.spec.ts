@@ -151,6 +151,12 @@ test.describe("profile", () => {
     await expect(page.getByRole("heading", { name: ME.displayName })).toBeVisible();
     await expect(page.getByText(ME.description)).toBeVisible();
     await expect(page.getByText(ME.status)).toBeVisible();
+    // ステータスは名前の直下の行に出る (縦に重ならず、名前より下)。
+    const nameBox = await page.getByRole("heading", { name: ME.displayName }).boundingBox();
+    const statusBox = await page.getByText(ME.status).boundingBox();
+    expect(nameBox).not.toBeNull();
+    expect(statusBox).not.toBeNull();
+    expect(statusBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height);
     await expect(page.getByText("まだメモリーはありません")).toBeVisible();
     await expect(page.getByRole("button", { name: "バナーを変更" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "アイコンを変更" })).toHaveCount(0);
@@ -221,16 +227,37 @@ test.describe("profile overview resources", () => {
     await expect(page.getByText("—", { exact: true })).toHaveCount(3);
   });
 
-  test("shows the empty status placeholder and opens its editor", async ({ page }) => {
+  test("shows the empty status placeholder below the name and opens its editor", async ({ page }) => {
     await useStoredSession(page, makeStoredSession());
     await mockApi(page, async (route, request) => {
       if (new URL(request.url()).pathname === "/api/v1/me") return fulfillJson(route, 200, ME_EMPTY_STATUS);
       await fulfillJson(route, 404, { error: { code: "not_found", message: "not found" } });
     });
     await page.goto("/profile/");
-    await expect(page.getByText("ステータスを設定")).toBeVisible();
-    await page.getByRole("button", { name: "ステータスを編集" }).click();
-    await expect(page.getByLabel("ステータス", { exact: true })).toBeVisible();
+    const placeholder = page.getByRole("button", { name: "ステータスを設定" });
+    await expect(placeholder).toBeVisible();
+    const nameBox = await page.getByRole("heading", { name: ME.displayName }).boundingBox();
+    const placeholderBox = await placeholder.boundingBox();
+    expect(placeholderBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height);
+    await placeholder.click();
+    const input = page.getByLabel("ステータス", { exact: true });
+    await expect(input).toBeVisible();
+    // 編集欄も名前の下に出る。
+    const inputBox = await input.boundingBox();
+    expect(inputBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height);
+  });
+
+  test("saves a status from the empty state via PUT /me/status", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+    const { statuses } = await mockProfileApi(page, { me: () => ME_EMPTY_STATUS });
+    await page.goto("/profile/");
+
+    await page.getByRole("button", { name: "ステータスを設定" }).click();
+    await page.getByLabel("ステータス", { exact: true }).fill("はじめまして");
+    await page.getByRole("button", { name: "保存" }).click();
+
+    await expect(page.getByText("はじめまして")).toBeVisible();
+    expect(statuses).toEqual([{ status: "はじめまして" }]);
   });
 });
 
@@ -376,43 +403,37 @@ test.describe("profile status edit", () => {
     expect(statuses).toEqual([]);
   });
 
-  test("keeps the status row on one line and marks overflow for a long status", async ({
+  test("wraps a long status to at most two lines and keeps it inside the screen", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await useStoredSession(page, makeStoredSession());
-    let responseMe: typeof ME | (typeof ME & { displayName: string }) = ME;
-    await mockProfileApi(page, { me: () => responseMe });
-    await page.goto("/profile/");
-
-    const row = page.getByRole("heading", { name: ME.displayName }).locator("..");
-    const shortHeight = (await row.boundingBox())?.height;
-    await expect(row.locator('[data-marquee="off"]')).toBeVisible();
-
-    responseMe = {
+    const responseMe = {
       ...ME,
       displayName: "とても長い名前のユーザーです",
       status: "あ".repeat(40),
     };
-    // ルートのモックは responseMe を参照するため、同じページで再取得する。
-    await page.reload();
-    const longRow = page
-      .getByRole("heading", { name: responseMe.displayName })
-      .locator("..");
-    await expect(longRow.locator('[data-marquee="on"]')).toBeVisible();
+    await mockProfileApi(page, { me: () => responseMe });
+    await page.goto("/profile/");
+
+    const text = page.getByText(responseMe.status, { exact: true });
+    await expect(text).toBeVisible();
+    const badge = text.locator("..");
     const viewportWidth = page.viewportSize()?.width ?? 375;
-    const pencilBox = await longRow
+    const badgeBox = await badge.boundingBox();
+    expect(badgeBox).not.toBeNull();
+    expect(badgeBox!.x).toBeGreaterThanOrEqual(0);
+    expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(viewportWidth);
+    const pencilBox = await badge
       .getByRole("button", { name: "ステータスを編集" })
       .boundingBox();
     expect(pencilBox).not.toBeNull();
-    expect(pencilBox!.x).toBeGreaterThanOrEqual(0);
     expect(pencilBox!.x + pencilBox!.width).toBeLessThanOrEqual(viewportWidth);
-    const longHeight = (await longRow.boundingBox())?.height;
-    expect(longHeight).toBeDefined();
-    expect(shortHeight).toBeDefined();
-    expect(Math.abs(longHeight! - shortHeight!)).toBeLessThanOrEqual(4);
+    // 2 行までに収まる (caption の行高 x 2 + pill の余白に収まる)。
+    const lineHeight = await text.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+    expect((await text.boundingBox())!.height).toBeLessThanOrEqual(lineHeight * 2 + 1);
 
-    await longRow.getByRole("button", { name: "ステータスを編集" }).click();
+    await badge.getByRole("button", { name: "ステータスを編集" }).click();
     const statusInput = page.getByLabel("ステータス", { exact: true });
     const cancelButton = page.getByRole("button", { name: "キャンセル" });
     const saveButton = page.getByRole("button", { name: "保存" });
