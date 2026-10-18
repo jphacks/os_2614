@@ -46,6 +46,7 @@ type createPostRequest struct {
 	Media       []mediaRefRequest `json:"media"`
 	Reply       *replyRequest     `json:"reply"`
 	AlsoPublic  bool              `json:"alsoPublic"`
+	SelfLabels  []string          `json:"selfLabels"`
 	AlsoBluesky bool              `json:"alsoBluesky"`
 }
 
@@ -53,6 +54,9 @@ func (r *createPostRequest) Validate() map[string]string {
 	f := map[string]string{}
 	if len(r.SpaceIDs) < 1 || len(r.SpaceIDs) > 5 {
 		f["spaceIds"] = "1〜5 件で指定してください"
+	}
+	if _, ok := contentsvc.NormalizeSelfLabels(r.SelfLabels); !ok {
+		f["selfLabels"] = "sexual / violence / self_harm / spoiler のどれかを指定してください"
 	}
 	if len(r.Media) > 4 {
 		f["media"] = "4 件までです"
@@ -110,6 +114,7 @@ func (h *InstanceController) createPost(c fiber.Ctx) error {
 		Reply:       reply,
 		SessionID:   httpx.SessionID(c),
 		AlsoPublic:  req.AlsoPublic,
+		SelfLabels:  req.SelfLabels,
 		AlsoBluesky: req.AlsoBluesky,
 	})
 	if err != nil {

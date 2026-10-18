@@ -48,6 +48,7 @@ import type {
   PostTarget,
   Profile,
   Reply,
+  SelfLabel,
   Settings,
   Stats,
   User,
@@ -116,6 +117,7 @@ const ENCOUNTER_MODES: readonly EncounterMode[] = [
   "delayed",
   "private",
 ];
+const SELF_LABELS: readonly SelfLabel[] = ["sexual", "violence", "self_harm", "spoiler"];
 const WARN_DISPLAYS: readonly WarnDisplay[] = ["show", "blur", "hide"];
 const RELATIONS: readonly EncounterRelation[] = [
   "none",
@@ -288,12 +290,16 @@ export function toFriendLocation(dto: Maybe<FriendLocationDTO>): FriendLocation 
 
 /** FeedItem → FeedPost (17 §3.2)。著者不明は空ユーザーに寄せる。 */
 export function toFeedPost(dto: Maybe<FeedItemDTO>): FeedPost {
+  const selfLabels = (dto?.selfLabels ?? []).filter((v): v is SelfLabel =>
+    (SELF_LABELS as readonly string[]).includes(v),
+  );
   return {
     uri: dto?.uri ?? "",
     author: dto?.author ? toUser(dto.author) : emptyUser(),
     text: dto?.text ?? "",
     createdAt: dto?.createdAt ?? "",
     attachments: (dto?.media ?? []).map(toMedia),
+    ...(selfLabels.length > 0 ? { selfLabels } : {}),
     space: dto?.space
       ? {
           id: dto.space.id ?? "",
