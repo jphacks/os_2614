@@ -33,13 +33,17 @@ import type { FriendLocation, GroupNearby } from "@/domain/types";
 import { ChainProximity } from "@/device/proximity";
 import {
   useLocation,
+  useLocationAccuracySettings,
   useReloadOnLocationUpload,
 } from "@/device/proximity/hooks";
+import { useBleNearbyFriends } from "@/device/proximity/party";
 import { useCompassHeading } from "@/hooks/useCompassHeading";
 import type { GroupArea } from "@/components/feature/nearby";
 import { NearbyScreen } from "@/components/screens";
 
 const LOCATION_INTERVAL_MS = 10_000;
+/** これより精度が悪いときだけ Wi-Fi スキャンの案内を出す。屋外で GNSS が効いていれば出さない。 */
+const WIFI_SCAN_HINT_ACCURACY_M = 30;
 /** 中心を取りに行くグループの上限。近いグループが多すぎても詳細を叩きすぎない。 */
 const MAX_GROUP_DETAILS = 12;
 
@@ -68,6 +72,13 @@ export default function NearbyPage() {
   const { items: encounterItems } = usePagedResource<EncounterDTO>("/encounters", []);
   const { fix } = useLocation({ intervalMs: LOCATION_INTERVAL_MS, enabled: true });
   const heading = useCompassHeading();
+  const accuracySettings = useLocationAccuracySettings();
+  const bleNearby = useBleNearbyFriends();
+  const wifiScanHint =
+    accuracySettings !== null &&
+    accuracySettings.locationEnabled &&
+    !accuracySettings.wifiScanAvailable &&
+    (fix === null || fix.accuracyM > WIFI_SCAN_HINT_ACCURACY_M);
 
   useReloadOnLocationUpload(
     state.status === "error" && state.error.code === "location_stale",
@@ -166,6 +177,10 @@ export default function NearbyPage() {
       .finally(() => reload());
   }, [reload]);
 
+  const openLocationSettings = useCallback(() => {
+    void ChainProximity.openLocationSettings().catch(() => undefined);
+  }, []);
+
   return (
     <NearbyScreen
       me={me}
@@ -177,10 +192,12 @@ export default function NearbyPage() {
       party={party}
       groups={nearbyState}
       groupAreas={groupAreas}
+      bleNearby={bleNearby}
       onJoin={join}
       onLeave={leave}
       onRetry={reload}
       onEnableLocation={enableLocation}
+      onOpenLocationSettings={wifiScanHint ? openLocationSettings : undefined}
     />
   );
 }

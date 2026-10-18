@@ -69,6 +69,9 @@ export const SIZE_PLUS = 64;
 export const SIZE_PARTY = 84;
 export const SIZE_PERSON = 68;
 
+/** BLE で見えている相手の説明。GPS より確かなので距離より優先する。 */
+const BLE_NEARBY_DETAIL = "すぐそば";
+
 /**
  * パーティーのメンバーを方角に置く最小の距離 (m)。これより近いと GPS の誤差で
  * 方角が当てにならないので、自分に接して並べる。
@@ -145,8 +148,14 @@ export function buildNearbyModel(input: {
   party: Party | null;
   groups: GroupNearby | null;
   groupAreas: ReadonlyMap<string, GroupArea>;
+  /**
+   * 直近に BLE で見えたフレンドの DID。GPS の位置より優先して自分に接して並べる
+   * (屋内や近距離では GPS の誤差の方が実際の距離より大きい)。
+   */
+  bleNearby?: ReadonlySet<string>;
 }): NearbyModel {
   const { me, myLocation, groupAreas } = input;
+  const bleNearby = input.bleNearby ?? new Set<string>();
   const ring: NearbyBubble[] = [];
   const shown = new Set<string>([me.did]);
 
@@ -219,6 +228,18 @@ export function buildNearbyModel(input: {
       tone: avatarToneFor(member.did || name),
     };
     const status = member.present ? "パーティー" : "パーティー (離席中)";
+    if (bleNearby.has(member.did)) {
+      shown.add(member.did);
+      ring.push({
+        kind: "person",
+        id: `user:${member.did}`,
+        size: SIZE_PERSON,
+        user,
+        source: "party",
+        detail: `${status}・${BLE_NEARBY_DETAIL}`,
+      });
+      continue;
+    }
     const resolved = resolveFriend(
       myLocation,
       input.friendLocations.get(member.did),
@@ -246,6 +267,18 @@ export function buildNearbyModel(input: {
 
   for (const friend of input.friends) {
     if (shown.has(friend.did)) continue;
+    if (bleNearby.has(friend.did)) {
+      shown.add(friend.did);
+      ring.push({
+        kind: "person",
+        id: `user:${friend.did}`,
+        size: SIZE_PERSON,
+        user: friend,
+        source: "friend",
+        detail: BLE_NEARBY_DETAIL,
+      });
+      continue;
+    }
     pushPerson(
       friend,
       "friend",

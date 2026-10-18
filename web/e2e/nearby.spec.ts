@@ -256,17 +256,15 @@ test.describe("nearby", () => {
     ).toBeVisible();
   });
 
-  test("joins a group from the focus card after tapping its bubble", async ({
+  test("asks before joining a group the viewer is not in", async ({
     page,
   }) => {
     await useStoredSession(page, makeStoredSession());
 
-    let nearbyCalls = 0;
     await mockDefaults(page, async (route, request) => {
       const method = request.method();
       const pathname = apiPath(request.url());
       if (method === "GET" && pathname === "/api/v1/groups/nearby") {
-        nearbyCalls += 1;
         await fulfillJson(route, 200, NEARBY);
         return;
       }
@@ -291,23 +289,64 @@ test.describe("nearby", () => {
       .first()
       .waitFor({ state: "detached", timeout: 10_000 });
 
-    // 泡をタップすると中央へ寄ってフォーカスが当たり、下のカードに操作が出る。
+    // まだ入っていないグループの泡をタップすると、参加の確認が出る。
     const bubble = page.getByText("情報工学科 3年", { exact: true });
     await expect(bubble).toBeVisible();
     await bubble.click();
 
-    const join = page.getByRole("button", { name: "参加" });
-    await expect(join).toBeVisible();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toContainText("「情報工学科 3年」に参加しますか？");
 
+    // キャンセルでは何も送らずに閉じる。
+    await dialog.getByRole("button", { name: "キャンセル" }).click();
+    await expect(dialog).toHaveCount(0);
+
+    await bubble.click();
     const joinRequest = page.waitForRequest(
       (request) =>
         request.method() === "POST" &&
         apiPath(request.url()) === "/api/v1/groups/g1/join",
     );
-    await join.click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "参加する" }).click();
 
     const request = await joinRequest;
     expect(apiPath(request.url())).toBe("/api/v1/groups/g1/join");
-    await expect.poll(() => nearbyCalls).toBeGreaterThan(1);
+    // 参加できたらそのグループの画面へ移る。
+    await expect(page).toHaveURL(/\/group\/\?id=g1/);
+  });
+
+  test("explains that a group outside the area cannot be joined yet", async ({ page }) => {
+    await useStoredSession(page, makeStoredSession());
+
+    let joinCalls = 0;
+    await mockDefaults(page, async (route, request) => {
+      const method = request.method();
+      const pathname = apiPath(request.url());
+      if (method === "GET" && pathname === "/api/v1/groups/nearby") {
+        await fulfillJson(route, 200, {
+          inside: [],
+          near: [{ id: "g2", name: "朝のランニング部", memberCount: 5, distanceBucket: "<500m" }],
+        });
+        return;
+      }
+      if (method === "POST" && pathname.endsWith("/join")) {
+        joinCalls += 1;
+      }
+      await fulfillJson(route, 404, {
+        error: { code: "not_found", message: "not found" },
+      });
+    });
+
+    await page.goto("/");
+    const bubble = page.getByText("朝のランニング部", { exact: true });
+    await expect(bubble).toBeVisible();
+    await bubble.click();
+
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toContainText("このグループのエリアに入ると参加できます");
+    await expect(dialog.getByRole("button", { name: "参加する" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "閉じる" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(joinCalls).toBe(0);
   });
 });

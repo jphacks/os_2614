@@ -63,6 +63,28 @@
   color: var(--color-text-secondary);
 }
 
+/* href + actions: title のリンクを行全体へ広げ、actions だけその上に出す */
+.stretchedRow {
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.stretched {
+  color: inherit;
+  text-decoration: none;
+}
+
+.stretched::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.actions {
+  position: relative;
+  z-index: 1;
+}
+
 .trailing {
   display: inline-flex;
   align-items: center;

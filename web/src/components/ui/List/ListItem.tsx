@@ -9,6 +9,11 @@ export type ListItemProps = {
   title: ReactNode;
   subtitle?: ReactNode;
   trailing?: ReactNode;
+  /**
+   * 行のリンクとは別に押せるボタン群。trailing の位置に出す。
+   * href と併用すると <a> の中に <button> を入れずに済むよう、リンクを title に付けて行全体へ広げる。
+   */
+  actions?: ReactNode;
   href?: string;
   onClick?: () => void;
   className?: string;
@@ -19,6 +24,7 @@ export function ListItem({
   title,
   subtitle,
   trailing,
+  actions,
   href,
   onClick,
   className,
@@ -40,6 +46,28 @@ export function ListItem({
       </span>
     </>
   );
+
+  if (href && actions) {
+    return (
+      <li className={[rowClass, styles.stretchedRow].join(" ")}>
+        <span className={linkClass}>
+          {leading && <span className={styles.leading}>{leading}</span>}
+          <span className={styles.main}>
+            <span className={styles.body}>
+              <PressableLink className={[styles.title, styles.stretched].join(" ")} href={href}>
+                {title}
+              </PressableLink>
+              {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
+            </span>
+            <span className={[styles.trailing, styles.actions].join(" ")}>
+              {trailing}
+              {actions}
+            </span>
+          </span>
+        </span>
+      </li>
+    );
+  }
 
   if (href) {
     return (
