@@ -73,6 +73,22 @@
 | P18 | 不在で離脱した C が別の本 party に入った後、元のメンバーのもとに戻る | 元の party に二重に所属しない |
 | P19 | 明示的に退出した C が元のメンバーの近くに居続ける | どの party にも入らない |
 
+### 4.2.1 instance の返信と写真（10）
+
+| # | 筋書き | 期待 |
+| --- | --- | --- |
+| I1 | 返信のある Space で `posts?roots=1` と `posts` を取る | `roots=1` は返信を含まない（media は含む）。付けなければ全部返る |
+| I2 | root に返信 4 件（うち 1 件は削除済み、1 件は `block`、1 件はブロック関係の相手） | root の `replyCount` は 1 |
+| I3 | スレッド API を `limit=2` で取り、`cursor` で続きを取る | `replies` は古い順で全件が重複なく並ぶ。最後のページに `cursor` が無い。`limit` 既定 50、201 以上は 200 |
+| I4 | スレッド API の `root` に返信の URI を渡す | その返信の root のスレッドが返る |
+| I5 | スレッド API に存在しない・削除済み・別 Space の URI | `404 not_found` |
+| I6 | 仮 party のメンバー、離脱済み、archived の Space で取る / メンバー外で取る | 前者は読める / 後者は `403` |
+| I7 | 同じ Space に同じ写真（`sha256`）を同じ投稿者が 2 回共有 | 1 回目 `201`、2 回目は `200` で同じ `uri`、`media.created` は 1 回 |
+| I8 | 終了から 24 時間以内の archived な party へ、未離脱のメンバーが期間内の `takenAt` の写真を共有 | `201` |
+| I9 | I8 の境界: 24 時間ちょうど / 24 時間超 / 終了時に離脱済みのメンバー / `takenAt` が `confirmed_at` より前・`ended_at` より後 / `takenAt` なし | 24 時間ちょうどは `201`。それ以外は `410 gone` |
+| I10 | 終了から 24 時間以内の archived な party へ、投稿（`POST /posts`） | `410 gone`（例外は写真共有だけ） |
+| I11 | `GET /memories` の party | `confirmedAt` と `endedAt` を返す |
+
 ### 4.3 グループ（09）
 
 | # | 筋書き | 期待 |

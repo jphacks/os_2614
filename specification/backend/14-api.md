@@ -110,11 +110,12 @@
 | --- | --- | --- | --- | --- |
 | GET | `/api/v1/instances` | 自分の Space の一覧（チャット一覧） | P0 | 13 §2 |
 | POST | `/api/v1/posts` | 投稿（複数 Space、公開投稿の同時作成） | P0 | 10 §4.1 |
-| GET | `/api/v1/instances/{spaceId}/posts` | 投稿一覧 | P0 | 10 §4.2 |
+| GET | `/api/v1/instances/{spaceId}/posts` | 投稿一覧（`roots=1` で返信を除く、`replyCount` 付き） | P0 | 10 §4.2 |
+| GET | `/api/v1/instances/{spaceId}/thread` | 投稿と返信のスレッド（`root`、`cursor`、`limit`） | P0 | 10 §4.2.1 |
 | DELETE | `/api/v1/instances/{spaceId}/posts/{rkey}` | 自分の投稿の削除 | P0 | 10 §4.3 |
 | DELETE | `/api/v1/instances/{spaceId}/posts/{authorDid}/{rkey}` | 他人の投稿の削除（owner） | P1 | 10 §4.3 |
 | POST | `/api/v1/media` | 画像のアップロード | P0 | 10 §4.4 |
-| POST | `/api/v1/instances/{spaceId}/media` | 写真の共有 | P0 | 10 §4.4 |
+| POST | `/api/v1/instances/{spaceId}/media` | 写真の共有（同じ写真は `200`、新規は `201`。終了後 24 時間の例外あり） | P0 | 10 §4.4、§5 |
 | GET | `/media/{id}?v=&exp=&sig=` | 画像の配信（署名付き URL） | P0 | 10 §4.4 |
 | GET / POST | `/api/v1/instances/{spaceId}/pins` | Pin 一覧 / 手動 Pin | P1 | 10 §6 |
 | DELETE | `/api/v1/instances/{spaceId}/pins/{rkey}` | Pin の解除 | P1 | 10 §6 |
