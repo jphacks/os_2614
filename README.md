@@ -102,3 +102,8 @@ Bluetooth で送るのはユーザー ID ではありません。サーバーが
 * **「ちかく」画面の泡のグラフ**: 自分を中心に、友達・すれ違った人・グループを泡で配置する。位置共有の粒度に合わせて、座標か方角と距離から配置を決める
   * [web/src/app/page.tsx](web/src/app/page.tsx)、[web/src/components/feature/nearby/](web/src/components/feature/nearby/)、120f448（BubbleCanvas）
 
+
+
+`HackDay以前に作成・準備したもの`
+- `docs/chain-draft.md` アイデア
+- `docs/research/*.md`  capicitorやpwaで実装できるかどうかAIに聞いたレポート
